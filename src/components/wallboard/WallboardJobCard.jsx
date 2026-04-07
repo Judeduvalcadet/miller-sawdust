@@ -85,7 +85,7 @@ export default function WallboardJobCard({ job, drivers, onAssign, canAssign, on
           <span className="text-[11px] text-gray-400 leading-tight">{quantityLabel}</span>
           {(() => {
             let label = null;
-            if (job.truck_type === 'spreader' && Array.isArray(job.loads)) {
+            if (Array.isArray(job.loads) && job.loads.length > 0) {
               const configs = job.loads.filter(l => l.load_configuration).map(l => `L${l.load_number}: ${l.load_configuration}`);
               if (configs.length > 0) label = configs.join(' | ');
             } else if (job.load_configuration) {

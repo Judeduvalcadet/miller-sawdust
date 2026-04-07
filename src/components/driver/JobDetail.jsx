@@ -605,6 +605,38 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           </Card>
         )}
 
+        {/* NON-SPREADER DELIVERY: Read-only per-load info from dispatcher */}
+        {!isLoadBased && !isPickupJob && Array.isArray(job.loads) && job.loads.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Package className="w-4 h-4 text-gray-500" />
+                Load Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {job.loads.map((load) => (
+                  <div key={load.load_number} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-sm font-semibold text-gray-700 mb-1">Load {load.load_number}</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
+                      {load.pickup_location_name && (
+                        <span>Pickup: <span className="font-medium text-gray-800">{load.pickup_location_name}</span></span>
+                      )}
+                      {load.yards_collected && (
+                        <span>Yards: <span className="font-medium text-gray-800">{load.yards_collected} yds</span></span>
+                      )}
+                      {load.load_configuration && (
+                        <span>Config: <span className="font-medium text-gray-800">{load.load_configuration}</span></span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* REGULAR DRIVER (not Jon pickup or Josh delivery): Simple load completion */}
         {!isLoadBased && isPending && job.quantity > 1 && (
           <Card>

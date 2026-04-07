@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 const TRUCK_LABELS = { straight_truck: 'Straight', semi: 'Semi', spreader: 'Spreader' };
 
 export default function WallboardJobDetailPopup({ job, driver, pickupLocations = [], onClose }) {
-  const isJoshDelivery = job.job_type === 'delivery' && job.truck_type === 'spreader';
-  const joshLoads = isJoshDelivery && Array.isArray(job.loads) && job.loads.length > 0
+  const hasPerLoadData = job.job_type === 'delivery' && Array.isArray(job.loads) && job.loads.length > 0;
+  const perLoadDetails = hasPerLoadData
     ? job.loads.filter((l) => l.pickup_location_name || l.yards_collected)
     : [];
 
@@ -119,7 +119,7 @@ export default function WallboardJobDetailPopup({ job, driver, pickupLocations =
             )}
 
             {/* Josh per-load pickup details */}
-            {joshLoads.length > 0 && (
+            {perLoadDetails.length > 0 && (
               <div className="border border-blue-900/50 rounded-lg overflow-hidden">
                 <div className="bg-blue-900/30 px-3 py-2">
                   <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide">Load Pickup Details</p>
@@ -133,7 +133,7 @@ export default function WallboardJobDetailPopup({ job, driver, pickupLocations =
                     </tr>
                   </thead>
                   <tbody>
-                    {joshLoads.map((l, idx) => (
+                    {perLoadDetails.map((l, idx) => (
                       <tr key={l.load_number} className={idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-800/60'}>
                         <td className="px-3 py-2 font-medium text-gray-300">Load {l.load_number}</td>
                         <td className="px-3 py-2 text-gray-300">{l.pickup_location_name || '—'}</td>

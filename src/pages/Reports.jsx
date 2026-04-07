@@ -71,16 +71,16 @@ export default function Reports() {
       if (job.job_type === 'pickup' && (job.pickup_location_id === loc.id || job.location_name === loc.name)) {
         totalYardsForLocation += (job.pickup_yards || job.yards_collected || 0);
       }
-      // Spreader per-load pickup entries inside delivery jobs
-      if (job.job_type === 'delivery' && job.truck_type === 'spreader' && Array.isArray(job.loads)) {
+      // Per-load pickup entries inside delivery jobs (all truck types)
+      if (job.job_type === 'delivery' && Array.isArray(job.loads) && job.loads.length > 0) {
         job.loads.filter(l => l.pickup_location_name === loc.name).forEach(loadEntry => {
           totalYardsForLocation += (loadEntry.yards_collected || 0);
         });
       }
-      // Delivery jobs that reference this supplier as the pickup location — use delivery_yards
+      // Old-format delivery jobs without loads array — use delivery_yards
       if (
         job.job_type === 'delivery' &&
-        job.truck_type !== 'spreader' &&
+        (!Array.isArray(job.loads) || job.loads.length === 0) &&
         (job.pickup_location_id === loc.id)
       ) {
         totalYardsForLocation += (job.delivery_yards || 0);
@@ -102,7 +102,7 @@ export default function Reports() {
     const cJobs = deliveryJobs.filter(j => j.customer_id === c.id);
     const loads = cJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
     const yards = cJobs.reduce((sum, j) => {
-      if (j.truck_type === 'spreader' && Array.isArray(j.loads)) {
+      if (Array.isArray(j.loads) && j.loads.length > 0) {
         return sum + j.loads.reduce((s, l) => s + (Number(l.yards_collected) || 0), 0);
       }
       return sum + (Number(j.delivery_yards) || 0);
@@ -140,16 +140,16 @@ export default function Reports() {
       const yards = Number(j.pickup_yards) || Number(j.yards_collected) || 0;
       map[drv.name] = (map[drv.name] || 0) + yards;
     });
-    // Spreader per-load pickup entries inside delivery jobs
-    filteredJobs.filter(j => j.job_type === 'delivery' && j.truck_type === 'spreader' && Array.isArray(j.loads)).forEach(j => {
+    // Per-load pickup entries inside delivery jobs (all truck types)
+    filteredJobs.filter(j => j.job_type === 'delivery' && Array.isArray(j.loads) && j.loads.length > 0).forEach(j => {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       if (!drv) return;
       j.loads.filter(l => l.pickup_location_name === locName).forEach(l => {
         map[drv.name] = (map[drv.name] || 0) + (Number(l.yards_collected) || 0);
       });
     });
-    // Other delivery jobs that reference this location — use delivery_yards
-    filteredJobs.filter(j => j.job_type === 'delivery' && j.truck_type !== 'spreader' && j.pickup_location_id === locId).forEach(j => {
+    // Old-format delivery jobs without loads array — use delivery_yards
+    filteredJobs.filter(j => j.job_type === 'delivery' && (!Array.isArray(j.loads) || j.loads.length === 0) && j.pickup_location_id === locId).forEach(j => {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       if (!drv) return;
       map[drv.name] = (map[drv.name] || 0) + (Number(j.delivery_yards) || 0);
@@ -172,7 +172,7 @@ export default function Reports() {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       const name = drv?.name || 'Unknown Driver';
       let yards = 0;
-      if (j.truck_type === 'spreader' && Array.isArray(j.loads)) {
+      if (Array.isArray(j.loads) && j.loads.length > 0) {
         yards = j.loads.reduce((s, l) => s + (Number(l.yards_collected) || 0), 0);
       } else {
         yards = Number(j.delivery_yards) || 0;

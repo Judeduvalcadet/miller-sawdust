@@ -96,9 +96,9 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
 
 function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocations = [] }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  // Spreader delivery per-load pickup details
-  const isJoshDelivery = job.job_type === 'delivery' && job.truck_type === 'spreader';
-  const joshLoads = isJoshDelivery && Array.isArray(job.loads) && job.loads.length > 0 ?
+  // Per-load pickup details (all delivery truck types)
+  const hasPerLoadData = job.job_type === 'delivery' && Array.isArray(job.loads) && job.loads.length > 0;
+  const perLoadDetails = hasPerLoadData ?
   job.loads.filter((l) => l.pickup_location_name || l.yards_collected) :
   [];
 
@@ -177,7 +177,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
               </div>
             }
             {/* Josh per-load pickup details */}
-            {joshLoads.length > 0 &&
+            {perLoadDetails.length > 0 &&
             <div className="border border-blue-100 rounded-lg overflow-hidden">
                 <div className="bg-blue-50 px-3 py-2">
                   <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Load Pickup Details</p>
@@ -191,7 +191,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
                     </tr>
                   </thead>
                   <tbody>
-                    {joshLoads.map((l, idx) =>
+                    {perLoadDetails.map((l, idx) =>
                   <tr key={l.load_number} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-3 py-2 font-medium text-gray-700">Load {l.load_number}</td>
                         <td className="px-3 py-2 text-gray-700">{l.pickup_location_name || '—'}</td>
@@ -339,7 +339,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
               <span className="text-[10px] text-gray-600 leading-tight">{job.quantity} load{job.quantity !== 1 ? 's' : ''}</span>
               {(() => {
                 let label = null;
-                if (job.truck_type === 'spreader' && Array.isArray(job.loads)) {
+                if (Array.isArray(job.loads) && job.loads.length > 0) {
                   const configs = job.loads.filter(l => l.load_configuration).map(l => l.load_configuration);
                   if (configs.length > 0) label = configs.join(' / ');
                 } else if (job.load_configuration) {

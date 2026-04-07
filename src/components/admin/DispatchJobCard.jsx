@@ -87,7 +87,7 @@ export default function DispatchJobCard({ job, driver, onEdit, onCancel }) {
               )}
             </div>
             {(() => {
-              if (job.truck_type === 'spreader' && Array.isArray(job.loads)) {
+              if (Array.isArray(job.loads) && job.loads.length > 0) {
                 const configs = job.loads.filter(l => l.load_configuration).map(l => `L${l.load_number}: ${l.load_configuration}`);
                 return configs.length > 0 ? (
                   <div className="mt-1.5 flex flex-wrap gap-1">

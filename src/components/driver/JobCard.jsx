@@ -59,7 +59,7 @@ export default function JobCard({ job, onClick }) {
               <span className="truncate">{job.address}</span>
             </div>
             {(() => {
-              if (job.assigned_driver_pickup_role === 'josh' && Array.isArray(job.loads)) {
+              if (Array.isArray(job.loads) && job.loads.length > 0) {
                 const configs = job.loads.filter(l => l.load_configuration).map(l => `L${l.load_number}: ${l.load_configuration}`);
                 return configs.length > 0 ? (
                   <p className="text-xs text-amber-700 mt-1 truncate">{configs.join(' | ')}</p>

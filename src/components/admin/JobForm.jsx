@@ -58,8 +58,20 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
     return 'preset';
   });
 
-  const initJoshLoads = (qty, existingLoads = []) =>
-    Array.from({ length: parseInt(qty) || 1 }, (_, i) => {
+  const initDeliveryLoads = (qty, existingLoads = [], existingJob = null) => {
+    const hasLoads = Array.isArray(existingLoads) && existingLoads.length > 0;
+    // Old job without loads array — pre-populate load 1 from single fields
+    if (!hasLoads && existingJob && (existingJob.delivery_yards || existingJob.load_configuration)) {
+      const q = parseInt(qty) || 1;
+      return Array.from({ length: q }, (_, i) => ({
+        load_number: i + 1,
+        pickup_location_name: '',
+        yards_collected: i === 0 && existingJob.delivery_yards ? String(existingJob.delivery_yards) : '',
+        load_configuration: i === 0 && existingJob.load_configuration ? existingJob.load_configuration : '',
+        yards_mode: i === 0 && existingJob.delivery_yards ? 'custom' : 'preset',
+      }));
+    }
+    return Array.from({ length: parseInt(qty) || 1 }, (_, i) => {
       const loadNum = i + 1;
       const found = (existingLoads || []).find(l => l.load_number === loadNum);
       return {
@@ -70,17 +82,20 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         yards_mode: found?.yards_collected ? 'custom' : 'preset',
       };
     });
-  const [joshLoads, setJoshLoads] = useState(() => initJoshLoads(job?.quantity, job?.loads));
+  };
+  const [deliveryLoads, setDeliveryLoads] = useState(() => initDeliveryLoads(job?.quantity, job?.loads, job));
 
   useEffect(() => {
-    setJoshLoads(prev => {
-      const qty = parseInt(formData.quantity) || 1;
-      return Array.from({ length: qty }, (_, i) => {
-        const loadNum = i + 1;
-        return prev.find(l => l.load_number === loadNum) ||
-          { load_number: loadNum, pickup_location_name: '', yards_collected: '', load_configuration: '', yards_mode: 'preset' };
+    if (formData.job_type !== 'pickup') {
+      setDeliveryLoads(prev => {
+        const qty = parseInt(formData.quantity) || 1;
+        return Array.from({ length: qty }, (_, i) => {
+          const loadNum = i + 1;
+          return prev.find(l => l.load_number === loadNum) ||
+            { load_number: loadNum, pickup_location_name: '', yards_collected: '', load_configuration: '', yards_mode: 'preset' };
+        });
       });
-    });
+    }
   }, [formData.quantity]);
 
   useEffect(() => {
@@ -114,7 +129,6 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const assignedDriverName = assignedDriver?.name || '';
   const assignedPickupRole = assignedDriver?.pickup_role || 'none';
   const isSpreader = formData.truck_type === 'spreader';
-  const showRegularPickupLocation = !isPickup && !isSpreader;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -155,7 +169,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
           .filter(Boolean).join(', ') || customer.address || '';
         locationData = {
           customer_id: customer.id,
-          pickup_location_id: formData.regular_pickup_location_id || null,
+          pickup_location_id: null,
           location_name: customer.name || customer.company_name || customer.business_name || '',
           customer_company_name: customer.company_name || '',
           address: combinedAddress,
@@ -164,23 +178,38 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       }
     }
 
+    // Build loads array for all delivery jobs
+    const loadsData = !isPickup ? deliveryLoads.map(l => ({
+      load_number: l.load_number,
+      pickup_location_name: l.pickup_location_name || null,
+      yards_collected: l.yards_collected ? parseFloat(l.yards_collected) : null,
+      load_configuration: l.load_configuration || null,
+      completed: !!(l.pickup_location_name && l.yards_collected),
+    })) : undefined;
+
+    // Backwards-compat: compute totals for old display code
+    const totalYards = loadsData ? loadsData.reduce((s, l) => s + (l.yards_collected || 0), 0) : null;
+    const joinedConfig = loadsData ? loadsData.map(l => l.load_configuration).filter(Boolean).join(', ') : null;
+
+    // Set job-level pickup_location_id from first load's pickup name
+    let jobPickupLocationId = locationData.pickup_location_id || null;
+    if (!isPickup && loadsData?.[0]?.pickup_location_name) {
+      const firstPickup = pickupLocations.find(l => l.name === loadsData[0].pickup_location_name);
+      if (firstPickup) jobPickupLocationId = firstPickup.id;
+    }
+
     onSubmit({
       ...formData,
       ...locationData,
+      pickup_location_id: isPickup ? locationData.pickup_location_id : jobPickupLocationId,
       assigned_driver_id: driverToAssign?.id || formData.assigned_driver_id || null,
       assigned_driver_name: driverToAssign?.name || assignedDriverName || null,
       assigned_driver_pickup_role: driverToAssign?.pickup_role || assignedPickupRole || 'none',
       quantity: parseInt(formData.quantity) || 1,
       pickup_yards: isPickup ? (parseFloat(formData.pickup_yards) || null) : undefined,
-      delivery_yards: (!isPickup && !isSpreader) ? (parseFloat(formData.delivery_yards) || null) : undefined,
-      load_configuration: (!isPickup && !isSpreader) ? (formData.load_configuration || null) : undefined,
-      loads: (!isPickup && isSpreader) ? joshLoads.map(l => ({
-        load_number: l.load_number,
-        pickup_location_name: l.pickup_location_name || null,
-        yards_collected: l.yards_collected ? parseFloat(l.yards_collected) : null,
-        load_configuration: l.load_configuration || null,
-        completed: !!(l.pickup_location_name && l.yards_collected),
-      })) : undefined,
+      delivery_yards: !isPickup ? (totalYards || null) : undefined,
+      load_configuration: !isPickup ? (joinedConfig || null) : undefined,
+      loads: loadsData,
       invoice_sent: isPickup ? undefined : (formData.invoice_sent || 'no'),
     });
   };
@@ -192,7 +221,6 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       : (c.company_name || c.business_name || '')
   }));
   const pickupLocationOptions = pickupLocations.map(l => ({ value: l.id, label: l.name }));
-  const regularPickupLocationOptions = pickupLocations.map(l => ({ value: l.id, label: l.name }));
   const dropOffLocationOptions = dropOffLocations.map(l => ({ value: l.id, label: l.name }));
 
   return (
@@ -380,21 +408,8 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Regular driver pickup location (delivery, not Josh) */}
-            {showRegularPickupLocation && (
-              <div className="space-y-2">
-                <Label>Pickup Location <span className="text-gray-400 font-normal text-xs">(optional)</span></Label>
-                <SearchableSelect
-                  value={formData.regular_pickup_location_id}
-                  onValueChange={(v) => set('regular_pickup_location_id', v)}
-                  options={regularPickupLocationOptions}
-                  placeholder="Search pickup location..."
-                />
-              </div>
-            )}
-
-            {/* Quantity — shown early for spreader so load count is set before per-load section */}
-            {!isPickup && isSpreader && (
+            {/* Quantity — shown early for all delivery so load count is set before per-load section */}
+            {!isPickup && (
               <div className="space-y-2">
                 <Label>Number of Loads</Label>
                 <Input
@@ -409,14 +424,18 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Spreader per-load pre-fill section */}
-            {!isPickup && isSpreader && (
+            {/* Per-load pre-fill section — all delivery jobs */}
+            {!isPickup && (
               <div className="col-span-1 md:col-span-2 space-y-3">
                 <div>
                   <Label className="text-amber-700 font-medium">Per-Load Pickup Info</Label>
-                  <p className="text-xs text-gray-500 mt-0.5">Optional — leave any field empty and Josh will fill it on his dashboard</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {isSpreader
+                      ? 'Optional — leave any field empty and the driver will fill it on their dashboard'
+                      : 'Set pickup location, yards, and load configuration for each load'}
+                  </p>
                 </div>
-                {joshLoads.map((load, i) => (
+                {deliveryLoads.map((load, i) => (
                   <div key={load.load_number} className="border rounded-lg p-3 space-y-3 bg-gray-50 border-gray-200">
                     <p className="text-sm font-semibold text-amber-800">Load {load.load_number}</p>
                     <div className="grid grid-cols-2 gap-3">
@@ -425,9 +444,9 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                         <SearchableSelect
                           value={load.pickup_location_name}
                           onValueChange={(v) => {
-                            const updated = [...joshLoads];
+                            const updated = [...deliveryLoads];
                             updated[i] = { ...updated[i], pickup_location_name: v };
-                            setJoshLoads(updated);
+                            setDeliveryLoads(updated);
                           }}
                           options={pickupLocations.map(l => ({ value: l.name, label: l.name }))}
                           placeholder="Search location..."
@@ -440,13 +459,13 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                           <Select
                             value={load.yards_collected !== '' ? String(load.yards_collected) : ''}
                             onValueChange={(v) => {
-                              const updated = [...joshLoads];
+                              const updated = [...deliveryLoads];
                               if (v === 'custom') {
                                 updated[i] = { ...updated[i], yards_mode: 'custom', yards_collected: '' };
                               } else {
                                 updated[i] = { ...updated[i], yards_collected: v };
                               }
-                              setJoshLoads(updated);
+                              setDeliveryLoads(updated);
                             }}
                           >
                             <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
@@ -466,15 +485,15 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                               placeholder="e.g. 45"
                               value={load.yards_collected}
                               onChange={(e) => {
-                                const updated = [...joshLoads];
+                                const updated = [...deliveryLoads];
                                 updated[i] = { ...updated[i], yards_collected: e.target.value };
-                                setJoshLoads(updated);
+                                setDeliveryLoads(updated);
                               }}
                               className="h-8 text-xs"
                               autoFocus
                             />
                             <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-2 shrink-0"
-                              onClick={() => { const updated = [...joshLoads]; updated[i] = { ...updated[i], yards_mode: 'preset', yards_collected: '' }; setJoshLoads(updated); }}
+                              onClick={() => { const updated = [...deliveryLoads]; updated[i] = { ...updated[i], yards_mode: 'preset', yards_collected: '' }; setDeliveryLoads(updated); }}
                             >↩</Button>
                           </div>
                         )}
@@ -486,9 +505,9 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                         placeholder="e.g. All dry, ½ pine / ½ dry"
                         value={load.load_configuration}
                         onChange={(e) => {
-                          const updated = [...joshLoads];
+                          const updated = [...deliveryLoads];
                           updated[i] = { ...updated[i], load_configuration: e.target.value };
-                          setJoshLoads(updated);
+                          setDeliveryLoads(updated);
                         }}
                         className="h-8 text-xs"
                       />
@@ -498,69 +517,8 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Yards + Load Configuration — regular delivery only (not spreader, not pickup) */}
-            {!isPickup && !isSpreader && (
-              <>
-                <div className="space-y-2">
-                  <Label>Yards</Label>
-                  {yardsMode === 'preset' ? (
-                    <Select
-                      value={formData.delivery_yards !== '' ? String(formData.delivery_yards) : ''}
-                      onValueChange={(v) => {
-                        if (v === 'custom') {
-                          setYardsMode('custom');
-                          set('delivery_yards', '');
-                        } else {
-                          set('delivery_yards', parseFloat(v));
-                        }
-                      }}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Select yards..." /></SelectTrigger>
-                      <SelectContent>
-                        {(yardPresets[formData.truck_type] || []).map(y => (
-                          <SelectItem key={y} value={String(y)}>{y} yds</SelectItem>
-                        ))}
-                        <SelectItem value="custom">Custom...</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        placeholder="Enter yards..."
-                        value={formData.delivery_yards}
-                        onChange={(e) => set('delivery_yards', e.target.value)}
-                        autoFocus
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => { setYardsMode('preset'); set('delivery_yards', ''); }}
-                        className="shrink-0 text-xs"
-                      >
-                        Presets
-                      </Button>
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500">How many yards for this delivery</p>
-                </div>
-                <div className="space-y-2">
-                  <Label>Load Configuration</Label>
-                  <Input
-                    placeholder="e.g. All dry, ½ pine / ½ dry, ⅓ pine / ⅓ dry"
-                    value={formData.load_configuration}
-                    onChange={(e) => set('load_configuration', e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500">Describe the mix (pine, dry, etc.)</p>
-                </div>
-              </>
-            )}
-
-            {/* Quantity — hidden for spreader since it appears above per-load section */}
-            {!isSpreader && (
+            {/* Quantity for pickup jobs */}
+            {isPickup && (
               <div className="space-y-2">
                 <Label>Number of Loads</Label>
                 <Input
@@ -572,11 +530,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                   required
                 />
                 {errors.quantity && <p className="text-xs text-red-500">{errors.quantity}</p>}
-                <p className="text-xs text-gray-500">
-                  {isPickup
-                    ? 'Each load will require yards entry on the job detail page'
-                    : 'Number of delivery loads'}
-                </p>
+                <p className="text-xs text-gray-500">Each load will require yards entry on the job detail page</p>
               </div>
             )}
 
