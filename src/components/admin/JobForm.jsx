@@ -5,13 +5,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, AlertCircle, Trash2 } from "lucide-react";
+import { Loader2, AlertCircle, Trash2, CalendarDays } from "lucide-react";
+import { addDays, getDay, format, lastDayOfMonth } from "date-fns";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
+import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
 
 const TRUCK_TYPES = [
@@ -48,6 +50,13 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   });
   const [errors, setErrors] = useState({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [scheduleType, setScheduleType] = useState('one_time');
+  const [recurringInterval, setRecurringInterval] = useState('');
+  const [customInterval, setCustomInterval] = useState('');
+  const [repeatUntilMonth, setRepeatUntilMonth] = useState('');
+  const [intervalPresets, setIntervalPresets] = useState([7, 10, 14]);
+  const [isCreatingRecurring, setIsCreatingRecurring] = useState(false);
+  const [recurringProgress, setRecurringProgress] = useState('');
   const [yardPresets, setYardPresets] = useState(DEFAULT_PRESETS);
   const [yardsMode, setYardsMode] = useState(() => {
     if (job?.delivery_yards) return 'custom';
@@ -100,16 +109,42 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
 
   useEffect(() => {
     base44.entities.Settings.list().then(results => {
-      if (results.length > 0 && results[0].truck_yard_presets) {
-        const p = results[0].truck_yard_presets;
-        setYardPresets(p);
-        if (job?.delivery_yards) {
-          const presetList = p[formData.truck_type] || [];
-          setYardsMode(presetList.includes(job.delivery_yards) ? 'preset' : 'custom');
+      if (results.length > 0) {
+        if (results[0].truck_yard_presets) {
+          const p = results[0].truck_yard_presets;
+          setYardPresets(p);
+          if (job?.delivery_yards) {
+            const presetList = p[formData.truck_type] || [];
+            setYardsMode(presetList.includes(job.delivery_yards) ? 'preset' : 'custom');
+          }
+        }
+        if (results[0].recurring_interval_presets) {
+          setIntervalPresets(results[0].recurring_interval_presets);
         }
       }
     });
   }, []);
+
+  // Calculate recurring dates with weekend push-to-Monday
+  const calculateRecurringDates = (startDate, intervalDays, endMonth) => {
+    const dates = [];
+    const endDate = lastDayOfMonth(new Date(endMonth + '-01T00:00:00'));
+    let current = new Date(startDate + 'T00:00:00');
+
+    while (current <= endDate) {
+      // Push weekends to Monday
+      const day = getDay(current);
+      if (day === 0) current = addDays(current, 1); // Sunday → Monday
+      if (day === 6) current = addDays(current, 2); // Saturday → Monday
+
+      if (current <= endDate) {
+        dates.push(format(current, 'yyyy-MM-dd'));
+      }
+      // Next occurrence starts from the (possibly adjusted) date
+      current = addDays(current, intervalDays);
+    }
+    return dates;
+  };
 
   const canAssign = userRole === 'dispatcher' || userRole === 'admin' || userRole === 'scheduler';
   const invoiceRequired = formData.job_type === 'delivery' && !formData.invoice_sent;
@@ -130,7 +165,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const assignedPickupRole = assignedDriver?.pickup_role || 'none';
   const isSpreader = formData.truck_type === 'spreader';
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
     if (isPickup && !formData.pickup_location_id) newErrors.pickup_location_id = 'Required field';
@@ -198,7 +233,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       if (firstPickup) jobPickupLocationId = firstPickup.id;
     }
 
-    onSubmit({
+    const jobData = {
       ...formData,
       ...locationData,
       pickup_location_id: isPickup ? locationData.pickup_location_id : jobPickupLocationId,
@@ -211,7 +246,39 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       load_configuration: !isPickup ? (joinedConfig || null) : undefined,
       loads: loadsData,
       invoice_sent: isPickup ? undefined : (formData.invoice_sent || 'no'),
-    });
+    };
+
+    // Recurring: create multiple jobs
+    if (scheduleType === 'recurring' && !job?.id) {
+      const interval = recurringInterval === 'custom' ? parseInt(customInterval) : parseInt(recurringInterval);
+      if (!interval || interval <= 0 || !repeatUntilMonth) {
+        setErrors(prev => ({ ...prev, recurring: 'Please set interval and end month' }));
+        return;
+      }
+      const dates = calculateRecurringDates(formData.scheduled_date, interval, repeatUntilMonth);
+      if (dates.length === 0) {
+        setErrors(prev => ({ ...prev, recurring: 'No valid dates in the selected range' }));
+        return;
+      }
+      setIsCreatingRecurring(true);
+      setRecurringProgress(`Creating ${dates.length} jobs...`);
+      try {
+        // Remove fields that shouldn't be passed to create
+        const { scheduled_date, ...templateData } = jobData;
+        for (let i = 0; i < dates.length; i++) {
+          setRecurringProgress(`Creating job ${i + 1} of ${dates.length}...`);
+          await base44.entities.Job.create({ ...templateData, scheduled_date: dates[i] });
+        }
+        setRecurringProgress(`Created ${dates.length} jobs!`);
+        setTimeout(() => onCancel(), 1000);
+      } catch (err) {
+        setRecurringProgress(`Error: ${err.message}`);
+      }
+      setIsCreatingRecurring(false);
+      return;
+    }
+
+    onSubmit(jobData);
   };
 
   const customerOptions = customers.map(c => ({
@@ -226,7 +293,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{job ? 'Edit Job' : 'Create New Job'}</CardTitle>
+        <CardTitle>{job?.id ? 'Edit Job' : 'Create New Job'}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -263,9 +330,39 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </Select>
             </div>
 
-            {/* Scheduled Date */}
+            {/* Scheduled Date + Schedule Type toggle */}
             <div className="space-y-2">
-              <Label>Scheduled Date</Label>
+              <div className="flex items-center justify-between">
+                <Label>{scheduleType === 'recurring' ? 'Start Date' : 'Scheduled Date'}</Label>
+                {!job?.id && (
+                  <div className="flex">
+                    <button
+                      type="button"
+                      onClick={() => { setScheduleType('one_time'); setErrors(p => ({...p, recurring: ''})); }}
+                      className={cn(
+                        "py-0.5 px-2.5 text-[10px] font-medium rounded-l border transition-colors",
+                        scheduleType === 'one_time'
+                          ? "bg-amber-600 text-white border-amber-600"
+                          : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"
+                      )}
+                    >
+                      One-time
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setScheduleType('recurring'); setErrors(p => ({...p, recurring: ''})); }}
+                      className={cn(
+                        "py-0.5 px-2.5 text-[10px] font-medium rounded-r border-t border-r border-b transition-colors",
+                        scheduleType === 'recurring'
+                          ? "bg-amber-600 text-white border-amber-600"
+                          : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"
+                      )}
+                    >
+                      Recurring
+                    </button>
+                  </div>
+                )}
+              </div>
               <Input
                 type="date"
                 value={formData.scheduled_date}
@@ -275,6 +372,73 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               />
               {errors.scheduled_date && <p className="text-xs text-red-500">{errors.scheduled_date}</p>}
             </div>
+
+            {/* Recurring options — expands when Recurring is selected */}
+            {!job?.id && scheduleType === 'recurring' && (
+              <div className="col-span-1 md:col-span-2 bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Repeat Every */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-gray-500">Repeat Every</Label>
+                    <Select value={recurringInterval} onValueChange={(v) => { setRecurringInterval(v); if (v !== 'custom') setCustomInterval(''); }}>
+                      <SelectTrigger><SelectValue placeholder="Select interval..." /></SelectTrigger>
+                      <SelectContent>
+                        {intervalPresets.map(d => (
+                          <SelectItem key={d} value={String(d)}>Every {d} days</SelectItem>
+                        ))}
+                        <SelectItem value="custom">Custom...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {recurringInterval === 'custom' && (
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="Enter days (e.g. 12)"
+                        value={customInterval}
+                        onChange={(e) => setCustomInterval(e.target.value)}
+                        autoFocus
+                      />
+                    )}
+                  </div>
+
+                  {/* Repeat Until — month/year dropdown */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-gray-500">Through End Of</Label>
+                    <Select value={repeatUntilMonth} onValueChange={setRepeatUntilMonth}>
+                      <SelectTrigger><SelectValue placeholder="Select month..." /></SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const d = new Date();
+                          d.setDate(1);
+                          d.setMonth(d.getMonth() + i);
+                          const val = format(d, 'yyyy-MM');
+                          const label = format(d, 'MMMM yyyy');
+                          return <SelectItem key={val} value={val}>{label}</SelectItem>;
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Job count preview */}
+                {(() => {
+                  const interval = recurringInterval === 'custom' ? parseInt(customInterval) : parseInt(recurringInterval);
+                  if (interval > 0 && repeatUntilMonth && formData.scheduled_date) {
+                    const dates = calculateRecurringDates(formData.scheduled_date, interval, repeatUntilMonth);
+                    return (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                        <p className="text-xs text-blue-700 font-medium">
+                          {dates.length} job{dates.length !== 1 ? 's' : ''} will be created
+                          {dates.length > 0 && ` · First: ${format(new Date(dates[0] + 'T00:00:00'), 'MMM d')} · Last: ${format(new Date(dates[dates.length - 1] + 'T00:00:00'), 'MMM d, yyyy')}`}
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                {errors.recurring && <p className="text-xs text-red-500">{errors.recurring}</p>}
+              </div>
+            )}
 
             {/* Invoice Required (delivery jobs only) */}
             {!isPickup && (
@@ -535,7 +699,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
             )}
 
             {/* Status (edit only) */}
-            {job && (
+            {job?.id && (
               <div className="space-y-2">
                 <Label>Status</Label>
                 <Select value={formData.status} onValueChange={(v) => set('status', v)}>
@@ -563,18 +727,21 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
 
           <div className="flex justify-between items-center pt-4">
             <div>
-              {job && onDelete && (
+              {job?.id && onDelete && (
                 <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete
                 </Button>
               )}
             </div>
-            <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-              <Button type="submit" disabled={isLoading} className="bg-amber-600 hover:bg-amber-700">
-                {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {job ? 'Update Job' : 'Create Job'}
+            <div className="flex items-center gap-3">
+              {recurringProgress && (
+                <span className="text-xs text-blue-600 font-medium">{recurringProgress}</span>
+              )}
+              <Button type="button" variant="outline" onClick={onCancel} disabled={isCreatingRecurring}>Cancel</Button>
+              <Button type="submit" disabled={isLoading || isCreatingRecurring} className="bg-amber-600 hover:bg-amber-700">
+                {(isLoading || isCreatingRecurring) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {job?.id ? 'Update Job' : (scheduleType === 'recurring' ? 'Create Recurring Jobs' : 'Create Job')}
               </Button>
             </div>
           </div>

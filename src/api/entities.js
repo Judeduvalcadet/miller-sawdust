@@ -48,7 +48,7 @@ const TABLE_COLUMNS = {
     'id','driver_id','message','read','created_date','updated_date',
   ],
   settings: [
-    'id','truck_yard_presets','created_date','updated_date',
+    'id','truck_yard_presets','recurring_interval_presets','created_date','updated_date',
   ],
   log_entries: [
     'id','timestamp','level','message','category','user_id','details','created_date','updated_date',

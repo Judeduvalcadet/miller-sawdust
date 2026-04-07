@@ -7,7 +7,7 @@ import { format, isToday, isTomorrow, startOfWeek, endOfWeek, isWithinInterval, 
 import { createPageUrl } from "@/utils";
 import JobCard from "@/components/driver/JobCard";
 import JobDetail from "@/components/driver/JobDetail";
-import NotificationBanner from "@/components/driver/NotificationBanner";
+import NotificationBell from "@/components/driver/NotificationBanner";
 import { useActivityDetection } from "@/components/hooks/useActivityDetection";
 import CalendarPicker from "@/components/driver/CalendarPicker";
 
@@ -203,6 +203,7 @@ export default function DriverDashboard() {
                 <span>Syncing</span>
               </div>
             )}
+            <NotificationBell driverId={driverId} />
             <Button
               variant="ghost"
               size="icon"
@@ -278,9 +279,6 @@ export default function DriverDashboard() {
           </button>
         </div>
       )}
-
-      {/* Notifications */}
-      <NotificationBanner driverId={driverId} />
 
       {/* Jobs List */}
       <div className="p-4 space-y-3">

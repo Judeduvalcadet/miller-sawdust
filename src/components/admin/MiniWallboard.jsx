@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import CalendarPicker from "@/components/driver/CalendarPicker";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -439,6 +440,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const [weekOffset, setWeekOffset] = useState(0);
   const [filterDriver, setFilterDriver] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [mobileSelectedDate, setMobileSelectedDate] = useState(new Date());
@@ -461,6 +463,14 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
         if (j.status === 'cancelled') return false;
         if (filterDriver !== 'all' && j.assigned_driver_id !== filterDriver) return false;
         if (filterType !== 'all' && j.truck_type !== filterType) return false;
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase().trim();
+          const match = (j.location_name || '').toLowerCase().includes(q)
+            || (j.assigned_driver_name || '').toLowerCase().includes(q)
+            || (j.address || '').toLowerCase().includes(q)
+            || (j.load_configuration || '').toLowerCase().includes(q);
+          if (!match) return false;
+        }
         return true;
       })
       .sort((a, b) => {
@@ -536,9 +546,20 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
     // Get the currently displayed (sorted+filtered) jobs for a given date
     const getSortedForDate = (dateStr) =>
       jobs
-        .filter(j => j.scheduled_date === dateStr && j.status !== 'cancelled' &&
-          (filterDriver === 'all' || j.assigned_driver_id === filterDriver) &&
-          (filterType === 'all' || j.truck_type === filterType))
+        .filter(j => {
+          if (j.scheduled_date !== dateStr || j.status === 'cancelled') return false;
+          if (filterDriver !== 'all' && j.assigned_driver_id !== filterDriver) return false;
+          if (filterType !== 'all' && j.truck_type !== filterType) return false;
+          if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase().trim();
+            const match = (j.location_name || '').toLowerCase().includes(q)
+              || (j.assigned_driver_name || '').toLowerCase().includes(q)
+              || (j.address || '').toLowerCase().includes(q)
+              || (j.load_configuration || '').toLowerCase().includes(q);
+            if (!match) return false;
+          }
+          return true;
+        })
           .sort((a, b) => {
           if (a.sort_order != null && b.sort_order != null) return a.sort_order - b.sort_order;
           if (a.sort_order != null) return -1;
@@ -632,6 +653,15 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
         <div className="flex items-center gap-2 flex-wrap">
           {!editMode ? (
             <>
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                <Input
+                  placeholder="Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-7 text-xs pl-7 w-44"
+                />
+              </div>
               <Filter className="w-3.5 h-3.5 text-gray-400" />
               <Select value={filterDriver} onValueChange={setFilterDriver}>
                 <SelectTrigger className="h-7 text-xs w-36">
@@ -742,9 +772,20 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
             {(() => {
               const dateStr = format(mobileSelectedDate, 'yyyy-MM-dd');
               const dayJobs = jobs
-                .filter(j => j.scheduled_date === dateStr && j.status !== 'cancelled' &&
-                  (filterDriver === 'all' || j.assigned_driver_id === filterDriver) &&
-                  (filterType === 'all' || j.truck_type === filterType))
+                .filter(j => {
+                  if (j.scheduled_date !== dateStr || j.status === 'cancelled') return false;
+                  if (filterDriver !== 'all' && j.assigned_driver_id !== filterDriver) return false;
+                  if (filterType !== 'all' && j.truck_type !== filterType) return false;
+                  if (searchQuery.trim()) {
+                    const q = searchQuery.toLowerCase().trim();
+                    const match = (j.location_name || '').toLowerCase().includes(q)
+                      || (j.assigned_driver_name || '').toLowerCase().includes(q)
+                      || (j.address || '').toLowerCase().includes(q)
+                      || (j.load_configuration || '').toLowerCase().includes(q);
+                    if (!match) return false;
+                  }
+                  return true;
+                })
                   .sort((a, b) => {
                   if (a.sort_order != null && b.sort_order != null) return a.sort_order - b.sort_order;
                   if (a.sort_order != null) return -1;

@@ -3,7 +3,7 @@ import { base44 } from '@/api/entities';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, X, Truck, Save, Check } from "lucide-react";
+import { Loader2, Plus, X, Truck, Save, Check, CalendarDays } from "lucide-react";
 
 const TRUCK_TYPES = [
   { value: 'straight_truck', label: 'Straight Truck' },
@@ -17,13 +17,18 @@ const DEFAULT_PRESETS = {
   spreader: [50, 60, 80],
 };
 
+const DEFAULT_INTERVALS = [7, 10, 14];
+
 export default function AppSettings() {
   const [settingsId, setSettingsId] = useState(null);
   const [presets, setPresets] = useState(DEFAULT_PRESETS);
+  const [intervals, setIntervals] = useState(DEFAULT_INTERVALS);
   const [newYardValues, setNewYardValues] = useState({ straight_truck: '', semi: '', spreader: '' });
+  const [newIntervalValue, setNewIntervalValue] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [savedTruck, setSavedTruck] = useState(null);
+  const [savedIntervals, setSavedIntervals] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -36,6 +41,7 @@ export default function AppSettings() {
       const s = results[0];
       setSettingsId(s.id);
       setPresets(s.truck_yard_presets || DEFAULT_PRESETS);
+      setIntervals(s.recurring_interval_presets || DEFAULT_INTERVALS);
     }
     setIsLoading(false);
   };
@@ -70,6 +76,34 @@ export default function AppSettings() {
   const removeYardValue = async (truckType, yard) => {
     const updated = (presets[truckType] || []).filter(y => y !== yard);
     await savePresets(truckType, updated);
+  };
+
+  const saveIntervals = async (updatedIntervals) => {
+    setIsSaving(true);
+    setIntervals(updatedIntervals);
+    if (settingsId) {
+      await base44.entities.Settings.update(settingsId, { recurring_interval_presets: updatedIntervals });
+    } else {
+      const created = await base44.entities.Settings.create({ recurring_interval_presets: updatedIntervals });
+      setSettingsId(created.id);
+    }
+    setSavedIntervals(true);
+    setTimeout(() => setSavedIntervals(false), 2000);
+    setIsSaving(false);
+  };
+
+  const addIntervalValue = async () => {
+    const val = parseInt(newIntervalValue);
+    if (!val || val <= 0) return;
+    if (intervals.includes(val)) return;
+    const updated = [...intervals, val].sort((a, b) => a - b);
+    setNewIntervalValue('');
+    await saveIntervals(updated);
+  };
+
+  const removeIntervalValue = async (val) => {
+    const updated = intervals.filter(v => v !== val);
+    await saveIntervals(updated);
   };
 
   if (isLoading) {
@@ -164,6 +198,72 @@ export default function AppSettings() {
               </Card>
             );
           })}
+        </div>
+
+        {/* Recurring Job Intervals */}
+        <div className="mt-8">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Recurring Job Intervals</h2>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-amber-600" />
+                  Interval Presets (days)
+                </div>
+                {savedIntervals && (
+                  <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                    <Check className="w-3.5 h-3.5" /> Saved
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {intervals.length === 0 && (
+                  <p className="text-sm text-gray-400 italic">No interval presets. Add some below.</p>
+                )}
+                {intervals.map(val => (
+                  <div
+                    key={val}
+                    className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-3 py-1.5 text-sm font-medium"
+                  >
+                    <span>Every {val} days</span>
+                    <button
+                      onClick={() => removeIntervalValue(val)}
+                      disabled={isSaving}
+                      className="text-blue-400 hover:text-red-500 transition-colors ml-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <div className="flex items-center gap-1.5 bg-gray-100 border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 text-sm italic">
+                  Custom (always available)
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="Add interval (e.g. 21)"
+                  value={newIntervalValue}
+                  onChange={(e) => setNewIntervalValue(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addIntervalValue(); } }}
+                  className="max-w-xs"
+                />
+                <Button
+                  onClick={addIntervalValue}
+                  disabled={isSaving || !newIntervalValue}
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  {isSaving && savedIntervals ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  Add
+                </Button>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">These presets appear in the recurring job interval dropdown. Custom entry is always available.</p>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
