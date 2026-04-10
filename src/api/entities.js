@@ -285,7 +285,17 @@ export const base44 = {
     invoke: async (fnName, payload) => invokeFn(fnName, payload),
   },
   auth: {
-    me: async () => null, // PIN-based auth, not Supabase Auth
+    // PIN-based auth — read current user from localStorage (set by DriverLogin).
+    me: async () => {
+      if (typeof window === 'undefined') return null
+      const id = window.localStorage.getItem('miller_driver_id')
+      if (!id) return null
+      return {
+        id,
+        full_name: window.localStorage.getItem('miller_driver_name') || '',
+        role: window.localStorage.getItem('miller_driver_role') || '',
+      }
+    },
     logout: () => {},
     redirectToLogin: () => {},
   },

@@ -160,24 +160,25 @@ export default function Invoicing() {
   });
 
   const { data: jobs = [] } = useQuery({
-    queryKey: ['jobs'],
-    queryFn: () => base44.entities.Job.list('-scheduled_date', 200),
+    queryKey: ['jobs', 'invoicing'],
+    queryFn: () => base44.entities.Job.list('-scheduled_date'),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.Job.update(id, data),
     onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey: ['jobs'] });
-      const previousJobs = queryClient.getQueryData(['jobs']);
-      queryClient.setQueryData(['jobs'], (old) =>
-        old.map(job => job.id === id ? { ...job, ...data } : job)
+      await queryClient.cancelQueries({ queryKey: ['jobs', 'invoicing'] });
+      const previousJobs = queryClient.getQueryData(['jobs', 'invoicing']);
+      queryClient.setQueryData(['jobs', 'invoicing'], (old) =>
+        (old ?? []).map(job => job.id === id ? { ...job, ...data } : job)
       );
       return { previousJobs };
     },
     onError: (err, variables, context) => {
-      queryClient.setQueryData(['jobs'], context.previousJobs);
+      queryClient.setQueryData(['jobs', 'invoicing'], context.previousJobs);
     },
     onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs', 'invoicing'] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });

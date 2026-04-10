@@ -307,6 +307,26 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
     if (job.phone) window.location.href = `tel:${job.phone}`;
   };
 
+  // Build the audit-field delta for payment_collected transitions.
+  // - off → on: stamp who marked it and when
+  // - on  → off: clear the stamp
+  // - unchanged: no-op
+  const paymentAuditDelta = () => {
+    if (paymentCollected && !job.payment_collected) {
+      return {
+        payment_marked_by: driverName || 'Driver',
+        payment_marked_at: new Date().toISOString(),
+      };
+    }
+    if (!paymentCollected && job.payment_collected) {
+      return {
+        payment_marked_by: null,
+        payment_marked_at: null,
+      };
+    }
+    return {};
+  };
+
   const handleMarkCompleted = () => {
     const normalizedLoads = loads.map(l => ({
       ...l,
@@ -319,10 +339,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
       completed_at: new Date().toISOString(),
       payment_collected: paymentCollected,
       driver_notes: driverNotes,
-      ...(paymentCollected && !job.payment_collected ? {
-        payment_marked_by: driverName || 'Driver',
-        payment_marked_at: new Date().toISOString(),
-      } : {}),
+      ...paymentAuditDelta(),
     };
 
     if (isLoadBased) {
@@ -344,6 +361,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
       driver_notes: driverNotes,
       payment_collected: paymentCollected,
       status: completedLoadsCount > 0 && !allLoadsCompleted ? 'in_progress' : job.status,
+      ...paymentAuditDelta(),
     };
 
     if (isLoadBased) {
@@ -769,7 +787,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
         ) : (
           <Button
             className="w-full h-14 text-lg font-semibold"
-            onClick={() => onUpdate({driver_notes: driverNotes, payment_collected: paymentCollected}).then(() => onBack())}
+            onClick={() => onUpdate({driver_notes: driverNotes, payment_collected: paymentCollected, ...paymentAuditDelta()}).then(() => onBack())}
             disabled={isUpdating}
           >
             {isUpdating ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : null}

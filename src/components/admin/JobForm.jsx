@@ -172,6 +172,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
     if (!isPickup && !formData.customer_id) newErrors.customer_id = 'Required field';
     if (!formData.scheduled_date) newErrors.scheduled_date = 'Required field';
     if (!formData.quantity || formData.quantity < 1) newErrors.quantity = 'Required field';
+    if (!isPickup && !formData.invoice_sent) newErrors.invoice_sent = 'Please select Yes or No';
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -443,9 +444,12 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
             {/* Invoice Required (delivery jobs only) */}
             {!isPickup && (
               <div className="space-y-2">
-                <Label>Invoice Required?</Label>
-                <Select value={formData.invoice_sent} onValueChange={(v) => set('invoice_sent', v)}>
-                  <SelectTrigger className={!formData.invoice_sent ? 'border-amber-400' : ''}>
+                <Label>Invoice Required? <span className="text-red-500">*</span></Label>
+                <Select
+                  value={formData.invoice_sent}
+                  onValueChange={(v) => { set('invoice_sent', v); setErrors(p => ({ ...p, invoice_sent: '' })); }}
+                >
+                  <SelectTrigger className={errors.invoice_sent ? 'border-red-500' : (!formData.invoice_sent ? 'border-amber-400' : '')}>
                     <SelectValue placeholder="Select yes or no..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -453,6 +457,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                     <SelectItem value="no">No</SelectItem>
                   </SelectContent>
                 </Select>
+                {errors.invoice_sent && <p className="text-xs text-red-500">{errors.invoice_sent}</p>}
               </div>
             )}
 

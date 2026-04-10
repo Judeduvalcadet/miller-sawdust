@@ -263,10 +263,20 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
   };
 
   const handleInvoice = async (value) => {
-    // Toggle off if clicking the same value
-    const newValue = job.invoice_sent === value ? null : value;
-    await base44.entities.Job.update(job.id, { invoice_sent: newValue });
+    // Clicking the currently-selected button is a no-op — every delivery job
+    // must always be either 'yes' or 'no', never null.
+    if (job.invoice_sent === value) return;
+    const markerName =
+      localStorage.getItem('miller_driver_name') ||
+      localStorage.getItem('miller_driver_role') ||
+      'Staff';
+    await base44.entities.Job.update(job.id, {
+      invoice_sent: value,
+      invoice_marked_by: markerName,
+      invoice_marked_at: new Date().toISOString(),
+    });
     queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    queryClient.invalidateQueries({ queryKey: ['jobs', 'invoicing'] });
   };
 
   return (
