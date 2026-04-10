@@ -24,9 +24,9 @@ export default function CustomerDeliveriesFullReport() {
     const load = async () => {
       setIsLoading(true);
       const [j, d, c] = await Promise.all([
-        base44.entities.Job.list('-scheduled_date'),
+        base44.entities.Job.list('-scheduled_date', 5000),
         base44.entities.Driver.list(),
-        base44.entities.Customer.list(),
+        base44.entities.Customer.list(undefined, 5000),
       ]);
       setJobs(j);
       setDrivers(d);

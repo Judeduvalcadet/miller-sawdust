@@ -36,7 +36,7 @@ export default function AdminLogs() {
 
     const { data: logs = [], isLoading, refetch, isFetching } = useQuery({
         queryKey: ['log-entries'],
-        queryFn: () => base44.entities.LogEntry.list('-created_date', 500),
+        queryFn: () => base44.entities.LogEntry.list('-created_date', 5000),
         enabled: driverRole === 'admin',
         refetchInterval: 30000,
     });

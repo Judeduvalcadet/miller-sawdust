@@ -70,9 +70,9 @@ export default function DriverDashboard() {
   const loadJobs = async (id) => {
     try {
       const [driverJobs, locs, custs] = await Promise.all([
-        base44.entities.Job.filter({ assigned_driver_id: id || driverId }, '-scheduled_date'),
+        base44.entities.Job.filter({ assigned_driver_id: id || driverId }, '-scheduled_date', 5000),
         base44.entities.PickupLocation.list(),
-        base44.entities.Customer.list()
+        base44.entities.Customer.list(undefined, 5000)
       ]);
       setJobs(driverJobs);
       setPickupLocations(locs);

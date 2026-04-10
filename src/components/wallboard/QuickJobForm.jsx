@@ -76,28 +76,16 @@ export default function QuickJobForm({ date, drivers, customers, pickupLocations
     setIsLoading(false);
   };
 
-  const assignedDriver = drivers.find(d => d.id === formData.assigned_driver_id);
-  const assignedPickupRole = assignedDriver?.pickup_role || 'none';
-  const isJonOrJosh = assignedPickupRole === 'jon' || assignedPickupRole === 'josh';
-  const pickupRoleLabel = assignedPickupRole === 'jon' ? 'Jon' : assignedPickupRole === 'josh' ? 'Josh' : '';
-  const pickupDrivers = drivers.filter(d => d.role === 'driver' && (d.pickup_role === 'jon' || d.pickup_role === 'josh'));
   const deliveryDrivers = drivers.filter(d => d.role === 'driver');
+  const pickupDrivers = deliveryDrivers;
   const displayDrivers = formData.job_type === 'pickup' ? pickupDrivers : deliveryDrivers;
 
-  const filteredPickupLocations = isJohnOrJosh
-    ? pickupLocations.filter(l => l.assigned_driver_name === pickupRoleLabel)
-    : pickupLocations;
-
-  // Regular driver pickup locations (not Jon/Josh assigned)
-  const regularDriverPickupLocations = pickupLocations.filter(
-    l => !l.assigned_driver_name || (l.assigned_driver_name !== 'Jon' && l.assigned_driver_name !== 'Josh')
-  );
-
-  // Show regular pickup location for delivery jobs where driver is NOT Josh
-  const showRegularPickupLocation = formData.job_type === 'delivery' && assignedPickupRole !== 'josh';
+  // Spreader delivery jobs have per-load pickup selection in the driver app,
+  // so the dispatcher should not (and cannot) pre-assign a pickup location here.
+  const showRegularPickupLocation = formData.job_type === 'delivery' && formData.truck_type !== 'spreader';
 
   const customerOptions = customers.map(c => ({ value: c.id, label: c.business_name }));
-  const regularPickupLocationOptions = regularDriverPickupLocations.map(l => ({ value: l.id, label: l.name }));
+  const regularPickupLocationOptions = pickupLocations.map(l => ({ value: l.id, label: l.name }));
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -150,18 +138,18 @@ export default function QuickJobForm({ date, drivers, customers, pickupLocations
             </div>
           ) : (
             <div className="space-y-1">
-              <Label>Pickup Location {isJonOrJosh ? `(${pickupRoleLabel}'s)` : ''}</Label>
+              <Label>Pickup Location</Label>
               <Select value={formData.pickup_location_id} onValueChange={v => set('pickup_location_id', v)}>
                 <SelectTrigger>
-                  <SelectValue placeholder={isJonOrJosh ? `${pickupRoleLabel}'s locations...` : 'Select driver first...'} />
+                  <SelectValue placeholder="Select pickup location..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {filteredPickupLocations.map(l => (
+                  {pickupLocations.map(l => (
                     <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
                   ))}
-                  {filteredPickupLocations.length === 0 && (
+                  {pickupLocations.length === 0 && (
                     <SelectItem value={null} disabled>
-                      {isJonOrJosh ? `No locations for ${pickupRoleLabel}` : 'Select a pickup driver first'}
+                      No pickup locations configured
                     </SelectItem>
                   )}
                 </SelectContent>

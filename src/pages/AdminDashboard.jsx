@@ -35,7 +35,7 @@ export default function AdminDashboard() {
 
   const { data: jobs = [], isLoading: jobsLoading, refetch: refetchJobs } = useQuery({
     queryKey: ['jobs'],
-    queryFn: () => base44.entities.Job.list('-scheduled_date'),
+    queryFn: () => base44.entities.Job.list('-scheduled_date', 5000),
     refetchOnWindowFocus: true,
   });
 
@@ -47,7 +47,7 @@ export default function AdminDashboard() {
 
   const { data: customers = [] } = useQuery({
     queryKey: ['customers'],
-    queryFn: () => base44.entities.Customer.list(),
+    queryFn: () => base44.entities.Customer.list(undefined, 5000),
     refetchOnWindowFocus: true,
   });
 
@@ -103,7 +103,7 @@ export default function AdminDashboard() {
   const handleDeleteJob = async () => {
     const jobIdToDelete = editingJob.id;
     queryClient.setQueryData(['jobs'], (oldJobs) =>
-      oldJobs.filter((job) => job.id !== jobIdToDelete)
+      (oldJobs ?? []).filter((job) => job.id !== jobIdToDelete)
     );
     setShowJobForm(false);
     setEditingJob(null);

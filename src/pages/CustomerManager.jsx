@@ -56,7 +56,7 @@ export default function CustomerManager() {
 
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ['customers'],
-    queryFn: () => base44.entities.Customer.list('name'),
+    queryFn: () => base44.entities.Customer.list('name', 5000),
     refetchInterval: 30000,
     refetchOnWindowFocus: true,
   });

@@ -161,7 +161,7 @@ export default function Invoicing() {
 
   const { data: jobs = [] } = useQuery({
     queryKey: ['jobs', 'invoicing'],
-    queryFn: () => base44.entities.Job.list('-scheduled_date'),
+    queryFn: () => base44.entities.Job.list('-scheduled_date', 5000),
   });
 
   const updateMutation = useMutation({

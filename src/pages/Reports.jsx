@@ -25,9 +25,9 @@ export default function Reports() {
   useEffect(() => {
     const load = async () => {
       const [j, d, c, p] = await Promise.all([
-        base44.entities.Job.list('-scheduled_date'),
+        base44.entities.Job.list('-scheduled_date', 5000),
         base44.entities.Driver.list(),
-        base44.entities.Customer.list(),
+        base44.entities.Customer.list(undefined, 5000),
         base44.entities.PickupLocation.list(),
       ]);
       setJobs(j);

@@ -49,7 +49,7 @@ export default function Wallboard() {
 
   const { data: jobs = [], refetch: refetchJobs } = useQuery({
     queryKey: ['wallboard-jobs'],
-    queryFn: () => base44.entities.Job.list('-scheduled_date'),
+    queryFn: () => base44.entities.Job.list('-scheduled_date', 5000),
     refetchInterval: 1000,
     refetchOnWindowFocus: true,
   });
@@ -62,7 +62,7 @@ export default function Wallboard() {
 
   const { data: customers = [] } = useQuery({
     queryKey: ['customers'],
-    queryFn: () => base44.entities.Customer.list(),
+    queryFn: () => base44.entities.Customer.list(undefined, 5000),
   });
 
   const { data: pickupLocations = [] } = useQuery({

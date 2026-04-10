@@ -274,10 +274,9 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
   const isJoshDelivery = job.job_type === 'delivery' && job.truck_type === 'spreader';
   const isLoadBased = isPickupJob || isJoshDelivery;
 
-  // Pickup locations for Josh — use new assigned_drivers array
-  const joshPickupLocations = pickupLocations.filter(l =>
-    Array.isArray(l.assigned_drivers) && l.assigned_drivers.includes('josh')
-  );
+  // Spreader-truck delivery jobs: driver picks any pickup location per load
+  // (previously filtered to the legacy 'josh' assigned_drivers subset).
+  const joshPickupLocations = pickupLocations;
 
   const completedLoadsCount = loads.filter(l => l.completed).length;
   const allLoadsCompleted = completedLoadsCount === loads.length && loads.length > 0;

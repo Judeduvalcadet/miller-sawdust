@@ -608,7 +608,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
     // Optimistic update
     queryClient.setQueryData(['jobs'], (oldJobs) => {
       const map = new Map(updates.map(u => [u.id, u]));
-      return oldJobs.map(j => {
+      return (oldJobs ?? []).map(j => {
         const u = map.get(j.id);
         return u ? { ...j, ...u } : j;
       });
