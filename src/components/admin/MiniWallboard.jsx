@@ -442,10 +442,6 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 }
 
-const CARD_HEIGHT = 82; // approx px per card
-const MAX_CARDS = 12;
-const COL_HEIGHT = MAX_CARDS * CARD_HEIGHT;
-
 export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [filterDriver, setFilterDriver] = useState('all');
@@ -633,7 +629,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const activeDrivers = drivers.filter((d) => d.active && d.role === 'driver');
 
   return (
-    <div className="bg-white rounded-xl border">
+    <div className="bg-white rounded-xl border flex flex-col flex-1 min-h-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b gap-3">
         <div className="flex items-center gap-2">
@@ -845,7 +841,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
       )}
 
       {/* Day Columns — hidden on mobile always, shown on desktop */}
-      <div className={mobileSelectedDate ? 'hidden lg:block' : 'hidden lg:block'}>
+      <div className={mobileSelectedDate ? 'hidden lg:flex lg:flex-col lg:flex-1 lg:min-h-0' : 'hidden lg:flex lg:flex-col lg:flex-1 lg:min-h-0'}>
       {/* Day Columns */}
       <DragDropContext
         onDragEnd={handleDragEnd}
@@ -854,14 +850,14 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
         }}
         onDragStart={() => setDragOverDay(null)}
       >
-        <div className="grid grid-cols-5 divide-x overflow-x-auto">
+        <div className="grid grid-cols-5 divide-x flex-1 min-h-0">
           {weekDays.map((day, i) => {
             const dateStr = format(day, 'yyyy-MM-dd');
             const dayJobs = getJobsForDay(day);
             const isCurrentDay = isToday(day);
             const isDragTarget = dragOverDay === dateStr;
             return (
-              <div key={i} className="min-w-0 flex flex-col">
+              <div key={i} className="min-w-0 flex flex-col min-h-0">
                 {/* Day Header */}
                 <div className={cn(
                   "flex items-center justify-between px-2 py-2 border-b shrink-0",
@@ -900,14 +896,13 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                       ref={provided.innerRef}
                       {...provided.droppableProps}
                       className={cn(
-                        "p-1.5 space-y-1.5 overflow-y-auto transition-colors duration-150",
+                        "p-1.5 space-y-1.5 overflow-y-auto transition-colors duration-150 flex-1",
                         snapshot.isDraggingOver
                           ? "bg-blue-50 ring-2 ring-inset ring-blue-300"
                           : isDragTarget
                           ? "bg-blue-50/50"
                           : ""
                       )}
-                      style={{ height: `${COL_HEIGHT}px` }}
                     >
                       {dayJobs.length === 0 && !snapshot.isDraggingOver ?
                         <p className="text-xs text-gray-300 text-center pt-6">—</p> :

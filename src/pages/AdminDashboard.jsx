@@ -118,10 +118,10 @@ export default function AdminDashboard() {
   const todayCount = jobs.filter(j => isToday(new Date(j.scheduled_date + 'T00:00:00'))).length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+      <div className="bg-white border-b shrink-0 z-20">
+        <div className="px-4 py-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-amber-600 rounded-xl flex items-center justify-center">
@@ -164,7 +164,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="flex-1 flex flex-col px-4 py-4 min-h-0">
 
         {/* Mini Wallboard */}
         <MiniWallboard
