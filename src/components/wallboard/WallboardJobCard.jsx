@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Package, Truck, ChevronDown } from "lucide-react";
+import { Package, Truck, ChevronDown, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TRUCK_LABELS = {
@@ -23,6 +23,8 @@ export default function WallboardJobCard({ job, drivers, onAssign, canAssign, on
   const quantityLabel = job.job_type === 'pickup'
     ? `${job.yards_collected ?? qty} yds`
     : (job.load_configuration || `${qty} load${qty !== 1 ? 's' : ''}`);
+
+  const hasNotes = !!((job.dispatcher_notes && job.dispatcher_notes.trim()) || (job.driver_notes && job.driver_notes.trim()));
 
   return (
     <div onClick={() => onCardClick && onCardClick(job)} className={cn(
@@ -51,8 +53,15 @@ export default function WallboardJobCard({ job, drivers, onAssign, canAssign, on
             {TRUCK_LABELS[job.truck_type]}
           </span>
         )}
+        {hasNotes && (
+          <span className="ml-auto inline-flex items-center gap-0.5 bg-white text-black text-[9px] px-1 py-0.5 rounded font-semibold border border-gray-300">
+            <StickyNote className="w-2.5 h-2.5" />
+            NOTE
+          </span>
+        )}
         <span className={cn(
-          "ml-auto text-[9px] px-1 py-0.5 rounded font-medium",
+          "text-[9px] px-1 py-0.5 rounded font-medium",
+          !hasNotes && "ml-auto",
           job.status === 'pending' && "bg-gray-500/30 text-gray-300",
           job.status === 'in_progress' && "bg-yellow-500/30 text-yellow-300",
           job.status === 'completed' && "bg-green-500/30 text-green-300"

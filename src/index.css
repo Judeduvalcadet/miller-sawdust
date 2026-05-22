@@ -86,3 +86,26 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Note highlight pulse — used when driver opens a job with a note */
+@keyframes note-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.75);
+    border-color: rgb(251, 191, 36);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(251, 191, 36, 0);
+    border-color: rgb(251, 191, 36);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+    border-color: rgb(251, 191, 36);
+  }
+}
+
+.animate-note-pulse {
+  animation: note-pulse 0.9s ease-out 2;
+  border-width: 2px !important;
+  border-style: solid !important;
+  border-radius: 0.75rem;
+}

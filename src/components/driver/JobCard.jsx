@@ -1,13 +1,14 @@
 import React from 'react';
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Truck, Package, MapPin, DollarSign } from "lucide-react";
+import { Truck, Package, MapPin, DollarSign, StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function JobCard({ job, onClick }) {
   const isCompleted = job.status === 'completed';
   const isCancelled = job.status === 'cancelled';
   const isPending = job.status === 'pending';
+  const hasNotes = !!((job.dispatcher_notes && job.dispatcher_notes.trim()) || (job.driver_notes && job.driver_notes.trim()));
 
   return (
     <Card 
@@ -39,8 +40,8 @@ export default function JobCard({ job, onClick }) {
               )}>
                 {job.job_type}
               </span>
-              <Badge 
-                variant="outline" 
+              <Badge
+                variant="outline"
                 className={cn(
                   "text-xs",
                   isPending && "bg-red-100 text-red-700 border-red-300",
@@ -50,6 +51,12 @@ export default function JobCard({ job, onClick }) {
               >
                 {job.status}
               </Badge>
+              {hasNotes && (
+                <span className="inline-flex items-center gap-0.5 bg-black text-white text-xs px-2 py-0.5 rounded font-semibold">
+                  <StickyNote className="w-3 h-3" />
+                  NOTE
+                </span>
+              )}
             </div>
             <h3 className="font-semibold text-gray-900 mt-1 truncate">
               {job.location_name}

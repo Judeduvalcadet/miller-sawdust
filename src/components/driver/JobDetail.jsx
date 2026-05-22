@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +8,10 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
+import {
   MapPin, Phone, Calendar, Package, Truck, Warehouse,
   Navigation, CheckCircle, FileText, ArrowLeft,
-  DollarSign, Loader2, Check, AlertCircle, Circle, ChevronDown, ChevronUp, Info
+  DollarSign, Loader2, Check, AlertCircle, Circle, ChevronDown, ChevronUp, Info, StickyNote
 } from "lucide-react";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { cn } from "@/lib/utils";
@@ -256,6 +256,40 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
   const initialLoads = React.useRef(initLoads(job)).current;
   const [yardPresets, setYardPresets] = useState({});
 
+  // Notes indicator + auto-scroll/pulse on every open of a job with notes.
+  // dispatcher_notes is dispatch → driver communication and takes priority for
+  // scroll target; driver-only notes still trigger the indicator + animation.
+  const hasDispatcherNotes = !!(job.dispatcher_notes && job.dispatcher_notes.trim());
+  const hasDriverNotes = !!(driverNotes && driverNotes.trim());
+  const hasNotes = hasDispatcherNotes || hasDriverNotes;
+  const dispatcherNotesRef = useRef(null);
+  const driverNotesRef = useRef(null);
+  const [pulseNotes, setPulseNotes] = useState(false);
+
+  const focusNotes = () => {
+    const target = hasDispatcherNotes ? dispatcherNotesRef.current : driverNotesRef.current;
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setPulseNotes(false);
+    // next tick so the class re-applies and the animation restarts on repeat clicks
+    requestAnimationFrame(() => setPulseNotes(true));
+  };
+
+  useEffect(() => {
+    if (!hasNotes) return;
+    // delay slightly so layout has settled (cards above are still mounting)
+    const t = setTimeout(() => focusNotes(), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
+  useEffect(() => {
+    if (!pulseNotes) return;
+    // total animation duration is 0.9s × 2 iterations = 1.8s
+    const t = setTimeout(() => setPulseNotes(false), 1900);
+    return () => clearTimeout(t);
+  }, [pulseNotes]);
+
   useEffect(() => {
     if (job.job_type === 'pickup') {
       base44.entities.Settings.list().then(results => {
@@ -411,6 +445,17 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           </div>
           <h1 className="font-bold text-lg text-gray-900">{job.location_name}</h1>
         </div>
+        {hasNotes && (
+          <button
+            type="button"
+            onClick={focusNotes}
+            className="inline-flex items-center gap-1 bg-black text-white text-xs font-semibold px-2.5 py-1.5 rounded-md hover:bg-gray-800 active:scale-95 transition-all shrink-0"
+            aria-label="Scroll to notes"
+          >
+            <StickyNote className="w-3.5 h-3.5" />
+            NOTE
+          </button>
+        )}
         <div className={cn(
           "p-2 rounded-lg",
           job.job_type === 'pickup' ? "bg-amber-100" : "bg-blue-100"
@@ -547,17 +592,19 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
 
         {/* Dispatcher Notes */}
         {job.dispatcher_notes && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Dispatcher Notes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-700 whitespace-pre-wrap">{job.dispatcher_notes}</p>
-            </CardContent>
-          </Card>
+          <div ref={dispatcherNotesRef} className={cn(pulseNotes && "animate-note-pulse")}>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Dispatcher Notes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-700 whitespace-pre-wrap">{job.dispatcher_notes}</p>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* PICKUP JOB: Per-load yards tracking (all pickup drivers) */}
@@ -734,20 +781,22 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
         )}
 
         {/* Driver Notes */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Your Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              placeholder="Add notes about this job..."
-              value={driverNotes}
-              onChange={(e) => setDriverNotes(e.target.value)}
-              rows={3}
-              disabled={isUpdating}
-            />
-          </CardContent>
-        </Card>
+        <div ref={driverNotesRef} className={cn(pulseNotes && !hasDispatcherNotes && "animate-note-pulse")}>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Your Notes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                placeholder="Add notes about this job..."
+                value={driverNotes}
+                onChange={(e) => setDriverNotes(e.target.value)}
+                rows={3}
+                disabled={isUpdating}
+              />
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Bottom Action */}

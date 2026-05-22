@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import CalendarPicker from "@/components/driver/CalendarPicker";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -244,6 +244,8 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
   const driver = drivers.find((d) => d.id === job.assigned_driver_id) || null;
 
+  const hasNotes = !!((job.dispatcher_notes && job.dispatcher_notes.trim()) || (job.driver_notes && job.driver_notes.trim()));
+
   const handleAssign = async (driverId) => {
     const newDriver = drivers.find((d) => d.id === driverId) || null;
     await base44.entities.Job.update(job.id, {
@@ -365,36 +367,51 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 
 
-          {/* Invoice toggle (delivery jobs only) */}
-          {isAdmin && !editMode && job.job_type === 'delivery' &&
+          {/* Notes pill + Invoice toggle row */}
+          {isAdmin && !editMode && (hasNotes || job.job_type === 'delivery') &&
           <div
             className="mt-1.5 flex items-center justify-between border-t pt-1.5"
             onClick={(e) => e.stopPropagation()}>
 
-              <span className="text-[9px] text-gray-500 flex items-center gap-0.5">
-                <FileText className="w-2.5 h-2.5" />
-                Invoice
-              </span>
-              <div className="flex gap-1">
-                <button
-                onClick={() => handleInvoice('yes')}
-                className={cn(
-                  "text-[9px] px-1.5 py-0.5 rounded font-medium transition-colors",
-                  job.invoice_sent === 'yes' ?
-                  "bg-green-500 text-white" :
-                  "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                )}>
-                Yes</button>
-                <button
-                onClick={() => handleInvoice('no')}
-                className={cn(
-                  "text-[9px] px-1.5 py-0.5 rounded font-medium transition-colors",
-                  job.invoice_sent === 'no' ?
-                  "bg-red-400 text-white" :
-                  "bg-white text-gray-500 hover:bg-gray-100 border border-gray-200"
-                  )}>
-                  No</button>
+              {/* Left: Notes pill (or empty) */}
+              <div className="flex items-center">
+                {hasNotes && (
+                  <span className="inline-flex items-center gap-0.5 bg-black text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
+                    <StickyNote className="w-2.5 h-2.5" />
+                    NOTE
+                  </span>
+                )}
               </div>
+
+              {/* Right: Invoice + Yes/No buttons (delivery only) */}
+              {job.job_type === 'delivery' && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[9px] text-gray-500 flex items-center gap-0.5">
+                    <FileText className="w-2.5 h-2.5" />
+                    Invoice
+                  </span>
+                  <button
+                    onClick={() => handleInvoice('yes')}
+                    className={cn(
+                      "text-[9px] px-1.5 py-0.5 rounded font-medium transition-colors",
+                      job.invoice_sent === 'yes' ?
+                      "bg-green-500 text-white" :
+                      "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    )}>
+                    Yes
+                  </button>
+                  <button
+                    onClick={() => handleInvoice('no')}
+                    className={cn(
+                      "text-[9px] px-1.5 py-0.5 rounded font-medium transition-colors",
+                      job.invoice_sent === 'no' ?
+                      "bg-red-400 text-white" :
+                      "bg-white text-gray-500 hover:bg-gray-100 border border-gray-200"
+                    )}>
+                    No
+                  </button>
+                </div>
+              )}
             </div>
           }
 
