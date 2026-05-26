@@ -590,20 +590,20 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           </div>
         )}
 
-        {/* Dispatcher Notes */}
+        {/* Dispatcher Notes — styled to match the yards / load configuration block */}
         {job.dispatcher_notes && (
-          <div ref={dispatcherNotesRef} className={cn(pulseNotes && "animate-note-pulse")}>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Dispatcher Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-700 whitespace-pre-wrap">{job.dispatcher_notes}</p>
-              </CardContent>
-            </Card>
+          <div
+            ref={dispatcherNotesRef}
+            className={cn(
+              "rounded-lg bg-amber-50 border border-amber-200 p-3 flex items-start gap-3",
+              pulseNotes && "animate-note-pulse"
+            )}
+          >
+            <FileText className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-bold text-amber-900 text-base leading-tight">Dispatcher Notes</p>
+              <p className="text-amber-800 font-medium text-sm mt-0.5 whitespace-pre-wrap">{job.dispatcher_notes}</p>
+            </div>
           </div>
         )}
 
