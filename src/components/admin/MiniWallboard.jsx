@@ -646,7 +646,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const activeDrivers = drivers.filter((d) => d.active && d.role === 'driver');
 
   return (
-    <div className="bg-white rounded-xl border flex flex-col flex-1 min-h-0">
+    <div className="bg-white rounded-xl border flex flex-col flex-1 lg:min-h-0">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b gap-3">
         <div className="flex items-center gap-2">
