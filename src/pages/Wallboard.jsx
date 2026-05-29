@@ -225,11 +225,14 @@ export default function Wallboard() {
                   <p className="text-[10px] text-gray-500">{format(day, 'MMM')}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  {dayJobs.length > 0 && (
-                    <Badge className="bg-gray-700 text-gray-300 text-[10px]">
-                      {dayJobs.length} job{dayJobs.length !== 1 ? 's' : ''}
-                    </Badge>
-                  )}
+                  {dayJobs.length > 0 && (() => {
+                    const totalLoads = dayJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
+                    return (
+                      <Badge className="bg-gray-700 text-gray-300 text-[10px]">
+                        {totalLoads} load{totalLoads !== 1 ? 's' : ''}
+                      </Badge>
+                    );
+                  })()}
                   {canAssign && (
                     <button
                       onClick={() => setQuickJobDate(format(day, 'yyyy-MM-dd'))}

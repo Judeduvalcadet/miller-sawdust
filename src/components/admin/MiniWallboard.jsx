@@ -775,12 +775,21 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
       </div>
 
       {/* Mobile single-day view */}
-      {mobileSelectedDate && (
+      {mobileSelectedDate && (() => {
+        const mobileDateStr = format(mobileSelectedDate, 'yyyy-MM-dd');
+        const mobileDayJobs = jobs.filter(j => j.scheduled_date === mobileDateStr && j.status !== 'cancelled');
+        const mobileTotalLoads = mobileDayJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
+        return (
         <div className="lg:hidden">
           {/* Date banner */}
           <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50 border-b border-amber-200">
             <span className="text-sm font-semibold text-amber-800">
               📅 {format(mobileSelectedDate, 'EEEE, MMMM d')}
+              {mobileTotalLoads > 0 && (
+                <span className="ml-2 text-xs font-medium text-amber-700">
+                  · {mobileTotalLoads} load{mobileTotalLoads !== 1 ? 's' : ''}
+                </span>
+              )}
             </span>
             <button
               onClick={() => setMobileSelectedDate(null)}
@@ -844,7 +853,8 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* Mobile prompt when no date selected */}
       {!mobileSelectedDate && (
@@ -880,13 +890,21 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                   "flex items-center justify-between px-2 py-2 border-b shrink-0",
                   isCurrentDay ? "bg-amber-50" : "bg-gray-50"
                 )}>
-                  <div>
+                  <div className="flex items-baseline gap-2 min-w-0">
                     <p className="text-amber-700 text-base font-semibold">
                       {DAYS[i]}
                     </p>
                     <p className={cn("text-sm font-bold", isCurrentDay ? "text-amber-800" : "text-gray-800")}>
                       {format(day, 'd')}
                     </p>
+                    {dayJobs.length > 0 && (() => {
+                      const totalLoads = dayJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
+                      return (
+                        <span className="text-[10px] font-semibold text-gray-500 truncate">
+                          · {totalLoads} load{totalLoads !== 1 ? 's' : ''}
+                        </span>
+                      );
+                    })()}
                   </div>
                   {isAdmin && !editMode &&
                   <div className="flex items-center gap-1">
