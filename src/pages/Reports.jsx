@@ -186,42 +186,16 @@ function DateRangePicker({ value, onChange, earliestJobDate }) {
   );
 }
 
-// ─── Filter Button (in row) ───────────────────────────────────────────────
-function FilterButton({ icon: Icon, label, count, isOpen, onClick }) {
-  const active = count > 0;
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
-        isOpen
-          ? "bg-amber-100 border-amber-400 text-amber-900"
-          : active
-            ? "bg-amber-50 border-amber-300 text-amber-800"
-            : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
-      )}
-    >
-      <Icon className="w-3.5 h-3.5" />
-      <span>{label}</span>
-      {count > 0 && (
-        <span className="text-xs bg-amber-600 text-white rounded-full px-1.5 py-0.5 font-semibold">
-          {count}
-        </span>
-      )}
-      <ChevronDown className={cn(
-        "w-3.5 h-3.5 opacity-50 transition-transform",
-        isOpen && "rotate-180"
-      )} />
-    </button>
-  );
-}
-
-// ─── Filter Panel (inline, below the row) ─────────────────────────────────
-function FilterPanel({ label, options, selected, onChange, onClose, searchable = true }) {
+// ─── Filter Dropdown (button + popover with search) ──────────────────────
+function FilterDropdown({ icon: Icon, label, options, selected, onChange, searchable = true }) {
+  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const count = selected.size;
+  const active = count > 0;
   const visible = options.filter(o =>
     !search.trim() || o.label.toLowerCase().includes(search.toLowerCase().trim())
   );
+  const showSearch = searchable && options.length > 6;
 
   const toggle = (val) => {
     const next = new Set(selected);
@@ -230,68 +204,89 @@ function FilterPanel({ label, options, selected, onChange, onClose, searchable =
     onChange(next);
   };
 
-  const showSearch = searchable && options.length > 6;
-
   return (
-    <div className="bg-white rounded-xl border border-amber-200 p-3 mb-3 shadow-sm">
-      <div className="flex items-center justify-between mb-2.5">
-        <div className="flex items-center gap-2">
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
+            open
+              ? "bg-amber-100 border-amber-400 text-amber-900"
+              : active
+                ? "bg-amber-50 border-amber-300 text-amber-800"
+                : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+          )}
+        >
+          <Icon className="w-3.5 h-3.5" />
+          <span>{label}</span>
+          {count > 0 && (
+            <span className="text-xs bg-amber-600 text-white rounded-full px-1.5 py-0.5 font-semibold">
+              {count}
+            </span>
+          )}
+          <ChevronDown className={cn(
+            "w-3.5 h-3.5 opacity-50 transition-transform",
+            open && "rotate-180"
+          )} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0" align="start">
+        <div className="flex items-center justify-between px-3 py-2 border-b">
           <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Select {label}</p>
-          {selected.size > 0 && (
+          {count > 0 && (
             <button
               onClick={() => onChange(new Set())}
               className="text-xs text-amber-700 hover:underline font-medium"
             >
-              Clear {selected.size}
+              Clear {count}
             </button>
           )}
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      {showSearch && (
-        <div className="relative mb-2.5">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Search ${label.toLowerCase()}...`}
-            className="pl-8 h-8 text-sm"
-          />
-        </div>
-      )}
-      <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto">
-        {visible.length === 0 ? (
-          <p className="text-xs text-gray-400 py-2">No matches</p>
-        ) : visible.map(o => {
-          const isSel = selected.has(o.value);
-          return (
-            <button
-              key={o.value}
-              onClick={() => toggle(o.value)}
-              className={cn(
-                "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border transition-colors",
-                isSel
-                  ? "bg-amber-600 text-white border-amber-600 hover:bg-amber-700"
-                  : "bg-white text-gray-700 border-gray-200 hover:bg-amber-50 hover:border-amber-300"
-              )}
-            >
-              {isSel && <Check className="w-3 h-3" />}
-              <span>{o.label}</span>
-              {o.hint && (
-                <span className={cn(
-                  "text-[10px] uppercase tracking-wide",
-                  isSel ? "text-amber-100" : "text-gray-400"
+        {showSearch && (
+          <div className="p-2 border-b">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${label.toLowerCase()}...`}
+                className="pl-8 h-8 text-sm"
+              />
+            </div>
+          </div>
+        )}
+        <div className="max-h-64 overflow-y-auto py-1">
+          {visible.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-3">No matches</p>
+          ) : visible.map(o => {
+            const isSel = selected.has(o.value);
+            return (
+              <button
+                key={o.value}
+                onClick={() => toggle(o.value)}
+                className={cn(
+                  "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-gray-100",
+                  isSel && "bg-amber-50"
+                )}
+              >
+                <div className={cn(
+                  "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                  isSel ? "bg-amber-600 border-amber-600" : "border-gray-300"
                 )}>
-                  {o.hint}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+                  {isSel && <Check className="w-3 h-3 text-white" />}
+                </div>
+                <span className="truncate flex-1">{o.label}</span>
+                {o.hint && (
+                  <span className="text-[10px] uppercase tracking-wide text-gray-400 shrink-0">
+                    {o.hint}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -358,9 +353,6 @@ export default function Reports() {
   const [filterPickupLocs, setFilterPickupLocs] = useState(new Set());
   const [filterJobTypes, setFilterJobTypes] = useState(new Set());
   const [filterTruckTypes, setFilterTruckTypes] = useState(new Set());
-
-  // Which filter panel is currently expanded
-  const [openPanel, setOpenPanel] = useState(null);
 
   // Drill-down state
   const [expandedDrivers, setExpandedDrivers] = useState({});
@@ -571,8 +563,6 @@ export default function Reports() {
     FILTERS.forEach(f => f.setter(new Set()));
   };
 
-  const togglePanel = (key) => setOpenPanel(p => p === key ? null : key);
-
   // Build chip value strings (names instead of ids)
   const filterValueLabel = (filter) => {
     if (filter.selected.size === 0) return '';
@@ -597,7 +587,6 @@ export default function Reports() {
     );
   }
 
-  const activeFilter = FILTERS.find(f => f.key === openPanel);
   const rangeLabel = formatRangeLabel(dateRange);
 
   return (
@@ -625,13 +614,14 @@ export default function Reports() {
           />
           <div className="w-px h-6 bg-gray-200 mx-1" />
           {FILTERS.map(f => (
-            <FilterButton
+            <FilterDropdown
               key={f.key}
               icon={f.icon}
               label={f.label}
-              count={f.selected.size}
-              isOpen={openPanel === f.key}
-              onClick={() => togglePanel(f.key)}
+              options={f.options}
+              selected={f.selected}
+              onChange={f.setter}
+              searchable={f.searchable !== false}
             />
           ))}
           {anyFilterActive && (
@@ -643,18 +633,6 @@ export default function Reports() {
             </button>
           )}
         </div>
-
-        {/* Inline expanded panel for the active filter */}
-        {activeFilter && (
-          <FilterPanel
-            label={activeFilter.label}
-            options={activeFilter.options}
-            selected={activeFilter.selected}
-            onChange={activeFilter.setter}
-            onClose={() => setOpenPanel(null)}
-            searchable={activeFilter.searchable !== false}
-          />
-        )}
 
         {/* Active filter chip strip */}
         {(rangeLabel || anyFilterActive) && (
