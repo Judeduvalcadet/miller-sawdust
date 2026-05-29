@@ -6,12 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Input } from "@/components/ui/input";
+import { FilterDropdown, ActiveChip, encodeFilterParams } from "@/components/reports/filters";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
 import {
   Loader2, Package, BarChart2, Users, Building2, ChevronDown, ChevronUp,
-  ExternalLink, Calendar as CalendarIcon, Truck, MapPin, Tag, X, Check, Search,
+  ExternalLink, Calendar as CalendarIcon, Truck, MapPin, Tag, X,
   Hash, Layers,
 } from "lucide-react";
 import {
@@ -186,135 +186,6 @@ function DateRangePicker({ value, onChange, earliestJobDate }) {
   );
 }
 
-// ─── Filter Dropdown (button + popover with search) ──────────────────────
-function FilterDropdown({ icon: Icon, label, options, selected, onChange, searchable = true }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const count = selected.size;
-  const active = count > 0;
-  const visible = options.filter(o =>
-    !search.trim() || o.label.toLowerCase().includes(search.toLowerCase().trim())
-  );
-  const showSearch = searchable && options.length > 6;
-
-  const toggle = (val) => {
-    const next = new Set(selected);
-    if (next.has(val)) next.delete(val);
-    else next.add(val);
-    onChange(next);
-  };
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
-            open
-              ? "bg-amber-100 border-amber-400 text-amber-900"
-              : active
-                ? "bg-amber-50 border-amber-300 text-amber-800"
-                : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
-          )}
-        >
-          <Icon className="w-3.5 h-3.5" />
-          <span>{label}</span>
-          {count > 0 && (
-            <span className="text-xs bg-amber-600 text-white rounded-full px-1.5 py-0.5 font-semibold">
-              {count}
-            </span>
-          )}
-          <ChevronDown className={cn(
-            "w-3.5 h-3.5 opacity-50 transition-transform",
-            open && "rotate-180"
-          )} />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
-        <div className="flex items-center justify-between px-3 py-2 border-b">
-          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Select {label}</p>
-          {count > 0 && (
-            <button
-              onClick={() => onChange(new Set())}
-              className="text-xs text-amber-700 hover:underline font-medium"
-            >
-              Clear {count}
-            </button>
-          )}
-        </div>
-        {showSearch && (
-          <div className="p-2 border-b">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={`Search ${label.toLowerCase()}...`}
-                className="pl-8 h-8 text-sm"
-              />
-            </div>
-          </div>
-        )}
-        <div className="max-h-64 overflow-y-auto py-1">
-          {visible.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-3">No matches</p>
-          ) : visible.map(o => {
-            const isSel = selected.has(o.value);
-            return (
-              <button
-                key={o.value}
-                onClick={() => toggle(o.value)}
-                className={cn(
-                  "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-gray-100",
-                  isSel && "bg-amber-50"
-                )}
-              >
-                <div className={cn(
-                  "w-4 h-4 rounded border flex items-center justify-center shrink-0",
-                  isSel ? "bg-amber-600 border-amber-600" : "border-gray-300"
-                )}>
-                  {isSel && <Check className="w-3 h-3 text-white" />}
-                </div>
-                <span className="truncate flex-1">{o.label}</span>
-                {o.hint && (
-                  <span className="text-[10px] uppercase tracking-wide text-gray-400 shrink-0">
-                    {o.hint}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// ─── Active Filter Chip (in the chip strip) ───────────────────────────────
-function ActiveChip({ icon: Icon, label, value, onRemove, color = "amber" }) {
-  const palette = {
-    amber: "bg-amber-100 text-amber-900 border-amber-300",
-    blue:  "bg-blue-100  text-blue-900  border-blue-300",
-    gray:  "bg-gray-100  text-gray-900  border-gray-300",
-  }[color];
-  return (
-    <span className={cn(
-      "inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full border text-sm",
-      palette
-    )}>
-      <Icon className="w-3.5 h-3.5" />
-      <span className="font-medium">{label}:</span>
-      <span className="font-semibold max-w-[260px] truncate">{value}</span>
-      <button
-        onClick={onRemove}
-        className="ml-0.5 w-5 h-5 rounded-full flex items-center justify-center hover:bg-white/60 transition-colors"
-        title={`Clear ${label}`}
-      >
-        <X className="w-3 h-3" />
-      </button>
-    </span>
-  );
-}
 
 // ─── KPI Card ──────────────────────────────────────────────────────────────
 function KPICard({ icon: Icon, label, value, suffix, color }) {
@@ -580,11 +451,23 @@ export default function Reports() {
     return `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`;
   };
 
-  // URL params for full-report links
-  const rangeQueryString = useMemo(() => {
-    if (!dateRange?.from || !dateRange?.to) return '';
-    return `from=${format(dateRange.from, 'yyyy-MM-dd')}&to=${format(dateRange.to, 'yyyy-MM-dd')}`;
-  }, [dateRange]);
+  // URL params for full-report links — includes date range AND all filters
+  const fullReportQueryString = useMemo(() => {
+    const parts = [];
+    if (dateRange?.from && dateRange?.to) {
+      parts.push(`from=${format(dateRange.from, 'yyyy-MM-dd')}`);
+      parts.push(`to=${format(dateRange.to, 'yyyy-MM-dd')}`);
+    }
+    const filterStr = encodeFilterParams({
+      drivers: filterDrivers,
+      customers: filterCustomers,
+      pickupLocs: filterPickupLocs,
+      jobTypes: filterJobTypes,
+      truckTypes: filterTruckTypes,
+    });
+    if (filterStr) parts.push(filterStr);
+    return parts.join('&');
+  }, [dateRange, filterDrivers, filterCustomers, filterPickupLocs, filterJobTypes, filterTruckTypes]);
 
   if (isLoading) {
     return (
@@ -631,29 +514,12 @@ export default function Reports() {
               searchable={f.searchable !== false}
             />
           ))}
-          {anyFilterActive && (
-            <button
-              onClick={clearAllFilters}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium text-red-700 hover:bg-red-50 ml-auto"
-            >
-              <X className="w-3.5 h-3.5" /> Clear all
-            </button>
-          )}
         </div>
 
-        {/* Active filter chip strip */}
-        {(rangeLabel || anyFilterActive) && (
+        {/* Active filter chip strip — only when non-date filters are active */}
+        {anyFilterActive && (
           <div className="flex items-center gap-2 flex-wrap mb-5">
             <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-1">Showing:</span>
-            {rangeLabel && (
-              <ActiveChip
-                icon={CalendarIcon}
-                label="Date"
-                value={rangeLabel}
-                color="amber"
-                onRemove={() => setDateRange(computePreset('mtd', new Date(), earliestJobDate))}
-              />
-            )}
             {FILTERS.map(f => f.selected.size > 0 && (
               <ActiveChip
                 key={f.key}
@@ -664,6 +530,12 @@ export default function Reports() {
                 onRemove={() => f.setter(new Set())}
               />
             ))}
+            <button
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              <X className="w-3.5 h-3.5" /> Clear all
+            </button>
           </div>
         )}
 
@@ -765,7 +637,7 @@ export default function Reports() {
                         )}
                       </Button>
                       {pickupByLocation.length > EXPANDED_COUNT && (
-                        <Link to={`/PickupLocationsFullReport?${rangeQueryString}`}>
+                        <Link to={`/PickupLocationsFullReport?${fullReportQueryString}`}>
                           <Button variant="outline" size="sm" className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50">
                             <ExternalLink className="w-3.5 h-3.5" />
                             View full report ({pickupByLocation.length} locations)
@@ -858,7 +730,7 @@ export default function Reports() {
                         )}
                       </Button>
                       {customerStats.length > EXPANDED_COUNT && (
-                        <Link to={`/CustomerDeliveriesFullReport?${rangeQueryString}`}>
+                        <Link to={`/CustomerDeliveriesFullReport?${fullReportQueryString}`}>
                           <Button variant="outline" size="sm" className="gap-2 text-blue-700 border-blue-300 hover:bg-blue-50">
                             <ExternalLink className="w-3.5 h-3.5" />
                             View full report ({customerStats.length} customers)
