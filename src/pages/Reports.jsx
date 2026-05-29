@@ -16,23 +16,13 @@ import {
 } from "lucide-react";
 import {
   format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
-  startOfYear, subDays, subMonths, isWithinInterval, min, max,
+  startOfYear, subDays, subMonths,
 } from "date-fns";
 
-// ─── Date range presets ────────────────────────────────────────────────────
-const PRESETS = [
-  { key: 'today',     label: 'Today' },
-  { key: 'thisWeek',  label: 'This Week' },
-  { key: 'last7',     label: 'Last 7 Days' },
-  { key: 'mtd',       label: 'MTD' },
-  { key: 'lastMonth', label: 'Last Month' },
-  { key: 'ytd',       label: 'YTD' },
-  { key: 'allTime',   label: 'All Time' },
-];
-
-function computeRange(presetKey, now, earliestJobDate) {
+// ─── Date presets (used inside the date popover sidebar) ──────────────────
+function computePreset(key, now, earliestJobDate) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  switch (presetKey) {
+  switch (key) {
     case 'today':     return { from: today, to: today };
     case 'thisWeek':  return { from: startOfWeek(today, { weekStartsOn: 1 }), to: endOfWeek(today, { weekStartsOn: 1 }) };
     case 'last7':     return { from: subDays(today, 6), to: today };
@@ -47,6 +37,16 @@ function computeRange(presetKey, now, earliestJobDate) {
   }
 }
 
+const SIDEBAR_PRESETS = [
+  { key: 'today',     label: 'Today' },
+  { key: 'thisWeek',  label: 'This Week' },
+  { key: 'last7',     label: 'Last 7 Days' },
+  { key: 'mtd',       label: 'Month to Date' },
+  { key: 'lastMonth', label: 'Last Month' },
+  { key: 'ytd',       label: 'Year to Date' },
+  { key: 'allTime',   label: 'All Time' },
+];
+
 function formatRangeLabel(range) {
   if (!range?.from || !range?.to) return '';
   const sameDay = range.from.getTime() === range.to.getTime();
@@ -56,11 +56,169 @@ function formatRangeLabel(range) {
   return `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
 }
 
-// ─── Multi-select filter pill with search ──────────────────────────────────
-function FilterPill({ icon: Icon, label, options, selected, onChange, accent = "amber", searchable = true }) {
+// ─── Date Range Picker ────────────────────────────────────────────────────
+function DateRangePicker({ value, onChange, earliestJobDate }) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState('range'); // 'single' or 'range'
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    if (open) setDraft(value);
+  }, [open, value]);
+
+  const applyPreset = (presetKey) => {
+    onChange(computePreset(presetKey, new Date(), earliestJobDate));
+    setOpen(false);
+  };
+
+  const apply = () => {
+    if (mode === 'single' && draft?.from) {
+      onChange({ from: draft.from, to: draft.from });
+    } else if (mode === 'range' && draft?.from && draft?.to) {
+      onChange(draft);
+    } else if (mode === 'range' && draft?.from && !draft?.to) {
+      // single tap in range mode = treat as one day
+      onChange({ from: draft.from, to: draft.from });
+    }
+    setOpen(false);
+  };
+
+  const canApply = mode === 'single'
+    ? !!draft?.from
+    : !!(draft?.from);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className={cn(
+          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
+          "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+        )}>
+          <CalendarIcon className="w-3.5 h-3.5 text-amber-600" />
+          <span>{formatRangeLabel(value) || 'Date'}</span>
+          <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <div className="flex flex-col sm:flex-row">
+          {/* LEFT: Calendar */}
+          <div className="p-3 sm:border-r border-b sm:border-b-0">
+            {/* Single / Range toggle */}
+            <div className="inline-flex bg-gray-100 rounded-md p-0.5 mb-3 w-full">
+              <button
+                onClick={() => {
+                  setMode('single');
+                  if (draft?.from) setDraft({ from: draft.from, to: draft.from });
+                }}
+                className={cn(
+                  "flex-1 px-3 py-1 text-xs font-medium rounded transition-all",
+                  mode === 'single' ? "bg-white shadow-sm text-gray-900" : "text-gray-500"
+                )}
+              >
+                Single Date
+              </button>
+              <button
+                onClick={() => setMode('range')}
+                className={cn(
+                  "flex-1 px-3 py-1 text-xs font-medium rounded transition-all",
+                  mode === 'range' ? "bg-white shadow-sm text-gray-900" : "text-gray-500"
+                )}
+              >
+                Date Range
+              </button>
+            </div>
+            {mode === 'single' ? (
+              <Calendar
+                mode="single"
+                selected={draft?.from}
+                onSelect={(d) => setDraft(d ? { from: d, to: d } : {})}
+                defaultMonth={draft?.from || new Date()}
+              />
+            ) : (
+              <Calendar
+                mode="range"
+                selected={draft}
+                onSelect={(r) => setDraft(r || {})}
+                defaultMonth={draft?.from || new Date()}
+                numberOfMonths={1}
+              />
+            )}
+            <div className="flex justify-between items-center mt-2 gap-2">
+              <p className="text-xs text-gray-500">
+                {draft?.from && draft?.to
+                  ? formatRangeLabel(draft)
+                  : draft?.from
+                    ? `Start: ${format(draft.from, 'MMM d')}`
+                    : 'Pick a date'}
+              </p>
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button
+                  size="sm"
+                  className="h-7 px-3 bg-amber-600 hover:bg-amber-700"
+                  onClick={apply}
+                  disabled={!canApply}
+                >
+                  Apply
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: Quick presets */}
+          <div className="p-2 w-full sm:w-44 bg-gray-50/50">
+            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider px-2 py-1.5">Quick</p>
+            <div className="flex flex-col">
+              {SIDEBAR_PRESETS.map(p => (
+                <button
+                  key={p.key}
+                  onClick={() => applyPreset(p.key)}
+                  className="w-full text-left px-3 py-1.5 text-sm rounded text-gray-700 hover:bg-amber-100 hover:text-amber-800 transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── Filter Button (in row) ───────────────────────────────────────────────
+function FilterButton({ icon: Icon, label, count, isOpen, onClick }) {
+  const active = count > 0;
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
+        isOpen
+          ? "bg-amber-100 border-amber-400 text-amber-900"
+          : active
+            ? "bg-amber-50 border-amber-300 text-amber-800"
+            : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+      )}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      <span>{label}</span>
+      {count > 0 && (
+        <span className="text-xs bg-amber-600 text-white rounded-full px-1.5 py-0.5 font-semibold">
+          {count}
+        </span>
+      )}
+      <ChevronDown className={cn(
+        "w-3.5 h-3.5 opacity-50 transition-transform",
+        isOpen && "rotate-180"
+      )} />
+    </button>
+  );
+}
+
+// ─── Filter Panel (inline, below the row) ─────────────────────────────────
+function FilterPanel({ label, options, selected, onChange, onClose, searchable = true }) {
   const [search, setSearch] = useState('');
-  const count = selected.size;
   const visible = options.filter(o =>
     !search.trim() || o.label.toLowerCase().includes(search.toLowerCase().trim())
   );
@@ -72,89 +230,94 @@ function FilterPill({ icon: Icon, label, options, selected, onChange, accent = "
     onChange(next);
   };
 
-  const clear = (e) => {
-    e.stopPropagation();
-    onChange(new Set());
-  };
-
-  const accentClasses = {
-    amber: count > 0 ? "bg-amber-100 border-amber-300 text-amber-800" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50",
-    blue:  count > 0 ? "bg-blue-100 border-blue-300 text-blue-800"  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50",
-    gray:  count > 0 ? "bg-gray-100 border-gray-400 text-gray-900"  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50",
-  };
+  const showSearch = searchable && options.length > 6;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button className={cn(
-          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
-          accentClasses[accent]
-        )}>
-          <Icon className="w-3.5 h-3.5" />
-          <span>{label}</span>
-          {count > 0 ? (
-            <>
-              <span className="text-xs bg-white/60 rounded-full px-1.5 py-0.5 font-semibold">{count}</span>
-              <X className="w-3 h-3 hover:text-red-600" onClick={clear} role="button" />
-            </>
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 opacity-50" />
-          )}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-0" align="start">
-        {searchable && options.length > 6 && (
-          <div className="p-2 border-b">
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={`Search ${label.toLowerCase()}...`}
-                className="pl-7 h-8 text-sm"
-              />
-            </div>
-          </div>
-        )}
-        <div className="max-h-64 overflow-y-auto py-1">
-          {visible.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-3">No matches</p>
-          ) : visible.map(o => {
-            const isSel = selected.has(o.value);
-            return (
-              <button
-                key={o.value}
-                onClick={() => toggle(o.value)}
-                className={cn(
-                  "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-gray-100",
-                  isSel && "bg-amber-50"
-                )}
-              >
-                <div className={cn(
-                  "w-4 h-4 rounded border flex items-center justify-center shrink-0",
-                  isSel ? "bg-amber-600 border-amber-600" : "border-gray-300"
-                )}>
-                  {isSel && <Check className="w-3 h-3 text-white" />}
-                </div>
-                <span className="truncate flex-1">{o.label}</span>
-                {o.hint && <span className="text-xs text-gray-400 shrink-0">{o.hint}</span>}
-              </button>
-            );
-          })}
-        </div>
-        {count > 0 && (
-          <div className="p-2 border-t flex justify-between items-center">
-            <span className="text-xs text-gray-500">{count} selected</span>
+    <div className="bg-white rounded-xl border border-amber-200 p-3 mb-3 shadow-sm">
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider">Select {label}</p>
+          {selected.size > 0 && (
             <button
               onClick={() => onChange(new Set())}
               className="text-xs text-amber-700 hover:underline font-medium"
             >
-              Clear
+              Clear {selected.size}
             </button>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
+          )}
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      {showSearch && (
+        <div className="relative mb-2.5">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Search ${label.toLowerCase()}...`}
+            className="pl-8 h-8 text-sm"
+          />
+        </div>
+      )}
+      <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto">
+        {visible.length === 0 ? (
+          <p className="text-xs text-gray-400 py-2">No matches</p>
+        ) : visible.map(o => {
+          const isSel = selected.has(o.value);
+          return (
+            <button
+              key={o.value}
+              onClick={() => toggle(o.value)}
+              className={cn(
+                "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm border transition-colors",
+                isSel
+                  ? "bg-amber-600 text-white border-amber-600 hover:bg-amber-700"
+                  : "bg-white text-gray-700 border-gray-200 hover:bg-amber-50 hover:border-amber-300"
+              )}
+            >
+              {isSel && <Check className="w-3 h-3" />}
+              <span>{o.label}</span>
+              {o.hint && (
+                <span className={cn(
+                  "text-[10px] uppercase tracking-wide",
+                  isSel ? "text-amber-100" : "text-gray-400"
+                )}>
+                  {o.hint}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Active Filter Chip (in the chip strip) ───────────────────────────────
+function ActiveChip({ icon: Icon, label, value, onRemove, color = "amber" }) {
+  const palette = {
+    amber: "bg-amber-100 text-amber-900 border-amber-300",
+    blue:  "bg-blue-100  text-blue-900  border-blue-300",
+    gray:  "bg-gray-100  text-gray-900  border-gray-300",
+  }[color];
+  return (
+    <span className={cn(
+      "inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full border text-sm",
+      palette
+    )}>
+      <Icon className="w-3.5 h-3.5" />
+      <span className="font-medium">{label}:</span>
+      <span className="font-semibold max-w-[260px] truncate">{value}</span>
+      <button
+        onClick={onRemove}
+        className="ml-0.5 w-5 h-5 rounded-full flex items-center justify-center hover:bg-white/60 transition-colors"
+        title={`Clear ${label}`}
+      >
+        <X className="w-3 h-3" />
+      </button>
+    </span>
   );
 }
 
@@ -186,17 +349,18 @@ export default function Reports() {
   const [pickupLocations, setPickupLocations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Date range state
-  const [presetKey, setPresetKey] = useState('mtd');
-  const [customRange, setCustomRange] = useState({ from: undefined, to: undefined });
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  // Date range — initialized to MTD on load
+  const [dateRange, setDateRange] = useState(() => computePreset('mtd', new Date(), null));
 
-  // Filter state — sets of selected ids/values
+  // Filter state
   const [filterDrivers, setFilterDrivers] = useState(new Set());
   const [filterCustomers, setFilterCustomers] = useState(new Set());
   const [filterPickupLocs, setFilterPickupLocs] = useState(new Set());
   const [filterJobTypes, setFilterJobTypes] = useState(new Set());
   const [filterTruckTypes, setFilterTruckTypes] = useState(new Set());
+
+  // Which filter panel is currently expanded
+  const [openPanel, setOpenPanel] = useState(null);
 
   // Drill-down state
   const [expandedDrivers, setExpandedDrivers] = useState({});
@@ -227,12 +391,6 @@ export default function Reports() {
     return dates.length > 0 ? parseISO(dates[0]) : null;
   }, [jobs]);
 
-  // Active date range
-  const dateRange = useMemo(() => {
-    if (presetKey === 'custom') return customRange;
-    return computeRange(presetKey, new Date(), earliestJobDate);
-  }, [presetKey, customRange, earliestJobDate]);
-
   // Filtered jobs
   const filteredJobs = useMemo(() => {
     if (!dateRange?.from || !dateRange?.to) return [];
@@ -258,7 +416,7 @@ export default function Reports() {
     });
   }, [jobs, dateRange, filterDrivers, filterCustomers, filterPickupLocs, filterJobTypes, filterTruckTypes, pickupLocations]);
 
-  // ─── Computed: pickup, customer, driver stats ───────────────────────────
+  // ─── Computed stats ──────────────────────────────────────────────────────
   const supplierLocations = pickupLocations.filter(l => !l.location_type || l.location_type === 'supplier');
 
   const pickupByLocation = supplierLocations.map(loc => {
@@ -299,7 +457,7 @@ export default function Reports() {
     return { id: c.id, name: c.name || c.business_name, loads, yards };
   }).filter(x => x.loads > 0).sort((a, b) => b.loads - a.loads);
 
-  // ─── Summary KPIs ────────────────────────────────────────────────────────
+  // KPI summary
   const summary = useMemo(() => {
     const totalJobs = filteredJobs.length;
     const totalLoads = filteredJobs.reduce((s, j) => s + (Number(j.quantity) || 0), 0);
@@ -313,7 +471,7 @@ export default function Reports() {
     return { totalJobs, totalLoads, totalYards, activeDrivers };
   }, [filteredJobs]);
 
-  // ─── Drill-down helpers ──────────────────────────────────────────────────
+  // Drill-down helpers
   const getDriverBreakdown = (driverJobsList) => {
     const map = {};
     driverJobsList.forEach(j => {
@@ -375,7 +533,7 @@ export default function Reports() {
   // ─── Filter option lists ─────────────────────────────────────────────────
   const driverOptions = drivers
     .filter(d => d.role === 'driver')
-    .map(d => ({ value: d.id, label: d.name, hint: d.driver_type === 'pickup' ? 'pickup' : 'delivery' }))
+    .map(d => ({ value: d.id, label: d.name, hint: d.driver_type }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
   const customerOptions = customers
@@ -398,18 +556,34 @@ export default function Reports() {
     { value: 'spreader',       label: 'Spreader' },
   ];
 
-  const anyFilterActive = filterDrivers.size + filterCustomers.size + filterPickupLocs.size
-    + filterJobTypes.size + filterTruckTypes.size > 0;
+  // Filter button row config — drives the buttons + active chip strip
+  const FILTERS = [
+    { key: 'driver',    label: 'Driver',          icon: Users,    options: driverOptions,    selected: filterDrivers,    setter: setFilterDrivers,    color: 'amber' },
+    { key: 'customer',  label: 'Customer',        icon: Building2, options: customerOptions, selected: filterCustomers,  setter: setFilterCustomers,  color: 'blue'  },
+    { key: 'pickup',    label: 'Pickup Location', icon: MapPin,   options: pickupLocOptions, selected: filterPickupLocs, setter: setFilterPickupLocs, color: 'amber' },
+    { key: 'jobType',   label: 'Job Type',        icon: Tag,      options: jobTypeOptions,   selected: filterJobTypes,   setter: setFilterJobTypes,   color: 'gray',  searchable: false },
+    { key: 'truckType', label: 'Truck Type',      icon: Truck,    options: truckTypeOptions, selected: filterTruckTypes, setter: setFilterTruckTypes, color: 'gray',  searchable: false },
+  ];
+
+  const anyFilterActive = FILTERS.some(f => f.selected.size > 0);
 
   const clearAllFilters = () => {
-    setFilterDrivers(new Set());
-    setFilterCustomers(new Set());
-    setFilterPickupLocs(new Set());
-    setFilterJobTypes(new Set());
-    setFilterTruckTypes(new Set());
+    FILTERS.forEach(f => f.setter(new Set()));
   };
 
-  // ─── Custom range builder URL params (for full-report links) ─────────────
+  const togglePanel = (key) => setOpenPanel(p => p === key ? null : key);
+
+  // Build chip value strings (names instead of ids)
+  const filterValueLabel = (filter) => {
+    if (filter.selected.size === 0) return '';
+    const labels = filter.options
+      .filter(o => filter.selected.has(o.value))
+      .map(o => o.label);
+    if (labels.length <= 2) return labels.join(', ');
+    return `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`;
+  };
+
+  // URL params for full-report links
   const rangeQueryString = useMemo(() => {
     if (!dateRange?.from || !dateRange?.to) return '';
     return `from=${format(dateRange.from, 'yyyy-MM-dd')}&to=${format(dateRange.to, 'yyyy-MM-dd')}`;
@@ -423,6 +597,7 @@ export default function Reports() {
     );
   }
 
+  const activeFilter = FILTERS.find(f => f.key === openPanel);
   const rangeLabel = formatRangeLabel(dateRange);
 
   return (
@@ -436,85 +611,29 @@ export default function Reports() {
             </div>
             <div>
               <h1 className="font-bold text-2xl text-gray-900">Reports</h1>
-              <p className="text-sm text-gray-500">{rangeLabel || 'Miller Sawdust Dispatch Analytics'}</p>
+              <p className="text-sm text-gray-500">Miller Sawdust Dispatch Analytics</p>
             </div>
           </div>
         </div>
 
-        {/* Date range chips */}
-        <div className="flex items-center gap-1.5 flex-wrap mb-4">
-          {PRESETS.map(p => {
-            const active = presetKey === p.key;
-            return (
-              <button
-                key={p.key}
-                onClick={() => setPresetKey(p.key)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
-                  active
-                    ? "bg-amber-600 text-white border-amber-600"
-                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                )}
-              >
-                {p.label}
-              </button>
-            );
-          })}
-          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-            <PopoverTrigger asChild>
-              <button
-                onClick={() => setPresetKey('custom')}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
-                  presetKey === 'custom'
-                    ? "bg-amber-600 text-white border-amber-600"
-                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                )}
-              >
-                <CalendarIcon className="w-3.5 h-3.5" />
-                {presetKey === 'custom' && customRange.from && customRange.to
-                  ? formatRangeLabel(customRange)
-                  : 'Custom'}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="range"
-                selected={customRange}
-                onSelect={(r) => {
-                  if (r?.from && r?.to) {
-                    setCustomRange({ from: r.from, to: r.to });
-                    setPresetKey('custom');
-                  } else if (r?.from) {
-                    setCustomRange({ from: r.from, to: undefined });
-                  }
-                }}
-                numberOfMonths={2}
-                defaultMonth={customRange.from || new Date()}
-              />
-              <div className="p-2 border-t flex justify-end">
-                <Button size="sm" variant="ghost" onClick={() => setCalendarOpen(false)}>Done</Button>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-
-        {/* Summary KPI strip */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-          <KPICard icon={Hash}    label="Jobs"           value={summary.totalJobs}     color="bg-gray-700" />
-          <KPICard icon={Layers}  label="Loads"          value={summary.totalLoads}    color="bg-blue-600" />
-          <KPICard icon={Package} label="Yards"          value={summary.totalYards}    suffix="yds" color="bg-amber-600" />
-          <KPICard icon={Users}   label="Active Drivers" value={summary.activeDrivers} color="bg-emerald-600" />
-        </div>
-
-        {/* Filter pills */}
-        <div className="flex items-center gap-2 flex-wrap mb-6">
-          <span className="text-xs text-gray-500 uppercase font-semibold tracking-wide mr-1">Filter</span>
-          <FilterPill icon={Users}    label="Driver"          options={driverOptions}    selected={filterDrivers}    onChange={setFilterDrivers}    accent="amber" />
-          <FilterPill icon={Building2} label="Customer"       options={customerOptions}  selected={filterCustomers}  onChange={setFilterCustomers}  accent="blue" />
-          <FilterPill icon={MapPin}    label="Pickup Location" options={pickupLocOptions} selected={filterPickupLocs} onChange={setFilterPickupLocs} accent="amber" />
-          <FilterPill icon={Tag}       label="Job Type"        options={jobTypeOptions}   selected={filterJobTypes}   onChange={setFilterJobTypes}   accent="gray" searchable={false} />
-          <FilterPill icon={Truck}     label="Truck Type"      options={truckTypeOptions} selected={filterTruckTypes} onChange={setFilterTruckTypes} accent="gray" searchable={false} />
+        {/* Filter button row — date + all filters on one line */}
+        <div className="flex items-center gap-2 flex-wrap mb-3">
+          <DateRangePicker
+            value={dateRange}
+            onChange={setDateRange}
+            earliestJobDate={earliestJobDate}
+          />
+          <div className="w-px h-6 bg-gray-200 mx-1" />
+          {FILTERS.map(f => (
+            <FilterButton
+              key={f.key}
+              icon={f.icon}
+              label={f.label}
+              count={f.selected.size}
+              isOpen={openPanel === f.key}
+              onClick={() => togglePanel(f.key)}
+            />
+          ))}
           {anyFilterActive && (
             <button
               onClick={clearAllFilters}
@@ -523,6 +642,52 @@ export default function Reports() {
               <X className="w-3.5 h-3.5" /> Clear all
             </button>
           )}
+        </div>
+
+        {/* Inline expanded panel for the active filter */}
+        {activeFilter && (
+          <FilterPanel
+            label={activeFilter.label}
+            options={activeFilter.options}
+            selected={activeFilter.selected}
+            onChange={activeFilter.setter}
+            onClose={() => setOpenPanel(null)}
+            searchable={activeFilter.searchable !== false}
+          />
+        )}
+
+        {/* Active filter chip strip */}
+        {(rangeLabel || anyFilterActive) && (
+          <div className="flex items-center gap-2 flex-wrap mb-5">
+            <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-1">Showing:</span>
+            {rangeLabel && (
+              <ActiveChip
+                icon={CalendarIcon}
+                label="Date"
+                value={rangeLabel}
+                color="amber"
+                onRemove={() => setDateRange(computePreset('mtd', new Date(), earliestJobDate))}
+              />
+            )}
+            {FILTERS.map(f => f.selected.size > 0 && (
+              <ActiveChip
+                key={f.key}
+                icon={f.icon}
+                label={f.label}
+                value={filterValueLabel(f)}
+                color={f.color}
+                onRemove={() => f.setter(new Set())}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Summary KPI strip */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <KPICard icon={Hash}    label="Jobs"           value={summary.totalJobs}     color="bg-gray-700" />
+          <KPICard icon={Layers}  label="Loads"          value={summary.totalLoads}    color="bg-blue-600" />
+          <KPICard icon={Package} label="Yards"          value={summary.totalYards}    suffix="yds" color="bg-amber-600" />
+          <KPICard icon={Users}   label="Active Drivers" value={summary.activeDrivers} color="bg-emerald-600" />
         </div>
 
         {/* Empty state */}
