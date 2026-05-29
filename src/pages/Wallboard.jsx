@@ -228,7 +228,7 @@ export default function Wallboard() {
                   {dayJobs.length > 0 && (() => {
                     const totalLoads = dayJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
                     return (
-                      <Badge className="bg-gray-700 text-gray-300 text-base">
+                      <Badge className="bg-gray-700 text-gray-300 text-[10px]">
                         {totalLoads} load{totalLoads !== 1 ? 's' : ''}
                       </Badge>
                     );

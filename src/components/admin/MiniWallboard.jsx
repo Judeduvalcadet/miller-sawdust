@@ -786,7 +786,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
             <span className="text-sm font-semibold text-amber-800">
               📅 {format(mobileSelectedDate, 'EEEE, MMMM d')}
               {mobileTotalLoads > 0 && (
-                <span className="ml-2 text-base font-medium text-amber-700">
+                <span className="ml-2 text-[10px] font-medium text-amber-700">
                   · {mobileTotalLoads} load{mobileTotalLoads !== 1 ? 's' : ''}
                 </span>
               )}
@@ -900,7 +900,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                     {dayJobs.length > 0 && (() => {
                       const totalLoads = dayJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
                       return (
-                        <span className="text-base font-semibold text-gray-500 truncate">
+                        <span className="text-[10px] font-semibold text-gray-500 truncate">
                           · {totalLoads} load{totalLoads !== 1 ? 's' : ''}
                         </span>
                       );
