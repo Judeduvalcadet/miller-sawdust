@@ -359,6 +359,13 @@ export default function Reports() {
   const [expandedLocations, setExpandedLocations] = useState({});
   const [expandedCustomers, setExpandedCustomers] = useState({});
 
+  // Show-more toggles for the pickup-location and customer cards
+  const [showAllPickup, setShowAllPickup] = useState(false);
+  const [showAllCustomers, setShowAllCustomers] = useState(false);
+
+  const PREVIEW_COUNT = 3;
+  const EXPANDED_COUNT = 15;
+
   useEffect(() => {
     const load = async () => {
       const [j, d, c, p] = await Promise.all([
@@ -710,7 +717,7 @@ export default function Reports() {
                       </tr>
                     </thead>
                     <tbody>
-                      {pickupByLocation.slice(0, 15).map((loc, idx) => {
+                      {pickupByLocation.slice(0, showAllPickup ? EXPANDED_COUNT : PREVIEW_COUNT).map((loc, idx) => {
                         const locObj = pickupLocations.find(l => l.name === loc.name);
                         const breakdown = getPickupLocationDriverBreakdown(loc.name, locObj?.id);
                         const isExpanded = expandedLocations[loc.name];
@@ -737,14 +744,34 @@ export default function Reports() {
                       })}
                     </tbody>
                   </table>
-                  {pickupByLocation.length > 15 && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 text-center">
-                      <Link to={`/PickupLocationsFullReport?${rangeQueryString}`}>
-                        <Button variant="outline" size="sm" className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50">
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          View full report ({pickupByLocation.length} locations)
-                        </Button>
-                      </Link>
+                  {pickupByLocation.length > PREVIEW_COUNT && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-center gap-2 flex-wrap">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowAllPickup(s => !s)}
+                        className="gap-1 text-amber-700 hover:bg-amber-50"
+                      >
+                        {showAllPickup ? (
+                          <>
+                            <ChevronUp className="w-3.5 h-3.5" />
+                            Show less
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-3.5 h-3.5" />
+                            Show {Math.min(pickupByLocation.length, EXPANDED_COUNT) - PREVIEW_COUNT} more
+                          </>
+                        )}
+                      </Button>
+                      {pickupByLocation.length > EXPANDED_COUNT && (
+                        <Link to={`/PickupLocationsFullReport?${rangeQueryString}`}>
+                          <Button variant="outline" size="sm" className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            View full report ({pickupByLocation.length} locations)
+                          </Button>
+                        </Link>
+                      )}
                     </div>
                   )}
                 </>
@@ -782,7 +809,7 @@ export default function Reports() {
                       </tr>
                     </thead>
                     <tbody>
-                      {customerStats.slice(0, 15).map((c, idx) => {
+                      {customerStats.slice(0, showAllCustomers ? EXPANDED_COUNT : PREVIEW_COUNT).map((c, idx) => {
                         const breakdown = c.id ? getCustomerDriverBreakdown(c.id) : [];
                         const isExpanded = expandedCustomers[c.name];
                         return (
@@ -810,14 +837,34 @@ export default function Reports() {
                       })}
                     </tbody>
                   </table>
-                  {customerStats.length > 15 && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 text-center">
-                      <Link to={`/CustomerDeliveriesFullReport?${rangeQueryString}`}>
-                        <Button variant="outline" size="sm" className="gap-2 text-blue-700 border-blue-300 hover:bg-blue-50">
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          View full report ({customerStats.length} customers)
-                        </Button>
-                      </Link>
+                  {customerStats.length > PREVIEW_COUNT && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-center gap-2 flex-wrap">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowAllCustomers(s => !s)}
+                        className="gap-1 text-blue-700 hover:bg-blue-50"
+                      >
+                        {showAllCustomers ? (
+                          <>
+                            <ChevronUp className="w-3.5 h-3.5" />
+                            Show less
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-3.5 h-3.5" />
+                            Show {Math.min(customerStats.length, EXPANDED_COUNT) - PREVIEW_COUNT} more
+                          </>
+                        )}
+                      </Button>
+                      {customerStats.length > EXPANDED_COUNT && (
+                        <Link to={`/CustomerDeliveriesFullReport?${rangeQueryString}`}>
+                          <Button variant="outline" size="sm" className="gap-2 text-blue-700 border-blue-300 hover:bg-blue-50">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            View full report ({customerStats.length} customers)
+                          </Button>
+                        </Link>
+                      )}
                     </div>
                   )}
                 </>
