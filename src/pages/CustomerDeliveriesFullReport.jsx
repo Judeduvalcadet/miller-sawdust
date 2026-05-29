@@ -1,18 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/entities';
 import { Card, CardContent } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Loader2, Building2, ArrowLeft, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, startOfMonth } from "date-fns";
 
 const PAGE_SIZE = 25;
 
 export default function CustomerDeliveriesFullReport() {
   const urlParams = new URLSearchParams(window.location.search);
-  const [selectedMonth, setSelectedMonth] = useState(urlParams.get('month') || '');
+  const fromParam = urlParams.get('from');
+  const toParam = urlParams.get('to');
+  const legacyMonth = urlParams.get('month');
+
+  // Resolve range: prefer from/to, fall back to legacy ?month=, else MTD
+  const range = useMemo(() => {
+    if (fromParam && toParam) {
+      return { from: parseISO(fromParam), to: parseISO(toParam) };
+    }
+    if (legacyMonth) {
+      const start = parseISO(legacyMonth + '-01');
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+      return { from: start, to: end };
+    }
+    const today = new Date();
+    return { from: startOfMonth(today), to: today };
+  }, [fromParam, toParam, legacyMonth]);
+
   const [page, setPage] = useState(0);
   const [jobs, setJobs] = useState([]);
   const [drivers, setDrivers] = useState([]);
@@ -31,21 +47,17 @@ export default function CustomerDeliveriesFullReport() {
       setJobs(j);
       setDrivers(d);
       setCustomers(c);
-      if (!selectedMonth && j.length > 0) {
-        const currentMonth = new Date().toISOString().slice(0, 7);
-        const months = [...new Set(j.map(job => job.scheduled_date?.slice(0, 7)))].filter(Boolean).sort().reverse();
-        setSelectedMonth(months.includes(currentMonth) ? currentMonth : (months[0] || ''));
-      }
       setIsLoading(false);
     };
     load();
   }, []);
 
-  const availableMonths = [...new Set(jobs.map(j => j.scheduled_date?.slice(0, 7)).filter(Boolean))].sort().reverse();
-
-  const filteredJobs = jobs.filter(j =>
-    j.status === 'completed' && selectedMonth && j.scheduled_date?.slice(0, 7) === selectedMonth
-  );
+  const filteredJobs = jobs.filter(j => {
+    if (j.status !== 'completed') return false;
+    if (!j.scheduled_date) return false;
+    const jd = parseISO(j.scheduled_date);
+    return jd >= range.from && jd <= range.to;
+  });
 
   const deliveryJobs = filteredJobs.filter(j => j.job_type === 'delivery');
 
@@ -53,7 +65,7 @@ export default function CustomerDeliveriesFullReport() {
     const cJobs = deliveryJobs.filter(j => j.customer_id === c.id);
     const loads = cJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
     const yards = cJobs.reduce((sum, j) => {
-      if (j.truck_type === 'spreader' && Array.isArray(j.loads)) {
+      if (Array.isArray(j.loads) && j.loads.length > 0) {
         return sum + j.loads.reduce((s, l) => s + (Number(l.yards_collected) || 0), 0);
       }
       return sum + (Number(j.delivery_yards) || 0);
@@ -69,7 +81,7 @@ export default function CustomerDeliveriesFullReport() {
       const name = drv?.name || 'Unknown Driver';
       loadMap[name] = (loadMap[name] || 0) + (Number(j.quantity) || 0);
       let yards = 0;
-      if (j.truck_type === 'spreader' && Array.isArray(j.loads)) {
+      if (Array.isArray(j.loads) && j.loads.length > 0) {
         yards = j.loads.reduce((s, l) => s + (Number(l.yards_collected) || 0), 0);
       } else {
         yards = Number(j.delivery_yards) || 0;
@@ -81,7 +93,14 @@ export default function CustomerDeliveriesFullReport() {
 
   const totalPages = Math.ceil(customerStats.length / PAGE_SIZE);
   const paginated = customerStats.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const monthLabel = selectedMonth ? format(parseISO(selectedMonth + '-01'), 'MMMM yyyy') : '';
+
+  const sameDay = range.from.getTime() === range.to.getTime();
+  const sameYear = range.from.getFullYear() === range.to.getFullYear();
+  const rangeLabel = sameDay
+    ? format(range.from, 'MMM d, yyyy')
+    : sameYear
+      ? `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d, yyyy')}`
+      : `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
 
   if (isLoading) {
     return (
@@ -94,7 +113,6 @@ export default function CustomerDeliveriesFullReport() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <Link to={`/Reports`}>
@@ -107,19 +125,9 @@ export default function CustomerDeliveriesFullReport() {
             </div>
             <div>
               <h1 className="font-bold text-xl text-gray-900">Loads Delivered by Customer</h1>
-              <p className="text-sm text-gray-500">{monthLabel} — {customerStats.length} customers</p>
+              <p className="text-sm text-gray-500">{rangeLabel} — {customerStats.length} customers</p>
             </div>
           </div>
-          <Select value={selectedMonth} onValueChange={(v) => { setSelectedMonth(v); setPage(0); }}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Select month..." />
-            </SelectTrigger>
-            <SelectContent>
-              {availableMonths.map(m => (
-                <SelectItem key={m} value={m}>{format(parseISO(m + '-01'), 'MMMM yyyy')}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         <Card>
@@ -170,7 +178,6 @@ export default function CustomerDeliveriesFullReport() {
                   </tbody>
                 </table>
 
-                {/* Pagination */}
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
                     <p className="text-sm text-gray-500">

@@ -1,18 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/entities';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Loader2, Package, ArrowLeft, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, startOfMonth } from "date-fns";
 
 const PAGE_SIZE = 25;
 
 export default function PickupLocationsFullReport() {
   const urlParams = new URLSearchParams(window.location.search);
-  const [selectedMonth, setSelectedMonth] = useState(urlParams.get('month') || '');
+  const fromParam = urlParams.get('from');
+  const toParam = urlParams.get('to');
+  const legacyMonth = urlParams.get('month');
+
+  const range = useMemo(() => {
+    if (fromParam && toParam) {
+      return { from: parseISO(fromParam), to: parseISO(toParam) };
+    }
+    if (legacyMonth) {
+      const start = parseISO(legacyMonth + '-01');
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+      return { from: start, to: end };
+    }
+    const today = new Date();
+    return { from: startOfMonth(today), to: today };
+  }, [fromParam, toParam, legacyMonth]);
+
   const [page, setPage] = useState(0);
   const [jobs, setJobs] = useState([]);
   const [drivers, setDrivers] = useState([]);
@@ -31,21 +46,17 @@ export default function PickupLocationsFullReport() {
       setJobs(j);
       setDrivers(d);
       setPickupLocations(p);
-      if (!selectedMonth && j.length > 0) {
-        const currentMonth = new Date().toISOString().slice(0, 7);
-        const months = [...new Set(j.map(job => job.scheduled_date?.slice(0, 7)))].filter(Boolean).sort().reverse();
-        setSelectedMonth(months.includes(currentMonth) ? currentMonth : (months[0] || ''));
-      }
       setIsLoading(false);
     };
     load();
   }, []);
 
-  const availableMonths = [...new Set(jobs.map(j => j.scheduled_date?.slice(0, 7)).filter(Boolean))].sort().reverse();
-
-  const filteredJobs = jobs.filter(j =>
-    j.status === 'completed' && selectedMonth && j.scheduled_date?.slice(0, 7) === selectedMonth
-  );
+  const filteredJobs = jobs.filter(j => {
+    if (j.status !== 'completed') return false;
+    if (!j.scheduled_date) return false;
+    const jd = parseISO(j.scheduled_date);
+    return jd >= range.from && jd <= range.to;
+  });
 
   const supplierLocations = pickupLocations.filter(l => !l.location_type || l.location_type === 'supplier');
 
@@ -55,12 +66,13 @@ export default function PickupLocationsFullReport() {
       if (job.job_type === 'pickup' && (job.pickup_location_id === loc.id || job.location_name === loc.name)) {
         totalYards += (job.pickup_yards || job.yards_collected || 0);
       }
-      if (job.job_type === 'delivery' && job.truck_type === 'spreader' && Array.isArray(job.loads)) {
+      if (job.job_type === 'delivery' && Array.isArray(job.loads) && job.loads.length > 0) {
         job.loads.filter(l => l.pickup_location_name === loc.name).forEach(l => {
           totalYards += (l.yards_collected || 0);
         });
       }
-      if (job.job_type === 'delivery' && job.truck_type !== 'spreader' && job.pickup_location_id === loc.id) {
+      if (job.job_type === 'delivery' && (!Array.isArray(job.loads) || job.loads.length === 0)
+          && job.pickup_location_id === loc.id) {
         totalYards += (job.delivery_yards || 0);
       }
     });
@@ -74,14 +86,14 @@ export default function PickupLocationsFullReport() {
       if (!drv) return;
       map[drv.name] = (map[drv.name] || 0) + (Number(j.pickup_yards) || Number(j.yards_collected) || 0);
     });
-    filteredJobs.filter(j => j.job_type === 'delivery' && j.truck_type === 'spreader' && Array.isArray(j.loads)).forEach(j => {
+    filteredJobs.filter(j => j.job_type === 'delivery' && Array.isArray(j.loads) && j.loads.length > 0).forEach(j => {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       if (!drv) return;
       j.loads.filter(l => l.pickup_location_name === locName).forEach(l => {
         map[drv.name] = (map[drv.name] || 0) + (Number(l.yards_collected) || 0);
       });
     });
-    filteredJobs.filter(j => j.job_type === 'delivery' && j.truck_type !== 'spreader' && j.pickup_location_id === locId).forEach(j => {
+    filteredJobs.filter(j => j.job_type === 'delivery' && (!Array.isArray(j.loads) || j.loads.length === 0) && j.pickup_location_id === locId).forEach(j => {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       if (!drv) return;
       map[drv.name] = (map[drv.name] || 0) + (Number(j.delivery_yards) || 0);
@@ -91,7 +103,14 @@ export default function PickupLocationsFullReport() {
 
   const totalPages = Math.ceil(pickupByLocation.length / PAGE_SIZE);
   const paginated = pickupByLocation.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const monthLabel = selectedMonth ? format(parseISO(selectedMonth + '-01'), 'MMMM yyyy') : '';
+
+  const sameDay = range.from.getTime() === range.to.getTime();
+  const sameYear = range.from.getFullYear() === range.to.getFullYear();
+  const rangeLabel = sameDay
+    ? format(range.from, 'MMM d, yyyy')
+    : sameYear
+      ? `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d, yyyy')}`
+      : `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
 
   if (isLoading) {
     return (
@@ -104,7 +123,6 @@ export default function PickupLocationsFullReport() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <Link to={`/Reports`}>
@@ -117,19 +135,9 @@ export default function PickupLocationsFullReport() {
             </div>
             <div>
               <h1 className="font-bold text-xl text-gray-900">Yards by Pickup Location</h1>
-              <p className="text-sm text-gray-500">{monthLabel} — {pickupByLocation.length} locations</p>
+              <p className="text-sm text-gray-500">{rangeLabel} — {pickupByLocation.length} locations</p>
             </div>
           </div>
-          <Select value={selectedMonth} onValueChange={(v) => { setSelectedMonth(v); setPage(0); }}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Select month..." />
-            </SelectTrigger>
-            <SelectContent>
-              {availableMonths.map(m => (
-                <SelectItem key={m} value={m}>{format(parseISO(m + '-01'), 'MMMM yyyy')}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         <Card>
@@ -178,7 +186,6 @@ export default function PickupLocationsFullReport() {
                   </tbody>
                 </table>
 
-                {/* Pagination */}
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
                     <p className="text-sm text-gray-500">

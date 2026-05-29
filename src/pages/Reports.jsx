@@ -1,23 +1,204 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/entities';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
-import { Loader2, Package, Truck, BarChart2, Users, Building2, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import {
+  Loader2, Package, BarChart2, Users, Building2, ChevronDown, ChevronUp,
+  ExternalLink, Calendar as CalendarIcon, Truck, MapPin, Tag, X, Check, Search,
+  Hash, Layers,
+} from "lucide-react";
+import {
+  format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
+  startOfYear, subDays, subMonths, isWithinInterval, min, max,
+} from "date-fns";
 
+// ─── Date range presets ────────────────────────────────────────────────────
+const PRESETS = [
+  { key: 'today',     label: 'Today' },
+  { key: 'thisWeek',  label: 'This Week' },
+  { key: 'last7',     label: 'Last 7 Days' },
+  { key: 'mtd',       label: 'MTD' },
+  { key: 'lastMonth', label: 'Last Month' },
+  { key: 'ytd',       label: 'YTD' },
+  { key: 'allTime',   label: 'All Time' },
+];
+
+function computeRange(presetKey, now, earliestJobDate) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  switch (presetKey) {
+    case 'today':     return { from: today, to: today };
+    case 'thisWeek':  return { from: startOfWeek(today, { weekStartsOn: 1 }), to: endOfWeek(today, { weekStartsOn: 1 }) };
+    case 'last7':     return { from: subDays(today, 6), to: today };
+    case 'mtd':       return { from: startOfMonth(today), to: today };
+    case 'lastMonth': {
+      const prev = subMonths(today, 1);
+      return { from: startOfMonth(prev), to: endOfMonth(prev) };
+    }
+    case 'ytd':       return { from: startOfYear(today), to: today };
+    case 'allTime':   return { from: earliestJobDate || today, to: today };
+    default:          return { from: startOfMonth(today), to: today };
+  }
+}
+
+function formatRangeLabel(range) {
+  if (!range?.from || !range?.to) return '';
+  const sameDay = range.from.getTime() === range.to.getTime();
+  if (sameDay) return format(range.from, 'MMM d, yyyy');
+  const sameYear = range.from.getFullYear() === range.to.getFullYear();
+  if (sameYear) return `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d, yyyy')}`;
+  return `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
+}
+
+// ─── Multi-select filter pill with search ──────────────────────────────────
+function FilterPill({ icon: Icon, label, options, selected, onChange, accent = "amber", searchable = true }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const count = selected.size;
+  const visible = options.filter(o =>
+    !search.trim() || o.label.toLowerCase().includes(search.toLowerCase().trim())
+  );
+
+  const toggle = (val) => {
+    const next = new Set(selected);
+    if (next.has(val)) next.delete(val);
+    else next.add(val);
+    onChange(next);
+  };
+
+  const clear = (e) => {
+    e.stopPropagation();
+    onChange(new Set());
+  };
+
+  const accentClasses = {
+    amber: count > 0 ? "bg-amber-100 border-amber-300 text-amber-800" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50",
+    blue:  count > 0 ? "bg-blue-100 border-blue-300 text-blue-800"  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50",
+    gray:  count > 0 ? "bg-gray-100 border-gray-400 text-gray-900"  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50",
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className={cn(
+          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors",
+          accentClasses[accent]
+        )}>
+          <Icon className="w-3.5 h-3.5" />
+          <span>{label}</span>
+          {count > 0 ? (
+            <>
+              <span className="text-xs bg-white/60 rounded-full px-1.5 py-0.5 font-semibold">{count}</span>
+              <X className="w-3 h-3 hover:text-red-600" onClick={clear} role="button" />
+            </>
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0" align="start">
+        {searchable && options.length > 6 && (
+          <div className="p-2 border-b">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${label.toLowerCase()}...`}
+                className="pl-7 h-8 text-sm"
+              />
+            </div>
+          </div>
+        )}
+        <div className="max-h-64 overflow-y-auto py-1">
+          {visible.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-3">No matches</p>
+          ) : visible.map(o => {
+            const isSel = selected.has(o.value);
+            return (
+              <button
+                key={o.value}
+                onClick={() => toggle(o.value)}
+                className={cn(
+                  "w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-gray-100",
+                  isSel && "bg-amber-50"
+                )}
+              >
+                <div className={cn(
+                  "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                  isSel ? "bg-amber-600 border-amber-600" : "border-gray-300"
+                )}>
+                  {isSel && <Check className="w-3 h-3 text-white" />}
+                </div>
+                <span className="truncate flex-1">{o.label}</span>
+                {o.hint && <span className="text-xs text-gray-400 shrink-0">{o.hint}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {count > 0 && (
+          <div className="p-2 border-t flex justify-between items-center">
+            <span className="text-xs text-gray-500">{count} selected</span>
+            <button
+              onClick={() => onChange(new Set())}
+              className="text-xs text-amber-700 hover:underline font-medium"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── KPI Card ──────────────────────────────────────────────────────────────
+function KPICard({ icon: Icon, label, value, suffix, color }) {
+  return (
+    <Card>
+      <CardContent className="p-4 flex items-center gap-3">
+        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", color)}>
+          <Icon className="w-5 h-5 text-white" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">{label}</p>
+          <p className="font-bold text-2xl text-gray-900 leading-tight">
+            {typeof value === 'number' ? value.toLocaleString() : value}
+            {suffix && <span className="text-sm text-gray-400 font-medium ml-1">{suffix}</span>}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 export default function Reports() {
   const [jobs, setJobs] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [pickupLocations, setPickupLocations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState('');
-  const [selectedDriver, setSelectedDriver] = useState(null); // for drill-down modal
+
+  // Date range state
+  const [presetKey, setPresetKey] = useState('mtd');
+  const [customRange, setCustomRange] = useState({ from: undefined, to: undefined });
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
+  // Filter state — sets of selected ids/values
+  const [filterDrivers, setFilterDrivers] = useState(new Set());
+  const [filterCustomers, setFilterCustomers] = useState(new Set());
+  const [filterPickupLocs, setFilterPickupLocs] = useState(new Set());
+  const [filterJobTypes, setFilterJobTypes] = useState(new Set());
+  const [filterTruckTypes, setFilterTruckTypes] = useState(new Set());
+
+  // Drill-down state
   const [expandedDrivers, setExpandedDrivers] = useState({});
   const [expandedLocations, setExpandedLocations] = useState({});
   const [expandedCustomers, setExpandedCustomers] = useState({});
@@ -34,69 +215,77 @@ export default function Reports() {
       setDrivers(d);
       setCustomers(c);
       setPickupLocations(p);
-      if (j.length > 0) {
-        const currentMonth = new Date().toISOString().slice(0, 7);
-        const months = [...new Set(j.map(job => job.scheduled_date?.slice(0, 7)))].filter(Boolean).sort().reverse();
-        // Default to current month if it has data, otherwise the most recent month
-        setSelectedMonth(months.includes(currentMonth) ? currentMonth : (months[0] || ''));
-      }
       setIsLoading(false);
     };
     load();
   }, []);
 
-  const availableMonths = [...new Set(jobs.map(j => j.scheduled_date?.slice(0, 7)).filter(Boolean))].sort().reverse();
+  // Earliest job date — used for "All Time" preset
+  const earliestJobDate = useMemo(() => {
+    if (jobs.length === 0) return null;
+    const dates = jobs.map(j => j.scheduled_date).filter(Boolean).sort();
+    return dates.length > 0 ? parseISO(dates[0]) : null;
+  }, [jobs]);
 
-  const selectedMonthLabel = selectedMonth
-    ? format(parseISO(selectedMonth + '-01'), 'MMMM')
-    : '';
+  // Active date range
+  const dateRange = useMemo(() => {
+    if (presetKey === 'custom') return customRange;
+    return computeRange(presetKey, new Date(), earliestJobDate);
+  }, [presetKey, customRange, earliestJobDate]);
 
-  const filteredJobs = jobs.filter(j => {
-    if (j.status !== 'completed') return false;
-    if (!selectedMonth) return false;
-    return j.scheduled_date?.slice(0, 7) === selectedMonth;
-  });
+  // Filtered jobs
+  const filteredJobs = useMemo(() => {
+    if (!dateRange?.from || !dateRange?.to) return [];
+    return jobs.filter(j => {
+      if (j.status !== 'completed') return false;
+      if (!j.scheduled_date) return false;
+      const jd = parseISO(j.scheduled_date);
+      if (jd < dateRange.from || jd > dateRange.to) return false;
+      if (filterDrivers.size > 0 && !filterDrivers.has(j.assigned_driver_id)) return false;
+      if (filterCustomers.size > 0 && !filterCustomers.has(j.customer_id)) return false;
+      if (filterJobTypes.size > 0 && !filterJobTypes.has(j.job_type)) return false;
+      if (filterTruckTypes.size > 0 && !filterTruckTypes.has(j.truck_type)) return false;
+      if (filterPickupLocs.size > 0) {
+        const matchedById = j.pickup_location_id && filterPickupLocs.has(j.pickup_location_id);
+        const matchedByName = j.job_type === 'pickup' && j.location_name &&
+          pickupLocations.some(pl => filterPickupLocs.has(pl.id) && pl.name === j.location_name);
+        const matchedByLoadEntry = Array.isArray(j.loads) && j.loads.some(l =>
+          pickupLocations.some(pl => filterPickupLocs.has(pl.id) && pl.name === l.pickup_location_name)
+        );
+        if (!matchedById && !matchedByName && !matchedByLoadEntry) return false;
+      }
+      return true;
+    });
+  }, [jobs, dateRange, filterDrivers, filterCustomers, filterPickupLocs, filterJobTypes, filterTruckTypes, pickupLocations]);
 
-  // ─── Pickup stats by location ─────────────────────────────────────────────
-  const pickupJobs = filteredJobs.filter(j => j.job_type === 'pickup');
-
-  // Only supplier locations count in pickup report (not my_building)
+  // ─── Computed: pickup, customer, driver stats ───────────────────────────
   const supplierLocations = pickupLocations.filter(l => !l.location_type || l.location_type === 'supplier');
 
   const pickupByLocation = supplierLocations.map(loc => {
-    let totalYardsForLocation = 0;
-
+    let total = 0;
     filteredJobs.forEach(job => {
-      // Explicit pickup jobs at this location
       if (job.job_type === 'pickup' && (job.pickup_location_id === loc.id || job.location_name === loc.name)) {
-        totalYardsForLocation += (job.pickup_yards || job.yards_collected || 0);
+        total += (job.pickup_yards || job.yards_collected || 0);
       }
-      // Per-load pickup entries inside delivery jobs (all truck types)
       if (job.job_type === 'delivery' && Array.isArray(job.loads) && job.loads.length > 0) {
-        job.loads.filter(l => l.pickup_location_name === loc.name).forEach(loadEntry => {
-          totalYardsForLocation += (loadEntry.yards_collected || 0);
+        job.loads.filter(l => l.pickup_location_name === loc.name).forEach(l => {
+          total += (l.yards_collected || 0);
         });
       }
-      // Old-format delivery jobs without loads array — use delivery_yards
-      if (
-        job.job_type === 'delivery' &&
-        (!Array.isArray(job.loads) || job.loads.length === 0) &&
-        (job.pickup_location_id === loc.id)
-      ) {
-        totalYardsForLocation += (job.delivery_yards || 0);
+      if (job.job_type === 'delivery' && (!Array.isArray(job.loads) || job.loads.length === 0)
+          && job.pickup_location_id === loc.id) {
+        total += (job.delivery_yards || 0);
       }
     });
-    return { name: loc.name, yards: totalYardsForLocation };
+    return { name: loc.name, yards: total };
   }).filter(x => x.yards > 0).sort((a, b) => b.yards - a.yards);
 
-  // ─── Driver performance (ALL jobs) ───────────────────────────────────────
   const driverStats = drivers.filter(d => d.role === 'driver').map(driver => {
     const dJobs = filteredJobs.filter(j => j.assigned_driver_id === driver.id);
     const totalLoads = dJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
     return { id: driver.id, name: driver.name, totalLoads, type: driver.driver_type, jobs: dJobs };
   }).filter(d => d.totalLoads > 0).sort((a, b) => b.totalLoads - a.totalLoads);
 
-  // ─── Customer delivery stats ──────────────────────────────────────────────
   const deliveryJobs = filteredJobs.filter(j => j.job_type === 'delivery');
   const customerStats = customers.map(c => {
     const cJobs = deliveryJobs.filter(j => j.customer_id === c.id);
@@ -110,11 +299,21 @@ export default function Reports() {
     return { id: c.id, name: c.name || c.business_name, loads, yards };
   }).filter(x => x.loads > 0).sort((a, b) => b.loads - a.loads);
 
-  // ─── Summary stats ────────────────────────────────────────────────────────
-  const totalYards = pickupJobs.reduce((sum, j) => sum + (j.pickup_yards || j.yards_collected || 0), 0);
-  const totalLoads = deliveryJobs.reduce((sum, j) => sum + (Number(j.quantity) || 0), 0);
+  // ─── Summary KPIs ────────────────────────────────────────────────────────
+  const summary = useMemo(() => {
+    const totalJobs = filteredJobs.length;
+    const totalLoads = filteredJobs.reduce((s, j) => s + (Number(j.quantity) || 0), 0);
+    const totalYards = filteredJobs.reduce((s, j) => {
+      if (Array.isArray(j.loads) && j.loads.length > 0) {
+        return s + j.loads.reduce((ss, l) => ss + (Number(l.yards_collected) || 0), 0);
+      }
+      return s + (Number(j.pickup_yards) || Number(j.yards_collected) || Number(j.delivery_yards) || 0);
+    }, 0);
+    const activeDrivers = new Set(filteredJobs.map(j => j.assigned_driver_id).filter(Boolean)).size;
+    return { totalJobs, totalLoads, totalYards, activeDrivers };
+  }, [filteredJobs]);
 
-  // ─── Driver drill-down: breakdown by location/customer (ALL job types) ───
+  // ─── Drill-down helpers ──────────────────────────────────────────────────
   const getDriverBreakdown = (driverJobsList) => {
     const map = {};
     driverJobsList.forEach(j => {
@@ -130,17 +329,14 @@ export default function Reports() {
     return Object.entries(map).map(([name, loads]) => ({ name, loads })).sort((a, b) => b.loads - a.loads);
   };
 
-  // ─── Pickup location drill-down by driver ─────────────────────────────────
   const getPickupLocationDriverBreakdown = (locName, locId) => {
     const map = {};
-    // Jon's direct pickup jobs
     filteredJobs.filter(j => j.job_type === 'pickup' && (j.pickup_location_id === locId || j.location_name === locName)).forEach(j => {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       if (!drv) return;
       const yards = Number(j.pickup_yards) || Number(j.yards_collected) || 0;
       map[drv.name] = (map[drv.name] || 0) + yards;
     });
-    // Per-load pickup entries inside delivery jobs (all truck types)
     filteredJobs.filter(j => j.job_type === 'delivery' && Array.isArray(j.loads) && j.loads.length > 0).forEach(j => {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       if (!drv) return;
@@ -148,7 +344,6 @@ export default function Reports() {
         map[drv.name] = (map[drv.name] || 0) + (Number(l.yards_collected) || 0);
       });
     });
-    // Old-format delivery jobs without loads array — use delivery_yards
     filteredJobs.filter(j => j.job_type === 'delivery' && (!Array.isArray(j.loads) || j.loads.length === 0) && j.pickup_location_id === locId).forEach(j => {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       if (!drv) return;
@@ -157,20 +352,13 @@ export default function Reports() {
     return Object.entries(map).map(([name, yards]) => ({ name, yards })).sort((a, b) => b.yards - a.yards);
   };
 
-  // ─── Customer drill-down by driver ────────────────────────────────────────
   const getCustomerDriverBreakdown = (customerId) => {
-    const map = {};
-    filteredJobs.filter(j => j.customer_id === customerId).forEach(j => {
-      const drv = drivers.find(d => d.id === j.assigned_driver_id);
-      const name = drv?.name || 'Unknown Driver';
-      const loads = Number(j.quantity) || 0;
-      if (!map[name]) map[name] = 0;
-      map[name] += loads;
-    });
+    const loadMap = {};
     const yardMap = {};
     filteredJobs.filter(j => j.customer_id === customerId).forEach(j => {
       const drv = drivers.find(d => d.id === j.assigned_driver_id);
       const name = drv?.name || 'Unknown Driver';
+      loadMap[name] = (loadMap[name] || 0) + (Number(j.quantity) || 0);
       let yards = 0;
       if (Array.isArray(j.loads) && j.loads.length > 0) {
         yards = j.loads.reduce((s, l) => s + (Number(l.yards_collected) || 0), 0);
@@ -179,8 +367,53 @@ export default function Reports() {
       }
       yardMap[name] = (yardMap[name] || 0) + yards;
     });
-    return Object.entries(map).map(([name, loads]) => ({ name, loads, yards: yardMap[name] || 0 })).sort((a, b) => b.loads - a.loads);
+    return Object.entries(loadMap)
+      .map(([name, loads]) => ({ name, loads, yards: yardMap[name] || 0 }))
+      .sort((a, b) => b.loads - a.loads);
   };
+
+  // ─── Filter option lists ─────────────────────────────────────────────────
+  const driverOptions = drivers
+    .filter(d => d.role === 'driver')
+    .map(d => ({ value: d.id, label: d.name, hint: d.driver_type === 'pickup' ? 'pickup' : 'delivery' }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const customerOptions = customers
+    .map(c => ({ value: c.id, label: c.name || c.business_name || 'Unnamed' }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const pickupLocOptions = pickupLocations
+    .filter(l => !l.location_type || l.location_type === 'supplier')
+    .map(l => ({ value: l.id, label: l.name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const jobTypeOptions = [
+    { value: 'pickup',   label: 'Pickup' },
+    { value: 'delivery', label: 'Delivery' },
+  ];
+
+  const truckTypeOptions = [
+    { value: 'straight_truck', label: 'Straight Truck' },
+    { value: 'semi',           label: 'Semi' },
+    { value: 'spreader',       label: 'Spreader' },
+  ];
+
+  const anyFilterActive = filterDrivers.size + filterCustomers.size + filterPickupLocs.size
+    + filterJobTypes.size + filterTruckTypes.size > 0;
+
+  const clearAllFilters = () => {
+    setFilterDrivers(new Set());
+    setFilterCustomers(new Set());
+    setFilterPickupLocs(new Set());
+    setFilterJobTypes(new Set());
+    setFilterTruckTypes(new Set());
+  };
+
+  // ─── Custom range builder URL params (for full-report links) ─────────────
+  const rangeQueryString = useMemo(() => {
+    if (!dateRange?.from || !dateRange?.to) return '';
+    return `from=${format(dateRange.from, 'yyyy-MM-dd')}&to=${format(dateRange.to, 'yyyy-MM-dd')}`;
+  }, [dateRange]);
 
   if (isLoading) {
     return (
@@ -190,42 +423,120 @@ export default function Reports() {
     );
   }
 
+  const rangeLabel = formatRangeLabel(dateRange);
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-amber-600 rounded-xl flex items-center justify-center">
               <BarChart2 className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-2xl text-gray-900">
-                {selectedMonthLabel ? `Reports for ${selectedMonthLabel}` : 'Reports'}
-              </h1>
-              <p className="text-sm text-gray-500">Miller Sawdust Dispatch Analytics</p>
+              <h1 className="font-bold text-2xl text-gray-900">Reports</h1>
+              <p className="text-sm text-gray-500">{rangeLabel || 'Miller Sawdust Dispatch Analytics'}</p>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select month..." />
-              </SelectTrigger>
-              <SelectContent>
-                {availableMonths.map(m => (
-                  <SelectItem key={m} value={m}>
-                    {format(parseISO(m + '-01'), 'MMMM yyyy')}
-                  </SelectItem>
-                ))}
-                {availableMonths.length === 0 && (
-                  <SelectItem value="none" disabled>No data yet</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
+        {/* Date range chips */}
+        <div className="flex items-center gap-1.5 flex-wrap mb-4">
+          {PRESETS.map(p => {
+            const active = presetKey === p.key;
+            return (
+              <button
+                key={p.key}
+                onClick={() => setPresetKey(p.key)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
+                  active
+                    ? "bg-amber-600 text-white border-amber-600"
+                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                )}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <button
+                onClick={() => setPresetKey('custom')}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
+                  presetKey === 'custom'
+                    ? "bg-amber-600 text-white border-amber-600"
+                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                )}
+              >
+                <CalendarIcon className="w-3.5 h-3.5" />
+                {presetKey === 'custom' && customRange.from && customRange.to
+                  ? formatRangeLabel(customRange)
+                  : 'Custom'}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={customRange}
+                onSelect={(r) => {
+                  if (r?.from && r?.to) {
+                    setCustomRange({ from: r.from, to: r.to });
+                    setPresetKey('custom');
+                  } else if (r?.from) {
+                    setCustomRange({ from: r.from, to: undefined });
+                  }
+                }}
+                numberOfMonths={2}
+                defaultMonth={customRange.from || new Date()}
+              />
+              <div className="p-2 border-t flex justify-end">
+                <Button size="sm" variant="ghost" onClick={() => setCalendarOpen(false)}>Done</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
 
+        {/* Summary KPI strip */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <KPICard icon={Hash}    label="Jobs"           value={summary.totalJobs}     color="bg-gray-700" />
+          <KPICard icon={Layers}  label="Loads"          value={summary.totalLoads}    color="bg-blue-600" />
+          <KPICard icon={Package} label="Yards"          value={summary.totalYards}    suffix="yds" color="bg-amber-600" />
+          <KPICard icon={Users}   label="Active Drivers" value={summary.activeDrivers} color="bg-emerald-600" />
+        </div>
+
+        {/* Filter pills */}
+        <div className="flex items-center gap-2 flex-wrap mb-6">
+          <span className="text-xs text-gray-500 uppercase font-semibold tracking-wide mr-1">Filter</span>
+          <FilterPill icon={Users}    label="Driver"          options={driverOptions}    selected={filterDrivers}    onChange={setFilterDrivers}    accent="amber" />
+          <FilterPill icon={Building2} label="Customer"       options={customerOptions}  selected={filterCustomers}  onChange={setFilterCustomers}  accent="blue" />
+          <FilterPill icon={MapPin}    label="Pickup Location" options={pickupLocOptions} selected={filterPickupLocs} onChange={setFilterPickupLocs} accent="amber" />
+          <FilterPill icon={Tag}       label="Job Type"        options={jobTypeOptions}   selected={filterJobTypes}   onChange={setFilterJobTypes}   accent="gray" searchable={false} />
+          <FilterPill icon={Truck}     label="Truck Type"      options={truckTypeOptions} selected={filterTruckTypes} onChange={setFilterTruckTypes} accent="gray" searchable={false} />
+          {anyFilterActive && (
+            <button
+              onClick={clearAllFilters}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium text-red-700 hover:bg-red-50 ml-auto"
+            >
+              <X className="w-3.5 h-3.5" /> Clear all
+            </button>
+          )}
+        </div>
+
+        {/* Empty state */}
+        {filteredJobs.length === 0 && (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-gray-500 text-sm">No completed jobs match this filter combination.</p>
+              <p className="text-gray-400 text-xs mt-1">Try widening the date range or clearing filters.</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {filteredJobs.length > 0 && (
+        <>
         <div className="grid md:grid-cols-2 gap-6 mb-6">
           {/* Yards by Pickup Location */}
           <Card>
@@ -272,7 +583,7 @@ export default function Reports() {
                               </td>
                               <td className="py-2 px-1 text-right font-semibold text-amber-700">{loc.yards.toLocaleString()} yds</td>
                             </tr>
-                            {isExpanded && breakdown.map((b, bi) => (
+                            {isExpanded && breakdown.map((b) => (
                               <tr key={b.name} className="bg-amber-50/50">
                                 <td className="py-1.5 pl-6 pr-1 text-gray-600 text-xs">↳ {b.name}</td>
                                 <td className="py-1.5 px-1 text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
@@ -285,7 +596,7 @@ export default function Reports() {
                   </table>
                   {pickupByLocation.length > 15 && (
                     <div className="mt-3 pt-3 border-t border-gray-100 text-center">
-                      <Link to={`/PickupLocationsFullReport?month=${selectedMonth}`}>
+                      <Link to={`/PickupLocationsFullReport?${rangeQueryString}`}>
                         <Button variant="outline" size="sm" className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50">
                           <ExternalLink className="w-3.5 h-3.5" />
                           View full report ({pickupByLocation.length} locations)
@@ -344,7 +655,7 @@ export default function Reports() {
                               <td className="py-2 px-1 text-right font-semibold text-blue-700">{c.loads}</td>
                               <td className="py-2 px-1 text-right font-semibold text-amber-700">{c.yards.toLocaleString()}</td>
                             </tr>
-                            {isExpanded && breakdown.map((b, bi) => (
+                            {isExpanded && breakdown.map((b) => (
                               <tr key={b.name} className="bg-blue-50/50">
                                 <td className="py-1.5 pl-6 pr-1 text-gray-600 text-xs">↳ {b.name}</td>
                                 <td className="py-1.5 px-1 text-right text-xs font-semibold text-blue-600">{b.loads} load{b.loads !== 1 ? 's' : ''}</td>
@@ -358,7 +669,7 @@ export default function Reports() {
                   </table>
                   {customerStats.length > 15 && (
                     <div className="mt-3 pt-3 border-t border-gray-100 text-center">
-                      <Link to={`/CustomerDeliveriesFullReport?month=${selectedMonth}`}>
+                      <Link to={`/CustomerDeliveriesFullReport?${rangeQueryString}`}>
                         <Button variant="outline" size="sm" className="gap-2 text-blue-700 border-blue-300 hover:bg-blue-50">
                           <ExternalLink className="w-3.5 h-3.5" />
                           View full report ({customerStats.length} customers)
@@ -384,7 +695,7 @@ export default function Reports() {
             {driverStats.length === 0 ? (
               <p className="text-gray-400 text-sm text-center py-8">No driver data for this period</p>
             ) : (
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {driverStats.map(d => {
                   const breakdown = getDriverBreakdown(d.jobs);
                   const isExpanded = expandedDrivers[d.id];
@@ -421,10 +732,10 @@ export default function Reports() {
                       {isExpanded && (
                         <div className="border-t px-4 py-3 bg-white">
                           <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                            {d.name} — {d.totalLoads} loads in {selectedMonthLabel}
+                            {d.name} — {d.totalLoads} loads
                           </p>
                           {breakdown.length === 0 ? (
-                            <p className="text-xs text-gray-400">No delivery breakdown available</p>
+                            <p className="text-xs text-gray-400">No breakdown available</p>
                           ) : (
                             <table className="w-full text-sm">
                               <tbody>
@@ -446,9 +757,9 @@ export default function Reports() {
             )}
           </CardContent>
         </Card>
+        </>
+        )}
       </div>
-
-
     </div>
   );
 }
