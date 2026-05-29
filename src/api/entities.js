@@ -85,6 +85,37 @@ function sanitize(tableName, record) {
 }
 
 // ---------------------------------------------------------------------------
+// PostgREST silently caps every SELECT response at 1000 rows even when a
+// larger `.limit()` is requested. To actually fetch more, we have to issue
+// successive `.range(from, to)` requests in chunks of 1000 and stitch them
+// together. `fetchPaginated` does that — it stops as soon as a chunk comes
+// back short (end of table) or we hit the caller's requested limit.
+// ---------------------------------------------------------------------------
+const POSTGREST_CHUNK = 1000
+
+async function fetchPaginated(buildQuery, limit) {
+  if (limit <= POSTGREST_CHUNK) {
+    const { data, error } = await buildQuery().limit(limit)
+    if (error) throw error
+    return data || []
+  }
+
+  const all = []
+  let from = 0
+  while (from < limit) {
+    const to = Math.min(from + POSTGREST_CHUNK - 1, limit - 1)
+    const requested = to - from + 1
+    const { data, error } = await buildQuery().range(from, to)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < requested) break
+    from += POSTGREST_CHUNK
+  }
+  return all
+}
+
+// ---------------------------------------------------------------------------
 // Factory: createEntity(tableName)
 // Returns an object with list, filter, create, update, delete, bulkCreate,
 // and subscribe — matching the Base44 SDK interface.
@@ -94,46 +125,39 @@ function createEntity(tableName) {
     /**
      * List records with optional sort and limit.
      * @param {string}  [sortField]  e.g. 'name' or '-scheduled_date'
-     * @param {number}  [limit=1000]
+     * @param {number}  [limit=5000]
      * @returns {Promise<Array>}
      */
-    async list(sortField, limit = 1000) {
-      let query = supabase.from(tableName).select('*').limit(limit)
-
+    async list(sortField, limit = 5000) {
       const sort = parseSort(sortField)
-      if (sort) {
-        query = query.order(sort.column, { ascending: sort.ascending })
+      const buildQuery = () => {
+        let q = supabase.from(tableName).select('*')
+        if (sort) q = q.order(sort.column, { ascending: sort.ascending })
+        return q
       }
-
-      const { data, error } = await query
-      if (error) throw error
-      return data || []
+      return fetchPaginated(buildQuery, limit)
     },
 
     /**
      * Filter records by an object of equality conditions.
      * @param {Object}  filters    e.g. { assigned_driver_id: 'abc', active: true }
      * @param {string}  [sortField]
-     * @param {number}  [limit=1000]
+     * @param {number}  [limit=5000]
      * @returns {Promise<Array>}
      */
-    async filter(filters, sortField, limit = 1000) {
-      let query = supabase.from(tableName).select('*').limit(limit)
-
-      if (filters && typeof filters === 'object') {
-        for (const [key, value] of Object.entries(filters)) {
-          query = query.eq(key, value)
-        }
-      }
-
+    async filter(filters, sortField, limit = 5000) {
       const sort = parseSort(sortField)
-      if (sort) {
-        query = query.order(sort.column, { ascending: sort.ascending })
+      const buildQuery = () => {
+        let q = supabase.from(tableName).select('*')
+        if (filters && typeof filters === 'object') {
+          for (const [key, value] of Object.entries(filters)) {
+            q = q.eq(key, value)
+          }
+        }
+        if (sort) q = q.order(sort.column, { ascending: sort.ascending })
+        return q
       }
-
-      const { data, error } = await query
-      if (error) throw error
-      return data || []
+      return fetchPaginated(buildQuery, limit)
     },
 
     /**
