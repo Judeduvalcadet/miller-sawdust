@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/entities';
+import { supabase } from '@/api/supabaseClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfWeek, addDays, addWeeks, subWeeks, isToday } from 'date-fns';
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,8 @@ export default function Wallboard() {
 
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const weekDays = DAYS.map((_, i) => addDays(weekStart, i));
+  const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+  const weekEndStr = format(addDays(weekStart, 5), 'yyyy-MM-dd'); // exclusive (Sat)
 
   // Determine current user role from local session
   useEffect(() => {
@@ -47,12 +50,33 @@ export default function Wallboard() {
     }
   }, []);
 
+  // Fetch only jobs scheduled within the visible Mon–Fri window.
+  // Updates flow primarily from the realtime subscription below; the 60s
+  // refetchInterval is a safety net if the websocket drops silently.
   const { data: jobs = [], refetch: refetchJobs } = useQuery({
-    queryKey: ['wallboard-jobs'],
-    queryFn: () => base44.entities.Job.list('-scheduled_date', 5000),
-    refetchInterval: 1000,
+    queryKey: ['wallboard-jobs', weekStartStr],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('jobs')
+        .select('*')
+        .gte('scheduled_date', weekStartStr)
+        .lt('scheduled_date', weekEndStr)
+        .order('scheduled_date', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    refetchInterval: 60000,
     refetchOnWindowFocus: true,
   });
+
+  // Realtime: invalidate the wallboard query on any job INSERT/UPDATE/DELETE
+  // so the board updates the instant something changes, without polling.
+  useEffect(() => {
+    const unsubscribe = base44.entities.Job.subscribe(() => {
+      queryClient.invalidateQueries({ queryKey: ['wallboard-jobs'] });
+    });
+    return unsubscribe;
+  }, [queryClient]);
 
   const { data: drivers = [] } = useQuery({
     queryKey: ['drivers'],
