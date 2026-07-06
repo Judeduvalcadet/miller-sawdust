@@ -91,7 +91,7 @@ export default function Wallboard() {
 
   const { data: pickupLocations = [] } = useQuery({
     queryKey: ['pickupLocations'],
-    queryFn: () => base44.entities.PickupLocation.list(),
+    queryFn: () => base44.entities.PickupLocation.list('name'),
   });
 
   const assignMutation = useMutation({

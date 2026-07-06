@@ -85,7 +85,9 @@ export default function QuickJobForm({ date, drivers, customers, pickupLocations
   const showRegularPickupLocation = formData.job_type === 'delivery' && formData.truck_type !== 'spreader';
 
   const customerOptions = customers.map(c => ({ value: c.id, label: c.business_name }));
-  const regularPickupLocationOptions = pickupLocations.map(l => ({ value: l.id, label: l.name }));
+  const regularPickupLocationOptions = pickupLocations
+    .map(l => ({ value: l.id, label: l.name }))
+    .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
 
   return (
     <Dialog open onOpenChange={onClose}>

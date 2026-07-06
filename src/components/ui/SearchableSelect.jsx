@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function SearchableSelect({ value, onValueChange, options, placeholder, className, error }) {
+export function SearchableSelect({ value, onValueChange, options, placeholder, className, error, disabled }) {
   const [open, setOpen] = useState(false);
   const selected = options.find(o => o.value === value);
 
@@ -16,6 +16,7 @@ export function SearchableSelect({ value, onValueChange, options, placeholder, c
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className={cn(
             "w-full justify-between font-normal h-9 px-3",
             !selected && "text-muted-foreground",

@@ -195,19 +195,13 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
           <Label className="text-xs text-amber-700 font-medium mb-1">
             Pickup Location {locationPreFilled ? <span className="text-green-600 font-normal">(pre-filled)</span> : <span className="text-red-500">*</span>}
           </Label>
-          {locationPreFilled ? (
-            <div className="h-9 flex items-center px-3 rounded-md border border-green-200 bg-green-50 text-sm text-green-800 font-medium">
-              {load.pickup_location_name}
-            </div>
-          ) : (
-            <SearchableSelect
-              value={load.pickup_location_name}
-              onValueChange={(v) => { setError(''); onChange({ ...load, pickup_location_name: v }); }}
-              options={joshPickupLocations.map(l => ({ value: l.name, label: l.name }))}
-              placeholder="Search pickup location..."
-              disabled={disabled || load.completed}
-            />
-          )}
+          <SearchableSelect
+            value={load.pickup_location_name}
+            onValueChange={(v) => { setError(''); onChange({ ...load, pickup_location_name: v }); }}
+            options={joshPickupLocations.map(l => ({ value: l.name, label: l.name }))}
+            placeholder="Search pickup location..."
+            disabled={disabled || load.completed}
+          />
         </div>
         <div>
           <Label className="text-xs text-amber-700 font-medium mb-1">
@@ -310,7 +304,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
 
   // Spreader-truck delivery jobs: driver picks any pickup location per load
   // (previously filtered to the legacy 'josh' assigned_drivers subset).
-  const joshPickupLocations = pickupLocations;
+  const joshPickupLocations = [...pickupLocations].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
   const completedLoadsCount = loads.filter(l => l.completed).length;
   const allLoadsCompleted = completedLoadsCount === loads.length && loads.length > 0;

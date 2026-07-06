@@ -71,7 +71,7 @@ export default function DriverDashboard() {
     try {
       const [driverJobs, locs, custs] = await Promise.all([
         base44.entities.Job.filter({ assigned_driver_id: id || driverId }, '-scheduled_date', 5000),
-        base44.entities.PickupLocation.list(),
+        base44.entities.PickupLocation.list('name'),
         base44.entities.Customer.list(undefined, 5000)
       ]);
       setJobs(driverJobs);

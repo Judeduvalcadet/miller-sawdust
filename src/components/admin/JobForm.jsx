@@ -288,8 +288,9 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       ? (c.company_name ? `${c.name} — ${c.company_name}` : c.name)
       : (c.company_name || c.business_name || '')
   }));
-  const pickupLocationOptions = pickupLocations.map(l => ({ value: l.id, label: l.name }));
-  const dropOffLocationOptions = dropOffLocations.map(l => ({ value: l.id, label: l.name }));
+  const byLabel = (a, b) => (a.label || '').localeCompare(b.label || '');
+  const pickupLocationOptions = pickupLocations.map(l => ({ value: l.id, label: l.name })).sort(byLabel);
+  const dropOffLocationOptions = dropOffLocations.map(l => ({ value: l.id, label: l.name })).sort(byLabel);
 
   return (
     <Card>
@@ -617,7 +618,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                             updated[i] = { ...updated[i], pickup_location_name: v };
                             setDeliveryLoads(updated);
                           }}
-                          options={pickupLocations.map(l => ({ value: l.name, label: l.name }))}
+                          options={pickupLocations.map(l => ({ value: l.name, label: l.name })).sort(byLabel)}
                           placeholder="Search location..."
                           className="h-8 text-xs"
                         />
