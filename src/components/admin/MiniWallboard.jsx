@@ -109,7 +109,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
     <Dialog open onOpenChange={onClose}>
       <DialogContent className={cn(
         "max-h-[85vh] overflow-y-auto overflow-x-hidden",
-        showActivity ? "sm:max-w-2xl" : "sm:max-w-md"
+        showActivity ? "sm:max-w-2xl" : "sm:max-w-xl"
       )}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -215,24 +215,20 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             <JobActivityTimeline job={job} />
           </div>
         }
-        <div className="flex justify-between items-center pt-2">
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete
-            </Button>
-            <Button variant="outline" onClick={() => setShowActivity((v) => !v)}>
-              <History className="w-4 h-4 mr-2" />
-              {showActivity ? 'Hide Detail' : 'More Detail'}
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>Close</Button>
-            <Button onClick={() => {onClose();onEdit(job);}} className="bg-amber-600 hover:bg-amber-700">
-              <Edit className="w-4 h-4 mr-2" />
-              Edit Job
-            </Button>
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+          <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </Button>
+          <Button variant="outline" onClick={() => setShowActivity((v) => !v)}>
+            <History className="w-4 h-4 mr-2" />
+            {showActivity ? 'Hide Detail' : 'More Detail'}
+          </Button>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button onClick={() => {onClose();onEdit(job);}} className="bg-amber-600 hover:bg-amber-700">
+            <Edit className="w-4 h-4 mr-2" />
+            Edit Job
+          </Button>
         </div>
       </DialogContent>
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
