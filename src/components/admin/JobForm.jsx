@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, AlertCircle, Trash2, CalendarDays, History } from "lucide-react";
-import JobActivityPanel from "@/components/admin/JobActivityPanel";
+import JobActivityTimeline from "@/components/admin/JobActivityTimeline";
 import { addDays, getDay, format, lastDayOfMonth } from "date-fns";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -742,9 +742,9 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                 </Button>
               )}
               {job?.id && (
-                <Button type="button" variant="outline" onClick={() => setShowActivity(true)}>
+                <Button type="button" variant="outline" onClick={() => setShowActivity((v) => !v)}>
                   <History className="w-4 h-4 mr-2" />
-                  More Detail
+                  {showActivity ? 'Hide Detail' : 'More Detail'}
                 </Button>
               )}
             </div>
@@ -773,8 +773,10 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
             </AlertDialogContent>
           </AlertDialog>
 
-          {job?.id && (
-            <JobActivityPanel job={job} open={showActivity} onClose={() => setShowActivity(false)} />
+          {job?.id && showActivity && (
+            <div className="border-t pt-4">
+              <JobActivityTimeline job={job} />
+            </div>
           )}
         </form>
       </CardContent>

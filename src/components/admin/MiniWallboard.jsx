@@ -15,7 +15,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
 import { useQueryClient } from "@tanstack/react-query";
-import JobActivityPanel from "@/components/admin/JobActivityPanel";
+import JobActivityTimeline from "@/components/admin/JobActivityTimeline";
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const TRUCK_LABELS = { straight_truck: 'Straight', semi: 'Semi', spreader: 'Spreader' };
@@ -107,7 +107,10 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className={cn(
+        "max-h-[85vh] overflow-y-auto overflow-x-hidden",
+        showActivity ? "sm:max-w-2xl" : "sm:max-w-md"
+      )}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {job.job_type === 'pickup' ?
@@ -181,7 +184,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             }
             {/* Josh per-load pickup details */}
             {perLoadDetails.length > 0 &&
-            <div className="border border-blue-100 rounded-lg overflow-hidden">
+            <div className="border border-blue-100 rounded-lg overflow-hidden max-w-full overflow-x-auto">
                 <div className="bg-blue-50 px-3 py-2">
                   <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Load Pickup Details</p>
                 </div>
@@ -207,15 +210,20 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             }
           </div>
         </div>
+        {showActivity &&
+        <div className="border-t pt-3">
+            <JobActivityTimeline job={job} />
+          </div>
+        }
         <div className="flex justify-between items-center pt-2">
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
               <Trash2 className="w-4 h-4 mr-2" />
               Delete
             </Button>
-            <Button variant="outline" onClick={() => setShowActivity(true)}>
+            <Button variant="outline" onClick={() => setShowActivity((v) => !v)}>
               <History className="w-4 h-4 mr-2" />
-              More Detail
+              {showActivity ? 'Hide Detail' : 'More Detail'}
             </Button>
           </div>
           <div className="flex gap-2">
@@ -239,7 +247,6 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <JobActivityPanel job={job} open={showActivity} onClose={() => setShowActivity(false)} />
     </Dialog>);
 
 }
