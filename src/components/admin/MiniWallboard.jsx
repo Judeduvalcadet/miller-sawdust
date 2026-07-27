@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote, History } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import CalendarPicker from "@/components/driver/CalendarPicker";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -15,6 +15,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
 import { useQueryClient } from "@tanstack/react-query";
+import JobActivityPanel from "@/components/admin/JobActivityPanel";
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const TRUCK_LABELS = { straight_truck: 'Straight', semi: 'Semi', spreader: 'Spreader' };
@@ -97,6 +98,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
 
 function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocations = [] }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showActivity, setShowActivity] = useState(false);
   // Per-load pickup details (all delivery truck types)
   const hasPerLoadData = job.job_type === 'delivery' && Array.isArray(job.loads) && job.loads.length > 0;
   const perLoadDetails = hasPerLoadData ?
@@ -206,10 +208,16 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
           </div>
         </div>
         <div className="flex justify-between items-center pt-2">
-          <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </Button>
+            <Button variant="outline" onClick={() => setShowActivity(true)}>
+              <History className="w-4 h-4 mr-2" />
+              More Detail
+            </Button>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>Close</Button>
             <Button onClick={() => {onClose();onEdit(job);}} className="bg-amber-600 hover:bg-amber-700">
@@ -231,6 +239,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <JobActivityPanel job={job} open={showActivity} onClose={() => setShowActivity(false)} />
     </Dialog>);
 
 }

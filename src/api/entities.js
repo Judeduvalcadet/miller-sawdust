@@ -53,6 +53,10 @@ const TABLE_COLUMNS = {
   log_entries: [
     'id','timestamp','level','message','category','user_id','details','created_date','updated_date',
   ],
+  // read-only: rows are written exclusively by the log_job_event() DB trigger
+  job_events: [
+    'id','job_id','event_type','actor_name','actor_role','actor_id','changes','snapshot','created_date',
+  ],
 }
 
 // UUID foreign key columns — empty strings must become null
@@ -299,6 +303,7 @@ export const base44 = {
     DriverNotification: createEntity('driver_notifications'),
     Settings: createEntity('settings'),
     LogEntry: createEntity('log_entries'),
+    JobEvent: createEntity('job_events'),
   },
   integrations: {
     Core: {

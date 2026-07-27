@@ -5,7 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, AlertCircle, Trash2, CalendarDays } from "lucide-react";
+import { Loader2, AlertCircle, Trash2, CalendarDays, History } from "lucide-react";
+import JobActivityPanel from "@/components/admin/JobActivityPanel";
 import { addDays, getDay, format, lastDayOfMonth } from "date-fns";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
@@ -50,6 +51,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   });
   const [errors, setErrors] = useState({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showActivity, setShowActivity] = useState(false);
   const [scheduleType, setScheduleType] = useState('one_time');
   const [recurringInterval, setRecurringInterval] = useState('');
   const [customInterval, setCustomInterval] = useState('');
@@ -732,11 +734,17 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
           </div>
 
           <div className="flex justify-between items-center pt-4">
-            <div>
+            <div className="flex items-center gap-2">
               {job?.id && onDelete && (
                 <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
                   <Trash2 className="w-4 h-4 mr-2" />
                   Delete
+                </Button>
+              )}
+              {job?.id && (
+                <Button type="button" variant="outline" onClick={() => setShowActivity(true)}>
+                  <History className="w-4 h-4 mr-2" />
+                  More Detail
                 </Button>
               )}
             </div>
@@ -764,6 +772,10 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          {job?.id && (
+            <JobActivityPanel job={job} open={showActivity} onClose={() => setShowActivity(false)} />
+          )}
         </form>
       </CardContent>
     </Card>

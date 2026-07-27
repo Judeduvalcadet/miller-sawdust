@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { isToday } from "date-fns";
 import JobForm from "@/components/admin/JobForm";
+import GlobalSearch from "@/components/admin/GlobalSearch";
 import MiniWallboard from "@/components/admin/MiniWallboard";
 import SortJobsModal from "@/components/admin/SortJobsModal.jsx";
 import { useActivityDetection } from "@/components/hooks/useActivityDetection";
@@ -131,6 +132,9 @@ export default function AdminDashboard() {
                 <h1 className="font-bold text-xl text-gray-900">Miller Sawdust</h1>
                 <p className="text-sm text-gray-500">Dispatch Board</p>
               </div>
+            </div>
+            <div className="flex-1 md:max-w-xl md:mx-4">
+              <GlobalSearch />
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg text-xs text-gray-600">
