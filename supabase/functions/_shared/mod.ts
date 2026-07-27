@@ -8,9 +8,12 @@ export const service = createClient(
 )
 
 // Must equal the project's JWT secret (Dashboard → Settings → API → JWT Secret)
-// so PostgREST / Realtime / Storage accept the tokens we sign:
+// so PostgREST / Realtime / Storage accept the tokens we sign. Some runtimes
+// inject SUPABASE_JWT_SECRET; otherwise set it explicitly:
 //   supabase secrets set APP_JWT_SECRET=<jwt secret>
-const JWT_SECRET = new TextEncoder().encode(Deno.env.get('APP_JWT_SECRET') ?? '')
+const JWT_SECRET = new TextEncoder().encode(
+  Deno.env.get('APP_JWT_SECRET') ?? Deno.env.get('SUPABASE_JWT_SECRET') ?? '',
+)
 
 export const ACCESS_TOKEN_TTL = '12h'
 export const SESSION_DAYS = 30

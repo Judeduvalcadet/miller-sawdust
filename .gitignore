@@ -29,3 +29,6 @@ dist-ssr
 
 .env
 .vercel
+
+# Local data snapshots (never commit production data)
+backups/
