@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/entities';
+import { supabase } from '@/api/supabaseClient';
+import { getAccessToken, login } from '@/api/authClient';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,80 +24,52 @@ export default function DriverLogin() {
     loadDrivers();
   }, []);
 
-  const getDeviceId = () => {
-    let deviceId = localStorage.getItem('miller_device_id');
-    if (!deviceId) {
-      deviceId = 'device_' + Math.random().toString(36).substr(2, 9) + Date.now();
-      localStorage.setItem('miller_device_id', deviceId);
+  const redirectByRole = (role) => {
+    if (role === 'admin' || role === 'dispatcher') {
+      window.location.href = createPageUrl('AdminDashboard');
+    } else if (role === 'assistant') {
+      window.location.href = createPageUrl('Invoicing');
+    } else if (role === 'wallboard') {
+      window.location.href = createPageUrl('Wallboard');
+    } else {
+      window.location.href = createPageUrl('DriverDashboard');
     }
-    return deviceId;
   };
 
   const checkExistingSession = async () => {
-    const sessionId = localStorage.getItem('miller_session_id');
-    const driverId = localStorage.getItem('miller_driver_id');
-    
-    if (sessionId && driverId) {
-      try {
-        const sessions = await base44.entities.DriverSession.filter({ id: sessionId });
-        if (sessions.length > 0) {
-          const session = sessions[0];
-          const expiresAt = new Date(session.expires_at);
-          
-          if (expiresAt > new Date()) {
-            // Session valid, update last_used_at
-            const newExpires = new Date();
-            newExpires.setDate(newExpires.getDate() + 30);
-            await base44.entities.DriverSession.update(sessionId, {
-              last_used_at: new Date().toISOString(),
-              expires_at: newExpires.toISOString()
-            });
-            
-            // Check if driver is still active
-            const driverList = await base44.entities.Driver.filter({ id: driverId });
-            if (driverList.length > 0 && driverList[0].active) {
-              const existingDriver = driverList[0];
-              localStorage.setItem('miller_driver_role', existingDriver.role);
-              if (existingDriver.role === 'admin' || existingDriver.role === 'dispatcher') {
-                window.location.href = createPageUrl('AdminDashboard');
-              } else if (existingDriver.role === 'assistant') {
-                window.location.href = createPageUrl('Invoicing');
-              } else {
-                window.location.href = createPageUrl('DriverDashboard');
-              }
-              return;
-            }
-          }
-        }
-      } catch (e) {
-        console.log('Session check failed, requiring login');
+    try {
+      // Refreshes silently, or exchanges a legacy (pre-JWT) session one time.
+      const token = await getAccessToken();
+      if (token) {
+        redirectByRole(localStorage.getItem('miller_driver_role'));
+        return;
       }
+    } catch (e) {
+      console.log('Session check failed, requiring login');
     }
     setIsLoading(false);
   };
 
   const loadDrivers = async (attempt = 1) => {
     try {
-      const allDrivers = await base44.entities.Driver.filter({ active: true });
-      setDrivers(allDrivers);
-    } catch (e) {
-      if (attempt < 4) {
-        // Retry with exponential backoff (1s, 2s, 4s)
-        setTimeout(() => loadDrivers(attempt + 1), attempt * 1000);
-      } else {
-        setError('Error loading drivers. Please refresh the page.');
+      // login_roster is the only anon-readable data after the RLS flip
+      const { data, error: rpcError } = await supabase.rpc('login_roster');
+      if (rpcError) throw rpcError;
+      setDrivers(data || []);
+    } catch {
+      try {
+        // Fallback for the window before migration 003 is applied
+        const allDrivers = await base44.entities.Driver.filter({ active: true }, 'name');
+        setDrivers(allDrivers);
+      } catch (e) {
+        if (attempt < 4) {
+          // Retry with exponential backoff (1s, 2s, 4s)
+          setTimeout(() => loadDrivers(attempt + 1), attempt * 1000);
+        } else {
+          setError('Error loading drivers. Please refresh the page.');
+        }
       }
     }
-  };
-
-  const simpleHash = (str) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return hash.toString();
   };
 
   const handleLogin = async (e) => {
@@ -104,53 +78,22 @@ export default function DriverLogin() {
     setIsLoggingIn(true);
 
     try {
-      const driver = drivers.find(d => d.id === selectedDriverId);
-      if (!driver) {
+      if (!selectedDriverId) {
         setError('Please select a driver');
         setIsLoggingIn(false);
         return;
       }
 
-      const pinHash = simpleHash(pin);
-      if (driver.pin_hash !== pinHash) {
-        setError('Incorrect PIN');
-        setIsLoggingIn(false);
-        return;
-      }
-
-      // Create session
-      const deviceId = getDeviceId();
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30);
-
-      const session = await base44.entities.DriverSession.create({
-        driver_id: driver.id,
-        device_id: deviceId,
-        last_used_at: new Date().toISOString(),
-        expires_at: expiresAt.toISOString()
-      });
-
-      // Update driver last login
-      await base44.entities.Driver.update(driver.id, {
-        last_login_at: new Date().toISOString()
-      });
-
-      // Store session locally
-      localStorage.setItem('miller_session_id', session.id);
-      localStorage.setItem('miller_driver_id', driver.id);
-      localStorage.setItem('miller_driver_name', driver.name);
-      localStorage.setItem('miller_driver_role', driver.role);
-
-      // Redirect based on role
-      if (driver.role === 'admin' || driver.role === 'dispatcher') {
-        window.location.href = createPageUrl('AdminDashboard');
-      } else if (driver.role === 'assistant') {
-        window.location.href = createPageUrl('Invoicing');
-      } else {
-        window.location.href = createPageUrl('DriverDashboard');
-      }
+      const driver = await login(selectedDriverId, pin);
+      redirectByRole(driver.role);
     } catch (e) {
-      setError('Login failed. Please try again.');
+      if (e.status === 401) {
+        setError('Incorrect PIN');
+      } else if (e.status === 429) {
+        setError('Too many attempts. Please wait 15 minutes and try again.');
+      } else {
+        setError('Login failed. Please try again.');
+      }
       setIsLoggingIn(false);
     }
   };

@@ -6,6 +6,7 @@ import {
   Factory, Monitor, Menu, X, BarChart2, FileText, MapPinned, LogOut, ScrollText, Settings, Database
 } from 'lucide-react';
 import ErrorBoundary from '@/components/admin/ErrorBoundary';
+import { logout } from '@/api/authClient';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
@@ -22,11 +23,8 @@ export default function Layout({ children, currentPageName }) {
   const isAssistant = driverRole === 'assistant';
   const isLoggedIn = !!localStorage.getItem('miller_session_id');
 
-  const handleLogout = () => {
-    localStorage.removeItem('miller_session_id');
-    localStorage.removeItem('miller_driver_id');
-    localStorage.removeItem('miller_driver_name');
-    localStorage.removeItem('miller_driver_role');
+  const handleLogout = async () => {
+    await logout(); // revokes the session server-side and clears local tokens
     window.location.href = createPageUrl('DriverLogin');
   };
 

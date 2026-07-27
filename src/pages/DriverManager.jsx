@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/entities';
+import { setPin } from '@/api/authClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,9 +45,9 @@ export default function DriverManager() {
         driver_type: 'delivery',
         pickup_role: 'none',
         active: true,
-        pin_hash: simpleHash(rec.pin || '0000'),
       };
-      await base44.entities.Driver.create(data);
+      const created = await base44.entities.Driver.create(data);
+      await setPin(created.id, rec.pin || '0000');
       success++;
     }
     reportResult(success, failed);
@@ -73,18 +74,12 @@ export default function DriverManager() {
     refetchOnWindowFocus: true,
   });
 
-  const simpleHash = (str) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return hash.toString();
-  };
-
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.Driver.create(data),
+    mutationFn: async ({ data, pin }) => {
+      const created = await base44.entities.Driver.create(data);
+      if (pin) await setPin(created.id, pin);
+      return created;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drivers'] });
       setShowForm(false);
@@ -93,7 +88,11 @@ export default function DriverManager() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Driver.update(id, data),
+    mutationFn: async ({ id, data, pin }) => {
+      const updated = await base44.entities.Driver.update(id, data);
+      if (pin) await setPin(id, pin);
+      return updated;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['drivers'] });
       setShowForm(false);
@@ -135,15 +134,10 @@ export default function DriverManager() {
       active: formData.active
     };
 
-    if (formData.pin) {
-      data.pin_hash = simpleHash(formData.pin);
-    }
-
     if (editingDriver) {
-      updateMutation.mutate({ id: editingDriver.id, data });
+      updateMutation.mutate({ id: editingDriver.id, data, pin: formData.pin });
     } else {
-      data.pin_hash = simpleHash(formData.pin);
-      createMutation.mutate(data);
+      createMutation.mutate({ data, pin: formData.pin });
     }
   };
 
@@ -169,9 +163,7 @@ export default function DriverManager() {
 
   const handleResetPin = async () => {
     if (newPin.length < 4) return;
-    await base44.entities.Driver.update(resetPinDriver.id, { 
-      pin_hash: simpleHash(newPin) 
-    });
+    await setPin(resetPinDriver.id, newPin);
     setShowPinReset(false);
     setResetPinDriver(null);
     setNewPin('');

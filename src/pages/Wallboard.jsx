@@ -41,13 +41,8 @@ export default function Wallboard() {
 
   // Determine current user role from local session
   useEffect(() => {
-    const sessionStr = localStorage.getItem('driverSession');
-    if (sessionStr) {
-      try {
-        const session = JSON.parse(sessionStr);
-        setUserRole(session.role || 'driver');
-      } catch {}
-    }
+    const role = localStorage.getItem('miller_driver_role');
+    if (role) setUserRole(role);
   }, []);
 
   // Fetch only jobs scheduled within the visible Mon–Fri window.

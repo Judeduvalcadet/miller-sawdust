@@ -28,7 +28,7 @@ const TABLE_COLUMNS = {
     'completed_at','deleted_at','created_date','updated_date',
   ],
   drivers: [
-    'id','username','name','phone','pin_hash','role','driver_type','pickup_role',
+    'id','username','name','phone','role','driver_type','pickup_role',
     'active','last_login_at','created_date','updated_date',
   ],
   customers: [
