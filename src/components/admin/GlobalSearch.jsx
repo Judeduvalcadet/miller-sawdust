@@ -140,7 +140,11 @@ export default function GlobalSearch() {
       )}
 
       {selection && (
-        <EntityHistoryOverlay selection={selection} onClose={() => setSelection(null)} />
+        <EntityHistoryOverlay
+          key={`${selection.type}-${selection.record.id}`}
+          selection={selection}
+          onClose={() => setSelection(null)}
+        />
       )}
     </div>
   );

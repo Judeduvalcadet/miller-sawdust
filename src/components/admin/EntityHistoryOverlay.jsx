@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import { supabase } from '@/api/supabaseClient';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Building2, Truck, Factory, MapPinned, FileText, DollarSign } from "lucide-react";
+import { Loader2, Building2, Truck, Factory, MapPinned, FileText, DollarSign, ChevronRight, CalendarClock } from "lucide-react";
 import { formatDay } from '@/lib/job-history';
 
 const TYPE_META = {
@@ -71,11 +72,20 @@ export default function EntityHistoryOverlay({ selection, onClose }) {
   const { type, record } = selection;
   const meta = TYPE_META[type];
   const displayName = type === 'customer' ? (record.company_name || record.name) : record.name;
+  const [showUpcoming, setShowUpcoming] = useState(false);
 
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['entity-history', type, record.id],
     queryFn: () => fetchHistory(selection),
   });
+
+  // Future jobs live in a collapsed section on top; history starts at the
+  // most recent job that is today or in the past.
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const upcoming = jobs
+    .filter((j) => (j.scheduled_date || '') > today)
+    .sort((a, b) => (a.scheduled_date || '').localeCompare(b.scheduled_date || ''));
+  const past = jobs.filter((j) => (j.scheduled_date || '') <= today);
 
   const completed = jobs.filter((j) => j.status === 'completed').length;
   const totalYards = jobs.reduce((sum, j) => {
@@ -84,6 +94,47 @@ export default function EntityHistoryOverlay({ selection, onClose }) {
   }, 0);
 
   const Icon = meta.icon;
+
+  const renderRow = (job) => (
+    <div key={job.id} className="px-6 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 hover:bg-gray-50">
+      <div className="w-40 shrink-0">
+        <div className="text-sm font-medium text-gray-900">{formatDay(job.scheduled_date)}</div>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${job.job_type === 'pickup' ? 'border-blue-300 text-blue-700' : 'border-amber-300 text-amber-700'}`}>
+            {job.truck_type === 'spreader' ? 'Spreader' : job.job_type === 'pickup' ? 'Pickup' : 'Delivery'}
+          </Badge>
+          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 border-0 ${STATUS_STYLES[job.status] || STATUS_STYLES.pending}`}>
+            {(job.status || 'pending').replaceAll('_', ' ')}
+          </Badge>
+        </div>
+      </div>
+
+      <div className="flex-1 min-w-[180px]">
+        <div className="text-sm text-gray-900 truncate">
+          {type === 'customer'
+            ? (job.location_name || job.address || job.customer_company_name || '—')
+            : (job.customer_company_name || job.location_name || job.dropoff_location_name || '—')}
+        </div>
+        <div className="text-xs text-gray-500 truncate">
+          {[
+            job.load_configuration,
+            jobYards(job),
+            job.quantity > 1 ? `${job.quantity} loads` : null,
+          ].filter(Boolean).join(' · ') || 'No load details'}
+        </div>
+      </div>
+
+      <div className="w-36 shrink-0 text-right">
+        <div className="text-sm text-gray-700 truncate">
+          {job.assigned_driver_name || <span className="text-gray-400">Unassigned</span>}
+        </div>
+        <div className="flex items-center justify-end gap-2 mt-0.5">
+          {job.invoice_sent && <FileText className="w-3.5 h-3.5 text-blue-500" title="Invoiced" />}
+          {job.payment_collected && <DollarSign className="w-3.5 h-3.5 text-green-600" title="Paid" />}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -120,48 +171,38 @@ export default function EntityHistoryOverlay({ selection, onClose }) {
           ) : jobs.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-16">No records in the system for {displayName}.</p>
           ) : (
-            <div className="divide-y">
-              {jobs.map((job) => (
-                <div key={job.id} className="px-6 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 hover:bg-gray-50">
-                  <div className="w-40 shrink-0">
-                    <div className="text-sm font-medium text-gray-900">{formatDay(job.scheduled_date)}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${job.job_type === 'pickup' ? 'border-blue-300 text-blue-700' : 'border-amber-300 text-amber-700'}`}>
-                        {job.truck_type === 'spreader' ? 'Spreader' : job.job_type === 'pickup' ? 'Pickup' : 'Delivery'}
-                      </Badge>
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 border-0 ${STATUS_STYLES[job.status] || STATUS_STYLES.pending}`}>
-                        {(job.status || 'pending').replaceAll('_', ' ')}
-                      </Badge>
+            <>
+              {upcoming.length > 0 && (
+                <div className="border-b bg-amber-50/60">
+                  <button
+                    type="button"
+                    onClick={() => setShowUpcoming((v) => !v)}
+                    className="w-full flex items-center gap-2 px-6 py-2.5 text-left hover:bg-amber-50"
+                  >
+                    <ChevronRight className={`w-4 h-4 text-amber-600 transition-transform ${showUpcoming ? 'rotate-90' : ''}`} />
+                    <CalendarClock className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">
+                      {upcoming.length} upcoming job{upcoming.length === 1 ? '' : 's'}
+                    </span>
+                    <span className="text-xs text-amber-700/80">
+                      next: {formatDay(upcoming[0].scheduled_date)}
+                    </span>
+                  </button>
+                  {showUpcoming && (
+                    <div className="divide-y border-t bg-white">
+                      {upcoming.map(renderRow)}
                     </div>
-                  </div>
-
-                  <div className="flex-1 min-w-[180px]">
-                    <div className="text-sm text-gray-900 truncate">
-                      {type === 'customer'
-                        ? (job.location_name || job.address || job.customer_company_name || '—')
-                        : (job.customer_company_name || job.location_name || job.dropoff_location_name || '—')}
-                    </div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {[
-                        job.load_configuration,
-                        jobYards(job),
-                        job.quantity > 1 ? `${job.quantity} loads` : null,
-                      ].filter(Boolean).join(' · ') || 'No load details'}
-                    </div>
-                  </div>
-
-                  <div className="w-36 shrink-0 text-right">
-                    <div className="text-sm text-gray-700 truncate">
-                      {job.assigned_driver_name || <span className="text-gray-400">Unassigned</span>}
-                    </div>
-                    <div className="flex items-center justify-end gap-2 mt-0.5">
-                      {job.invoice_sent && <FileText className="w-3.5 h-3.5 text-blue-500" title="Invoiced" />}
-                      {job.payment_collected && <DollarSign className="w-3.5 h-3.5 text-green-600" title="Paid" />}
-                    </div>
-                  </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              )}
+              {past.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-10">No past records for {displayName}.</p>
+              ) : (
+                <div className="divide-y">
+                  {past.map(renderRow)}
+                </div>
+              )}
+            </>
           )}
         </div>
       </DialogContent>
