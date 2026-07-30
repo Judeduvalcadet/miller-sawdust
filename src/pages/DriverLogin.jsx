@@ -43,7 +43,21 @@ export default function DriverLogin() {
   const checkExistingSession = async () => {
     try {
       // Refreshes silently, or exchanges a legacy (pre-JWT) session one time.
-      const token = await getAccessToken();
+      let token = await getAccessToken();
+      if (token && !localStorage.getItem('miller_driver_id')) {
+        // Half-cleared device (old logout bug): token exists but identity is
+        // gone — a redirect would loop. Force a refresh, which re-stores the
+        // driver info alongside the new token.
+        localStorage.removeItem('miller_jwt');
+        token = await getAccessToken();
+        if (token && !localStorage.getItem('miller_driver_id')) {
+          // Still no identity — drop the broken tokens and show the form.
+          localStorage.removeItem('miller_jwt');
+          localStorage.removeItem('miller_refresh_token');
+          localStorage.removeItem('miller_session_id');
+          token = null;
+        }
+      }
       if (token) {
         redirectByRole(localStorage.getItem('miller_driver_role'));
         return;
