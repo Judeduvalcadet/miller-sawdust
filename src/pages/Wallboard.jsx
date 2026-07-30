@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/entities';
 import { supabase } from '@/api/supabaseClient';
+import { ensureAuthenticated } from '@/api/authClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, startOfWeek, addDays, addWeeks, subWeeks, isToday } from 'date-fns';
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,9 @@ export default function Wallboard() {
 
   // Determine current user role from local session
   useEffect(() => {
+    // The wallboard needs a login too (e.g. the TV's read-only account) —
+    // without one the locked-down database returns an empty board.
+    ensureAuthenticated();
     const role = localStorage.getItem('miller_driver_role');
     if (role) setUserRole(role);
   }, []);

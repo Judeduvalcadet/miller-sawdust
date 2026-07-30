@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { 
@@ -6,14 +6,21 @@ import {
   Factory, Monitor, Menu, X, BarChart2, FileText, MapPinned, LogOut, ScrollText, Settings, Database
 } from 'lucide-react';
 import ErrorBoundary from '@/components/admin/ErrorBoundary';
-import { logout } from '@/api/authClient';
+import { logout, ensureAuthenticated } from '@/api/authClient';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 export default function Layout({ children, currentPageName }) {
   // Pages without layout (full screen)
   const noLayoutPages = ['DriverLogin', 'DriverDashboard', 'Wallboard'];
-  
+
+  // Redirect to login when no renewable session exists (guarded pages only —
+  // the full-screen pages handle their own auth)
+  useEffect(() => {
+    if (!noLayoutPages.includes(currentPageName)) ensureAuthenticated();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPageName]);
+
   if (noLayoutPages.includes(currentPageName)) {
     return <>{children}</>;
   }

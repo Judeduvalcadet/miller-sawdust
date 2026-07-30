@@ -10,6 +10,7 @@ import JobDetail from "@/components/driver/JobDetail";
 import NotificationBell from "@/components/driver/NotificationBanner";
 import { useActivityDetection } from "@/components/hooks/useActivityDetection";
 import CalendarPicker from "@/components/driver/CalendarPicker";
+import { ensureAuthenticated } from "@/api/authClient";
 
 export default function DriverDashboard() {
   const [jobs, setJobs] = useState([]);
@@ -34,7 +35,11 @@ export default function DriverDashboard() {
       window.location.href = createPageUrl('DriverLogin');
       return;
     }
-    
+
+    // Stale/expired sessions would otherwise render an empty dashboard —
+    // this redirects to login when the session can't be renewed.
+    ensureAuthenticated();
+
     setDriverId(storedDriverId);
     setDriverName(storedDriverName || 'Driver');
     loadJobs(storedDriverId);

@@ -121,11 +121,24 @@ async function renew() {
       })
       storeTokens(data)
       return data.access_token
-    } catch {
+    } catch (e) {
+      // Dead session (expired or already claimed) — stop retrying it.
+      if (e.status === 401) localStorage.removeItem(KEYS.session)
       return null
     }
   }
   return null
+}
+
+// Verifies a usable token exists; otherwise clears stale local state and
+// sends the browser to the login page. Without this, a device with an
+// expired session sees an empty app (RLS returns no rows, not errors).
+export async function ensureAuthenticated() {
+  const token = await getAccessToken()
+  if (token) return true
+  clearAll()
+  window.location.href = '/DriverLogin'
+  return false
 }
 
 // -- auth actions
