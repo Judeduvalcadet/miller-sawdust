@@ -10,7 +10,7 @@ export default function Home() {
       <div className="w-full max-w-md text-center">
         <div className="mx-auto w-20 h-20 mb-6">
           <img 
-            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6995e4aeb0c428c566fcd648/51f87db73_MSSSS-logo.jpg" 
+            src="/logo.jpg"
             alt="Miller Sawdust Logo" 
             className="w-full h-full object-contain rounded-lg"
           />

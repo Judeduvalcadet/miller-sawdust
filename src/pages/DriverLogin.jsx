@@ -112,7 +112,7 @@ export default function DriverLogin() {
         <CardHeader className="text-center pb-2">
           <div className="mx-auto w-16 h-16 mb-4">
             <img 
-              src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/6995e4aeb0c428c566fcd648/51f87db73_MSSSS-logo.jpg" 
+              src="/logo.jpg"
               alt="Miller Sawdust Logo" 
               className="w-full h-full object-contain rounded-lg"
             />
