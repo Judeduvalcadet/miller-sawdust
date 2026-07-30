@@ -1,11 +1,16 @@
 /* global __BUILD_ID__ */
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 
 // Saved home-screen web apps resume from memory with whatever bundle they
-// loaded last — sometimes days old. This checks the deployed build id when
-// the app becomes visible (and every 5 minutes, for the wallboard TV) and
-// reloads once when a newer build is live.
+// loaded last — sometimes days old. This checks the deployed build id and
+// reloads once when a newer build is live. To never interrupt someone
+// mid-form, regular pages only check when the app returns to the
+// foreground; the wallboard (an unattended TV) also checks on a timer.
 export default function AutoUpdate() {
+  const { pathname } = useLocation();
+  const isWallboard = pathname.toLowerCase().includes('wallboard');
+
   useEffect(() => {
     if (typeof __BUILD_ID__ === 'undefined') return undefined;
 
@@ -35,13 +40,13 @@ export default function AutoUpdate() {
       if (document.visibilityState === 'visible') check();
     };
     document.addEventListener('visibilitychange', onVisible);
-    const interval = setInterval(check, 5 * 60_000);
+    const interval = isWallboard ? setInterval(check, 5 * 60_000) : null;
     check();
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
-  }, []);
+  }, [isWallboard]);
 
   return null;
 }
