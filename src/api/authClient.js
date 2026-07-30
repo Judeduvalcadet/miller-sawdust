@@ -26,15 +26,25 @@ function emit(token) {
 // -- helpers
 
 async function callFn(name, body, accessToken) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: ANON_KEY,
-      Authorization: `Bearer ${accessToken || ANON_KEY}`,
-    },
-    body: JSON.stringify(body),
-  })
+  // Hard timeout: a hung request on flaky mobile networks must never leave
+  // the app stuck on a spinner.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 10_000)
+  let res
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${accessToken || ANON_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     throw Object.assign(new Error(data.error || `HTTP ${res.status}`), {
