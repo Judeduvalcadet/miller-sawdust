@@ -10,7 +10,7 @@ import JobDetail from "@/components/driver/JobDetail";
 import NotificationBell from "@/components/driver/NotificationBanner";
 import { useActivityDetection } from "@/components/hooks/useActivityDetection";
 import CalendarPicker from "@/components/driver/CalendarPicker";
-import { ensureAuthenticated } from "@/api/authClient";
+import { ensureAuthenticated, logout } from "@/api/authClient";
 
 export default function DriverDashboard() {
   const [jobs, setJobs] = useState([]);
@@ -95,10 +95,10 @@ export default function DriverDashboard() {
     loadJobs(driverId);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('miller_session_id');
-    localStorage.removeItem('miller_driver_id');
-    localStorage.removeItem('miller_driver_name');
+  const handleLogout = async () => {
+    // Must clear ALL auth state (token included) — removing only the driver
+    // keys used to leave a half-logged-out device stuck in a redirect loop.
+    await logout();
     window.location.href = createPageUrl('DriverLogin');
   };
 
