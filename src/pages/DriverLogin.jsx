@@ -22,6 +22,10 @@ export default function DriverLogin() {
   useEffect(() => {
     checkExistingSession();
     loadDrivers();
+    // Fail-safe: never leave the user staring at the session-check spinner —
+    // if anything hangs, show the login form and let them log in normally.
+    const failSafe = setTimeout(() => setIsLoading(false), 8000);
+    return () => clearTimeout(failSafe);
   }, []);
 
   const redirectByRole = (role) => {
