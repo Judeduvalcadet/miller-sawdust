@@ -479,6 +479,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const [editMode, setEditMode] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [mobileSelectedDate, setMobileSelectedDate] = useState(new Date());
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState(new Set());
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState(null); // null | { current, total, done }
@@ -660,72 +661,91 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   return (
     <div className="bg-white rounded-xl border flex flex-col flex-1 lg:min-h-0">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b gap-3">
+      <div className="flex flex-row items-center justify-between px-4 py-2.5 lg:py-3 border-b gap-2">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-gray-800 text-sm">Weekly View</h2>
-          {/* Mobile calendar button */}
+          {/* Week controls drive the desktop columns only — hidden on mobile */}
+          <h2 className="hidden lg:block font-semibold text-gray-800 text-sm">Weekly View</h2>
+          {/* Mobile: the calendar picker is how you choose the day */}
           <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 lg:hidden"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs lg:hidden text-amber-700 border-amber-300"
             onClick={() => setShowCalendar(true)}
           >
-            <CalendarDays className="w-4 h-4 text-amber-600" />
+            <CalendarDays className="w-4 h-4 mr-1.5 text-amber-600" />
+            Pick a day
           </Button>
-          <span className="text-sm text-gray-500 font-medium">{weekLabel()}</span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((w) => w - 1)}>
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((w) => w + 1)}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-          {weekOffset !== 0 &&
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setWeekOffset(0)}>
-              Today
+          <div className="hidden lg:flex items-center gap-2">
+            <span className="text-sm text-gray-500 font-medium">{weekLabel()}</span>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((w) => w - 1)}>
+              <ChevronLeft className="w-4 h-4" />
             </Button>
-          }
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((w) => w + 1)}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            {weekOffset !== 0 &&
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setWeekOffset(0)}>
+                Today
+              </Button>
+            }
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {!editMode ? (
             <>
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                <Input
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 text-xs pl-7 w-44"
-                />
+              {/* Mobile: filters collapsed behind one button */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs lg:hidden relative"
+                onClick={() => setShowMobileFilters((v) => !v)}
+              >
+                <Filter className="w-3.5 h-3.5 mr-1.5" />
+                Filters
+                {(searchQuery.trim() || filterDriver !== 'all' || filterType !== 'all') && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full" />
+                )}
+              </Button>
+              <div className="hidden lg:flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                  <Input
+                    placeholder="Search..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-7 text-xs pl-7 w-44"
+                  />
+                </div>
+                <Filter className="w-3.5 h-3.5 text-gray-400" />
+                <Select value={filterDriver} onValueChange={setFilterDriver}>
+                  <SelectTrigger className="h-7 text-xs w-36">
+                    <SelectValue placeholder="All Drivers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Drivers</SelectItem>
+                    {activeDrivers.map((d) =>
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <Select value={filterType} onValueChange={setFilterType}>
+                  <SelectTrigger className="h-7 text-xs w-36">
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="straight_truck">Straight Truck</SelectItem>
+                    <SelectItem value="semi">Semi</SelectItem>
+                    <SelectItem value="spreader">Spreader</SelectItem>
+                  </SelectContent>
+                </Select>
+                {isAdmin && (
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={toggleEditMode}>
+                    <CheckSquare className="w-3.5 h-3.5 mr-1" />
+                    Edit
+                  </Button>
+                )}
               </div>
-              <Filter className="w-3.5 h-3.5 text-gray-400" />
-              <Select value={filterDriver} onValueChange={setFilterDriver}>
-                <SelectTrigger className="h-7 text-xs w-36">
-                  <SelectValue placeholder="All Drivers" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Drivers</SelectItem>
-                  {activeDrivers.map((d) =>
-                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="h-7 text-xs w-36">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="straight_truck">Straight Truck</SelectItem>
-                  <SelectItem value="semi">Semi</SelectItem>
-                  <SelectItem value="spreader">Spreader</SelectItem>
-                </SelectContent>
-              </Select>
-              {isAdmin && (
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={toggleEditMode}>
-                  <CheckSquare className="w-3.5 h-3.5 mr-1" />
-                  Edit
-                </Button>
-              )}
             </>
           ) : (
             <>
@@ -785,6 +805,54 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
           )}
         </div>
       </div>
+
+      {/* Mobile filter panel (collapsed by default) */}
+      {showMobileFilters && !editMode && (
+        <div className="lg:hidden px-4 py-3 border-b bg-gray-50 space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search this day..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 text-sm pl-8"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select value={filterDriver} onValueChange={setFilterDriver}>
+              <SelectTrigger className="h-9 text-sm flex-1">
+                <SelectValue placeholder="All Drivers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Drivers</SelectItem>
+                {activeDrivers.map((d) =>
+                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="h-9 text-sm flex-1">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="straight_truck">Straight Truck</SelectItem>
+                <SelectItem value="semi">Semi</SelectItem>
+                <SelectItem value="spreader">Spreader</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(searchQuery.trim() || filterDriver !== 'all' || filterType !== 'all') && (
+            <button
+              type="button"
+              className="text-xs text-amber-700 font-medium"
+              onClick={() => { setSearchQuery(''); setFilterDriver('all'); setFilterType('all'); }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Mobile single-day view */}
       {mobileSelectedDate && (() => {

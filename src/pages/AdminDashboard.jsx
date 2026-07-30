@@ -123,8 +123,9 @@ export default function AdminDashboard() {
       {/* Header */}
       <div className="bg-white border-b shrink-0 z-20">
         <div className="px-4 py-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+            {/* Title is redundant below lg — the mobile top bar already says it */}
+            <div className="hidden lg:flex items-center gap-3">
               <div className="w-10 h-10 bg-amber-600 rounded-xl flex items-center justify-center">
                 <Truck className="w-5 h-5 text-white" />
               </div>
@@ -136,7 +137,7 @@ export default function AdminDashboard() {
             <div className="flex-1 md:max-w-xl md:mx-4">
               <GlobalSearch />
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 justify-between lg:justify-start">
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg text-xs text-gray-600">
                 {isSyncing ? (
                   <>
