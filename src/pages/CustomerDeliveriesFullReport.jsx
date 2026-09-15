@@ -183,8 +183,9 @@ export default function CustomerDeliveriesFullReport() {
   const customerOptions = customers
     .map(c => ({ value: c.id, label: c.name || c.business_name || 'Unnamed' }))
     .sort((a, b) => a.label.localeCompare(b.label));
+  // Include MS Locations (bases) too — Home Hoop Building alone carries
+  // 1,000+ jobs, so it must stay filterable.
   const pickupLocOptions = pickupLocations
-    .filter(l => !l.location_type || l.location_type === 'supplier')
     .map(l => ({ value: l.id, label: l.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
   const jobTypeOptions = [
