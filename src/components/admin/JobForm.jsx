@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, AlertCircle, Trash2, CalendarDays, History } from "lucide-react";
+import { Loader2, AlertCircle, Trash2, CalendarDays, History, X } from "lucide-react";
+import { useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import JobActivityTimeline from "@/components/admin/JobActivityTimeline";
 import { addDays, getDay, format, lastDayOfMonth } from "date-fns";
 import {
@@ -16,7 +18,7 @@ import {
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
-import { CustomerMapPanel, NewCustomerForm } from "@/components/admin/CustomerMapSection";
+import { JobMapPanel, NewCustomerForm, saveCustomerMapImage } from "@/components/admin/CustomerMapSection";
 
 const TRUCK_TYPES = [
   { value: 'straight_truck', label: 'Straight Truck' },
@@ -55,6 +57,15 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   // Customers created inline, so they're selectable before the list refetches
   const [extraCustomers, setExtraCustomers] = useState([]);
+  // Right-column map state
+  const [newCustomerPin, setNewCustomerPin] = useState(null);
+  const [newCustomerBlob, setNewCustomerBlob] = useState(null);
+  const [newCustomerDirty, setNewCustomerDirty] = useState(false);
+  const [customerMapNote, setCustomerMapNote] = useState('');
+  // Exit guard: the popup only closes through the X, and asks first if
+  // anything was typed.
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const queryClient = useQueryClient();
   const [showActivity, setShowActivity] = useState(false);
   const [scheduleType, setScheduleType] = useState('one_time');
   const [recurringInterval, setRecurringInterval] = useState('');
@@ -294,6 +305,42 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   ];
   const selectedCustomer = allCustomers.find(c => c.id === formData.customer_id) || null;
 
+  // Dirty tracking for the exit guard: compare against the first render.
+  const initialSnapRef = useRef();
+  if (initialSnapRef.current === undefined) {
+    initialSnapRef.current = JSON.stringify({ f: formData, l: deliveryLoads });
+  }
+  const isDirty = () =>
+    JSON.stringify({ f: formData, l: deliveryLoads }) !== initialSnapRef.current ||
+    newCustomerDirty || !!newCustomerBlob;
+  const requestClose = () => { isDirty() ? setShowExitConfirm(true) : onCancel(); };
+
+  // What the right-column map shows
+  const selectedPickupLoc = pickupLocations.find(l => l.id === formData.pickup_location_id) || null;
+  let mapPin = null, mapTitle = '', mapWaiting = '', mapMode = 'none';
+  if (!isPickup && showNewCustomer) {
+    mapMode = 'new';
+    mapPin = newCustomerPin;
+    mapTitle = 'New customer';
+    mapWaiting = 'Pick an address suggestion on the left and the pin drops here.';
+  } else if (!isPickup && selectedCustomer) {
+    mapTitle = `${(selectedCustomer.company_name || selectedCustomer.name || '').trim()} — ${[selectedCustomer.street_address, selectedCustomer.city].filter(Boolean).join(', ')}`;
+    if (selectedCustomer.latitude != null) {
+      mapMode = 'customer';
+      mapPin = { lat: selectedCustomer.latitude, lng: selectedCustomer.longitude };
+    } else {
+      mapWaiting = "This customer's address isn't map-verified yet — fix it on the Customers page and the pin appears automatically.";
+    }
+  } else if (isPickup && selectedPickupLoc) {
+    mapTitle = selectedPickupLoc.name;
+    if (selectedPickupLoc.latitude != null) mapPin = { lat: selectedPickupLoc.latitude, lng: selectedPickupLoc.longitude };
+    else mapWaiting = "This location's address isn't map-verified yet.";
+  } else {
+    mapWaiting = isPickup
+      ? 'Choose a pickup location and the map flies to it.'
+      : 'Choose a customer and the map flies to their pin.';
+  }
+
   const customerOptions = allCustomers.map(c => ({
     value: c.id,
     label: c.name
@@ -305,12 +352,21 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const dropOffLocationOptions = dropOffLocations.map(l => ({ value: l.id, label: l.name })).sort(byLabel);
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="border-0 shadow-none">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-2 pt-1 pb-3">
         <CardTitle>{job?.id ? 'Edit Job' : 'Create New Job'}</CardTitle>
+        <button
+          type="button"
+          onClick={requestClose}
+          aria-label="Close"
+          className="w-11 h-11 flex items-center justify-center rounded-xl border border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors shrink-0"
+        >
+          <X className="w-6 h-6" />
+        </button>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <CardContent className="px-2 pb-2">
+        <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+        <form onSubmit={handleSubmit} className="space-y-4 flex-1 min-w-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
             {/* Job Type */}
@@ -501,7 +557,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                 </div>
                 <SearchableSelect
                   value={formData.customer_id}
-                  onValueChange={(v) => { set('customer_id', v); setErrors(p => ({...p, customer_id: ''})); }}
+                  onValueChange={(v) => { set('customer_id', v); setErrors(p => ({...p, customer_id: ''})); setCustomerMapNote(''); }}
                   options={customerOptions}
                   placeholder="Search customer..."
                   error={errors.customer_id}
@@ -510,20 +566,28 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Inline new customer, or the selected customer's map */}
+            {/* Inline new customer — the map on the right waits for its pin */}
             {!isPickup && showNewCustomer && (
               <NewCustomerForm
-                onCancel={() => setShowNewCustomer(false)}
+                mapBlob={newCustomerBlob}
+                onPinChange={setNewCustomerPin}
+                onDirty={() => setNewCustomerDirty(true)}
+                onCancel={() => {
+                  setShowNewCustomer(false);
+                  setNewCustomerPin(null);
+                  setNewCustomerBlob(null);
+                  setNewCustomerDirty(false);
+                }}
                 onCreated={(created) => {
                   setExtraCustomers(prev => [...prev, created]);
                   set('customer_id', created.id);
                   setErrors(p => ({ ...p, customer_id: '' }));
                   setShowNewCustomer(false);
+                  setNewCustomerPin(null);
+                  setNewCustomerBlob(null);
+                  setNewCustomerDirty(false);
                 }}
               />
-            )}
-            {!isPickup && !showNewCustomer && selectedCustomer && (
-              <CustomerMapPanel customer={selectedCustomer} />
             )}
 
             {/* ── ASSIGN DRIVER — below location ── */}
@@ -787,7 +851,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               {recurringProgress && (
                 <span className="text-xs text-blue-600 font-medium">{recurringProgress}</span>
               )}
-              <Button type="button" variant="outline" onClick={onCancel} disabled={isCreatingRecurring}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={requestClose} disabled={isCreatingRecurring}>Cancel</Button>
               <Button type="submit" disabled={isLoading || isCreatingRecurring} className="bg-amber-600 hover:bg-amber-700">
                 {(isLoading || isCreatingRecurring) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 {job?.id ? 'Update Job' : (scheduleType === 'recurring' ? 'Create Recurring Jobs' : 'Create Job')}
@@ -814,6 +878,44 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
             </div>
           )}
         </form>
+
+        {/* Right column: the map, open from the start */}
+        <div className="w-full lg:w-[42%] shrink-0 lg:sticky lg:top-0 self-start">
+          <div className="h-[320px] lg:h-[62vh] lg:min-h-[420px]">
+            <JobMapPanel
+              pin={mapPin}
+              title={mapTitle}
+              waitingText={mapWaiting}
+              canCapture={mapMode === 'new' || mapMode === 'customer'}
+              savedNote={mapMode === 'new'
+                ? (newCustomerBlob ? 'Picture attached — saves with the customer' : '')
+                : customerMapNote}
+              onSaveImage={async (blob) => {
+                if (mapMode === 'new') {
+                  setNewCustomerBlob(blob);
+                } else if (mapMode === 'customer' && selectedCustomer) {
+                  await saveCustomerMapImage(queryClient, selectedCustomer.id, blob);
+                  setCustomerMapNote("Saved as this customer's map picture");
+                }
+              }}
+            />
+          </div>
+        </div>
+        </div>
+
+        {/* Exit guard */}
+        <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Exit without saving?</AlertDialogTitle>
+              <AlertDialogDescription>Anything you entered here will be lost.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep editing</AlertDialogCancel>
+              <AlertDialogAction onClick={onCancel} className="bg-gray-900 hover:bg-gray-700">Exit</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );

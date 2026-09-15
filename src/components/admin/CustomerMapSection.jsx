@@ -9,10 +9,18 @@ import StopsMap from '@/components/admin/StopsMap';
 import AddressAutocomplete from '@/components/admin/AddressAutocomplete';
 import MapSnapshotEditor from '@/components/admin/MapSnapshotEditor';
 
-// Map with a "Snapshot & mark up" button. The capture asks the server for
-// the same view as an image (the live map can't be photographed by the
-// browser), then opens the markup editor. onSaveImage(blob) persists it.
-function MapWithCapture({ pin, height = 230, onSaveImage, savedNote }) {
+async function uploadMapImage(blob) {
+  const file = new File([blob], `map-${Date.now()}.png`, { type: 'image/png' });
+  const { file_url } = await base44.integrations.Core.UploadFile({ file });
+  return file_url;
+}
+
+// The New Job popup's right column: a large, always-open map. It flies to
+// the selected customer's pin (or a new customer's address as it resolves),
+// with the snapshot-and-markup tool underneath. The capture asks the server
+// for the same view as an image (the live map can't be photographed by the
+// browser), then opens the markup editor.
+export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, savedNote }) {
   const mapApiRef = useRef(null);
   const [capturing, setCapturing] = useState(false);
   const [editorImage, setEditorImage] = useState(null);
@@ -51,21 +59,47 @@ function MapWithCapture({ pin, height = 230, onSaveImage, savedNote }) {
   };
 
   return (
-    <div className="space-y-2">
-      <StopsMap stops={pin ? [{ ...pin, label: 'Customer' }] : []} home={null} showRoute={false} height={height} mapTypeId="hybrid" mapApiRef={mapApiRef} />
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button type="button" variant="outline" size="sm" onClick={capture} disabled={capturing || !pin}>
-          {capturing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Camera className="w-4 h-4 mr-2" />}
-          Snapshot &amp; mark up
-        </Button>
-        {savedNote && (
-          <span className="flex items-center gap-1 text-xs font-medium text-green-700">
-            <Check className="w-3.5 h-3.5" /> {savedNote}
-          </span>
+    <div className="flex flex-col gap-2 h-full">
+      {title && (
+        <div className="flex items-center gap-2 min-w-0">
+          <MapPin className="w-4 h-4 text-gray-500 shrink-0" />
+          <p className="text-sm font-medium text-gray-700 truncate">{title}</p>
+        </div>
+      )}
+      <div className="relative flex-1 min-h-0">
+        <div className="absolute inset-0">
+          <StopsMap
+            stops={pin ? [{ ...pin, label: 'Customer' }] : []}
+            home={null}
+            showRoute={false}
+            height="100%"
+            mapTypeId="hybrid"
+            mapApiRef={mapApiRef}
+          />
+        </div>
+        {!pin && waitingText && (
+          <div className="absolute inset-x-3 top-3 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600 shadow-sm pointer-events-none">
+            {waitingText}
+          </div>
         )}
-        {error && <span className="text-xs text-red-600">{error}</span>}
       </div>
-      <p className="text-xs text-gray-500">Zoom to the property, snapshot it, then circle the driveway or dump spot for the drivers.</p>
+      {canCapture && (
+        <>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button type="button" variant="outline" size="sm" onClick={capture} disabled={capturing || !pin}>
+              {capturing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Camera className="w-4 h-4 mr-2" />}
+              Snapshot &amp; mark up
+            </Button>
+            {savedNote && (
+              <span className="flex items-center gap-1 text-xs font-medium text-green-700">
+                <Check className="w-3.5 h-3.5" /> {savedNote}
+              </span>
+            )}
+            {error && <span className="text-xs text-red-600">{error}</span>}
+          </div>
+          <p className="text-xs text-gray-500">Zoom to the property, snapshot it, then circle the driveway or dump spot for the drivers.</p>
+        </>
+      )}
       {editorImage && (
         <MapSnapshotEditor image={editorImage} saving={saving} onSave={handleSave} onClose={() => setEditorImage(null)} />
       )}
@@ -73,57 +107,20 @@ function MapWithCapture({ pin, height = 230, onSaveImage, savedNote }) {
   );
 }
 
-async function uploadMapImage(blob) {
-  const file = new File([blob], `map-${Date.now()}.png`, { type: 'image/png' });
-  const { file_url } = await base44.integrations.Core.UploadFile({ file });
-  return file_url;
+// Saves an annotated capture as an existing customer's map picture.
+export async function saveCustomerMapImage(queryClient, customerId, blob) {
+  const url = await uploadMapImage(blob);
+  await base44.entities.Customer.update(customerId, { map_image_url: url });
+  queryClient.invalidateQueries({ queryKey: ['customers'] });
 }
 
-// ---- Existing customer: show the pin, allow updating their map picture ----
-export function CustomerMapPanel({ customer }) {
-  const queryClient = useQueryClient();
-  const [savedNote, setSavedNote] = useState('');
-  if (!customer) return null;
-  const hasPin = customer.latitude != null;
-
-  return (
-    <div className="col-span-1 md:col-span-2 border border-gray-200 rounded-xl p-3 bg-gray-50 space-y-2">
-      <div className="flex items-center gap-2">
-        <MapPin className="w-4 h-4 text-gray-500" />
-        <p className="text-sm font-medium text-gray-700">
-          {(customer.company_name || customer.name || 'Customer').trim()}
-          <span className="text-gray-400 font-normal"> — {[customer.street_address, customer.city].filter(Boolean).join(', ')}</span>
-        </p>
-      </div>
-      {hasPin ? (
-        <MapWithCapture
-          pin={{ lat: customer.latitude, lng: customer.longitude }}
-          savedNote={savedNote}
-          onSaveImage={async (blob) => {
-            const url = await uploadMapImage(blob);
-            await base44.entities.Customer.update(customer.id, { map_image_url: url });
-            queryClient.invalidateQueries({ queryKey: ['customers'] });
-            setSavedNote("Saved as this customer's map picture");
-          }}
-        />
-      ) : (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          This address isn't map-verified yet, so there's no pin to show. Fix the address on the Customers page and the pin appears automatically.
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ---- Inline "new customer" form for the New Job popup ----
-export function NewCustomerForm({ onCreated, onCancel }) {
+// ---- Inline "new customer" form (left column; the map waits on the right) ----
+export function NewCustomerForm({ onCreated, onCancel, onPinChange, mapBlob, onDirty }) {
   const queryClient = useQueryClient();
   const [fields, setFields] = useState({ name: '', company_name: '', street_address: '', city: '', state: 'OH', zip_code: '', phone: '' });
-  const [pin, setPin] = useState(null);
-  const [mapBlob, setMapBlob] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const set = (k, v) => setFields(prev => ({ ...prev, [k]: v }));
+  const set = (k, v) => { setFields(prev => ({ ...prev, [k]: v })); onDirty?.(); };
 
   const save = async () => {
     if (!fields.name.trim()) { setError('Name is required.'); return; }
@@ -171,7 +168,8 @@ export function NewCustomerForm({ onCreated, onCancel }) {
                 state: place.state || prev.state,
                 zip_code: place.zip || prev.zip_code,
               }));
-              if (place.lat != null) setPin({ lat: place.lat, lng: place.lng });
+              onDirty?.();
+              if (place.lat != null) onPinChange?.({ lat: place.lat, lng: place.lng });
             }}
           />
         </div>
@@ -194,16 +192,6 @@ export function NewCustomerForm({ onCreated, onCancel }) {
           <Input value={fields.phone} onChange={(e) => set('phone', e.target.value)} placeholder="330-555-0100" />
         </div>
       </div>
-
-      {pin ? (
-        <MapWithCapture
-          pin={pin}
-          savedNote={mapBlob ? 'Picture attached — saves with the customer' : ''}
-          onSaveImage={(blob) => setMapBlob(blob)}
-        />
-      ) : (
-        <p className="text-xs text-gray-500">Pick an address suggestion and the map appears here with the pin.</p>
-      )}
 
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end gap-2">

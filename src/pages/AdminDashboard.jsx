@@ -209,9 +209,16 @@ export default function AdminDashboard() {
         dropOffLocations={dropOffLocations}
       />
 
-      {/* Job Form Dialog */}
-      <Dialog open={showJobForm} onOpenChange={setShowJobForm}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      {/* Job Form Dialog — closes ONLY through the form's own X (with its
+          exit confirmation), never by clicking outside or pressing Escape */}
+      <Dialog open={showJobForm} onOpenChange={() => {}}>
+        <DialogContent
+          className="max-w-6xl max-h-[92vh] overflow-y-auto"
+          hideClose
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <JobForm
             job={editingJob || (defaultJobDate ? { scheduled_date: defaultJobDate } : null)}
             drivers={drivers}
