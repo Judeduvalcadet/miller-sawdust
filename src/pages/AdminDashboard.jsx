@@ -13,6 +13,7 @@ import JobForm from "@/components/admin/JobForm";
 import GlobalSearch from "@/components/admin/GlobalSearch";
 import MiniWallboard from "@/components/admin/MiniWallboard";
 import SortJobsModal from "@/components/admin/SortJobsModal.jsx";
+import AssistantChat from "@/components/admin/AssistantChat.jsx";
 import { useActivityDetection } from "@/components/hooks/useActivityDetection";
 import { useEntitySubscription } from "@/components/hooks/useEntitySubscription";
 
@@ -189,6 +190,9 @@ export default function AdminDashboard() {
           }}
         />
       </div>
+
+      {/* Dispatch assistant (admin/dispatcher only) */}
+      <AssistantChat />
 
       {/* Sort Jobs Modal */}
       <SortJobsModal
