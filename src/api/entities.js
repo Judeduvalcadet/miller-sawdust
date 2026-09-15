@@ -34,12 +34,15 @@ const TABLE_COLUMNS = {
   customers: [
     'id','name','company_name','street_address','city','state','country','zip_code',
     'phone','map_image_url','delivery_instructions','created_date','updated_date',
+    'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
   ],
   pickup_locations: [
     'id','name','phone','address','assigned_drivers','location_type','created_date','updated_date',
+    'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
   ],
   drop_off_locations: [
     'id','name','address','notes','created_date','updated_date',
+    'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
   ],
   driver_sessions: [
     'id','driver_id','device_id','last_used_at','expires_at','created_date','updated_date',
@@ -86,6 +89,29 @@ function sanitize(tableName, record) {
     clean[key] = value
   }
   return clean
+}
+
+// ---------------------------------------------------------------------------
+// Auto-geocoding: whenever an address is created or edited, ask the
+// geocode-address edge function (server-side Google key) to refresh the
+// record's coordinates. Fire-and-forget — a failed geocode never blocks or
+// breaks the save; the record just keeps its REVIEW/stale state.
+// ---------------------------------------------------------------------------
+const GEOCODE_FIELDS = {
+  customers: ['street_address', 'city', 'state', 'zip_code'],
+  pickup_locations: ['address'],
+  drop_off_locations: ['address'],
+}
+
+function maybeGeocode(tableName, recordId, payload) {
+  const fields = GEOCODE_FIELDS[tableName]
+  if (!fields || !recordId) return
+  if (!fields.some(f => f in payload)) return
+  // Skip when the write itself carries coordinates (imports/scripts).
+  if ('latitude' in payload) return
+  supabase.functions
+    .invoke('geocode-address', { body: { table: tableName, id: recordId } })
+    .catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +203,7 @@ function createEntity(tableName) {
         .single()
 
       if (error) throw error
+      maybeGeocode(tableName, created?.id, sanitize(tableName, data))
       return created
     },
 
@@ -195,6 +222,7 @@ function createEntity(tableName) {
         .single()
 
       if (error) throw error
+      maybeGeocode(tableName, id, sanitize(tableName, data))
       return updated
     },
 
@@ -224,6 +252,11 @@ function createEntity(tableName) {
         .select()
 
       if (error) throw error
+      // Stagger the geocode calls so a big CSV import doesn't burst-fire.
+      // (PostgREST returns inserted rows in input order.)
+      ;(data || []).forEach((created, i) => {
+        setTimeout(() => maybeGeocode(tableName, created?.id, sanitize(tableName, records[i] || {})), i * 400)
+      })
       return data || []
     },
 

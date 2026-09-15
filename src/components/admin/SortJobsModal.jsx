@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { GripVertical, Truck, Package, Loader2 } from "lucide-react";
+import { GripVertical, Truck, Package, Loader2, Route } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { base44 } from "@/api/entities";
 import { useQueryClient } from "@tanstack/react-query";
@@ -34,6 +34,11 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
   const [orderedJobs, setOrderedJobs] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [driverDropdownOpen, setDriverDropdownOpen] = useState(false);
+  // Route check (admin/dispatcher only — the edge function enforces it too)
+  const [routeCheck, setRouteCheck] = useState(null);
+  const canCheckRoute = ['admin', 'dispatcher'].includes(
+    typeof window !== 'undefined' ? window.localStorage.getItem('miller_driver_role') : ''
+  );
 
   // drag state: null or { index, offsetY, currentY, cardHeight }
   const [dragState, setDragState] = useState(null);
@@ -74,7 +79,34 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
         return 0;
       });
     setOrderedJobs(filtered);
+    setRouteCheck(null);
   }, [selectedDriverId, selectedDate, jobs]);
+
+  const handleCheckRoute = async () => {
+    setRouteCheck({ status: 'loading' });
+    try {
+      const { data } = await base44.functions.invoke('optimize-route', {
+        driver_id: selectedDriverId,
+        date: selectedDate,
+      });
+      setRouteCheck({ status: 'done', data });
+    } catch {
+      setRouteCheck({ status: 'error' });
+    }
+  };
+
+  const handleUseSuggestedOrder = () => {
+    const suggested = routeCheck?.data?.suggested?.order;
+    if (!suggested) return;
+    setOrderedJobs(prev => {
+      const byId = new Map(prev.map(j => [j.id, j]));
+      const reordered = suggested.map(s => byId.get(s.job_id)).filter(Boolean);
+      // Jobs the check couldn't place (unpinned addresses) keep their spot at the end
+      const placed = new Set(reordered.map(j => j.id));
+      return [...reordered, ...prev.filter(j => !placed.has(j.id))];
+    });
+    setRouteCheck(rc => ({ ...rc, applied: true }));
+  };
 
   const handleMouseDown = useCallback((e, fromIndex) => {
     e.preventDefault();
@@ -270,16 +302,96 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button
-              onClick={handleSave}
-              disabled={orderedJobs.length === 0 || isSaving}
-              className="bg-amber-600 hover:bg-amber-700"
-            >
-              {isSaving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              Save Order
-            </Button>
+          {/* Route check result */}
+          {routeCheck?.status === 'loading' && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              Checking this route against real road times...
+            </div>
+          )}
+          {routeCheck?.status === 'error' && (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              The route check couldn't run. Try again in a moment.
+            </div>
+          )}
+          {routeCheck?.status === 'done' && (() => {
+            const d = routeCheck.data;
+            if (!d?.enough) {
+              return (
+                <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  Not enough mapped jobs on this day to compare orders.
+                </div>
+              );
+            }
+            const savedMin = Math.round(d.savings_seconds / 60);
+            const savedMi = (d.savings_meters / 1609.34).toFixed(1);
+            const unpinnedNote = d.unpinned?.length > 0 && (
+              <p className="text-xs text-gray-500 mt-2">
+                Not included (address not verified yet): {d.unpinned.join(', ')}
+              </p>
+            );
+            if (d.savings_seconds < 300) {
+              return (
+                <div className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
+                  <span className="font-semibold">This order is already good</span> — the best
+                  order found would save less than 5 minutes.
+                  {unpinnedNote}
+                </div>
+              );
+            }
+            return (
+              <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="font-semibold text-amber-900">
+                  A better order could save about {savedMin} min · {savedMi} mi
+                </p>
+                <ol className="mt-2 space-y-1 text-amber-900">
+                  {d.suggested.order.map((s, i) => (
+                    <li key={s.job_id} className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <span className="truncate">{s.label}</span>
+                    </li>
+                  ))}
+                </ol>
+                {unpinnedNote}
+                <div className="mt-3">
+                  {routeCheck.applied ? (
+                    <p className="text-xs font-medium text-amber-800">
+                      List reordered — press Save Order to make it the driver's order.
+                    </p>
+                  ) : (
+                    <Button size="sm" variant="outline" className="border-amber-400 text-amber-900 hover:bg-amber-100" onClick={handleUseSuggestedOrder}>
+                      Use this order
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <div>
+              {canCheckRoute && orderedJobs.length >= 2 && (
+                <Button
+                  variant="outline"
+                  onClick={handleCheckRoute}
+                  disabled={routeCheck?.status === 'loading'}
+                >
+                  <Route className="w-4 h-4 mr-2 text-amber-600" />
+                  Check route
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button
+                onClick={handleSave}
+                disabled={orderedJobs.length === 0 || isSaving}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                {isSaving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                Save Order
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
