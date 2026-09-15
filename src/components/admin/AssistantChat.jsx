@@ -6,9 +6,9 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
 const SUGGESTIONS = [
-  "Check Vadym's route for today",
+  "Check a driver's route for today",
   'What jobs are on the board tomorrow?',
-  'Find customer Valex',
+  'Look up a customer',
 ];
 
 // A line of "A → B → C" renders as a route strip: each stop in a chip with a
