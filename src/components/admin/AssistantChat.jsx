@@ -69,6 +69,20 @@ export default function AssistantChat() {
     if (open && view === 'chat') inputRef.current?.focus();
   }, [open, view]);
 
+  // On phones, freeze the page behind the panel so scrolling inside the chat
+  // never drags the dispatch board along with it.
+  useEffect(() => {
+    if (!open || !window.matchMedia('(max-width: 640px)').matches) return;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevHtml;
+    };
+  }, [open]);
+
   if (!allowed) return null;
 
   const send = async (text) => {
@@ -162,7 +176,7 @@ export default function AssistantChat() {
 
           {/* History view */}
           {view === 'history' && (
-            <div className="flex-1 overflow-y-auto bg-gray-50">
+            <div className="flex-1 overflow-y-auto overscroll-contain bg-gray-50">
               <button
                 onClick={() => setView('chat')}
                 className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 px-4 py-3"
@@ -198,7 +212,7 @@ export default function AssistantChat() {
           {/* Chat view */}
           {view === 'chat' && (
             <>
-              <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2 bg-gray-50">
+              <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-2 bg-gray-50">
                 {messages.length === 0 && (
                   <div className="pt-4">
                     <p className="text-sm text-gray-600 text-center mb-3">
@@ -249,7 +263,7 @@ export default function AssistantChat() {
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } }}
                   placeholder="Ask the assistant..."
                   maxLength={2000}
-                  className="flex-1 text-sm px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  className="flex-1 text-base sm:text-sm px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                 />
                 <Button type="submit" size="icon" disabled={!input.trim() || isLoading} className="bg-gray-950 hover:bg-gray-800 shrink-0">
                   <Send className="w-4 h-4" />
