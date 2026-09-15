@@ -8,6 +8,7 @@ import { base44 } from "@/api/entities";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import StopsMap from "@/components/admin/StopsMap";
 
 function JobCardContent({ job, index, isGhost }) {
   return (
@@ -28,7 +29,7 @@ function JobCardContent({ job, index, isGhost }) {
   );
 }
 
-export default function SortJobsModal({ open, onClose, jobs, drivers, preSelectedDate = null }) {
+export default function SortJobsModal({ open, onClose, jobs, drivers, preSelectedDate = null, customers = [], pickupLocations = [], dropOffLocations = [] }) {
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [selectedDate, setSelectedDate] = useState(preSelectedDate || format(new Date(), 'yyyy-MM-dd'));
   const [orderedJobs, setOrderedJobs] = useState([]);
@@ -94,6 +95,26 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
       setRouteCheck({ status: 'error' });
     }
   };
+
+  // Map pins: each job's end point (customer / drop-off) in the list's order.
+  // Same aliasing as the optimizer: unpinned home-property records = home.
+  const homeBase = pickupLocations.find(p => p.location_type === 'my_building' && /home hoop/i.test(p.name || ''));
+  const home = homeBase?.latitude != null ? { lat: homeBase.latitude, lng: homeBase.longitude } : null;
+  const custById = new Map(customers.map(c => [c.id, c]));
+  const dropById = new Map(dropOffLocations.map(d => [d.id, d]));
+  const mapStops = [];
+  let unmappedCount = 0;
+  for (const j of orderedJobs) {
+    const label = (j.customer_company_name || j.location_name || '').trim();
+    let rec = j.job_type === 'pickup' ? dropById.get(j.dropoff_location_id) : custById.get(j.customer_id);
+    if (rec && /hoop building 257|own sawdust/i.test(rec.name || '') && home) {
+      mapStops.push({ label, ...home });
+    } else if (rec?.latitude != null) {
+      mapStops.push({ label, lat: rec.latitude, lng: rec.longitude });
+    } else {
+      unmappedCount++;
+    }
+  }
 
   const handleUseSuggestedOrder = () => {
     const suggested = routeCheck?.data?.suggested?.order;
@@ -203,7 +224,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <GripVertical className="w-5 h-5 text-amber-600" />
@@ -298,6 +319,18 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
                 >
                   <JobCardContent job={orderedJobs[dragState.index]} index={dragState.index} isGhost={true} />
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Route map — pins follow the list order above */}
+          {orderedJobs.length > 0 && mapStops.length > 0 && (
+            <div className="space-y-1">
+              <StopsMap stops={mapStops} home={home} height={200} />
+              {unmappedCount > 0 && (
+                <p className="text-[11px] text-gray-400">
+                  {unmappedCount} stop{unmappedCount !== 1 ? 's' : ''} not shown (address not map-verified yet)
+                </p>
               )}
             </div>
           )}

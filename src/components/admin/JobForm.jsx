@@ -16,6 +16,7 @@ import {
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
+import { CustomerMapPanel, NewCustomerForm } from "@/components/admin/CustomerMapSection";
 
 const TRUCK_TYPES = [
   { value: 'straight_truck', label: 'Straight Truck' },
@@ -51,6 +52,9 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   });
   const [errors, setErrors] = useState({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
+  // Customers created inline, so they're selectable before the list refetches
+  const [extraCustomers, setExtraCustomers] = useState([]);
   const [showActivity, setShowActivity] = useState(false);
   const [scheduleType, setScheduleType] = useState('one_time');
   const [recurringInterval, setRecurringInterval] = useState('');
@@ -200,7 +204,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         };
       }
     } else {
-      const customer = customers.find(c => c.id === formData.customer_id);
+      const customer = allCustomers.find(c => c.id === formData.customer_id);
       if (customer) {
         const stateZip = [customer.state, customer.zip_code].filter(Boolean).join(' ');
         const combinedAddress = [customer.street_address, customer.city, stateZip, customer.country]
@@ -284,7 +288,13 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
     onSubmit(jobData);
   };
 
-  const customerOptions = customers.map(c => ({
+  const allCustomers = [
+    ...customers,
+    ...extraCustomers.filter(x => !customers.some(c => c.id === x.id)),
+  ];
+  const selectedCustomer = allCustomers.find(c => c.id === formData.customer_id) || null;
+
+  const customerOptions = allCustomers.map(c => ({
     value: c.id,
     label: c.name
       ? (c.company_name ? `${c.name} — ${c.company_name}` : c.name)
@@ -479,7 +489,16 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>Customer</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Customer</Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewCustomer(v => !v)}
+                    className="text-xs font-medium text-amber-700 hover:text-amber-900"
+                  >
+                    {showNewCustomer ? 'Cancel new customer' : '+ New customer'}
+                  </button>
+                </div>
                 <SearchableSelect
                   value={formData.customer_id}
                   onValueChange={(v) => { set('customer_id', v); setErrors(p => ({...p, customer_id: ''})); }}
@@ -489,6 +508,22 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                 />
                 {errors.customer_id && <p className="text-xs text-red-500">{errors.customer_id}</p>}
               </div>
+            )}
+
+            {/* Inline new customer, or the selected customer's map */}
+            {!isPickup && showNewCustomer && (
+              <NewCustomerForm
+                onCancel={() => setShowNewCustomer(false)}
+                onCreated={(created) => {
+                  setExtraCustomers(prev => [...prev, created]);
+                  set('customer_id', created.id);
+                  setErrors(p => ({ ...p, customer_id: '' }));
+                  setShowNewCustomer(false);
+                }}
+              />
+            )}
+            {!isPickup && !showNewCustomer && selectedCustomer && (
+              <CustomerMapPanel customer={selectedCustomer} />
             )}
 
             {/* ── ASSIGN DRIVER — below location ── */}

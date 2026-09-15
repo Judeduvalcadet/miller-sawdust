@@ -204,6 +204,9 @@ export default function AdminDashboard() {
         jobs={jobs}
         drivers={drivers}
         preSelectedDate={sortDate}
+        customers={customers}
+        pickupLocations={pickupLocations}
+        dropOffLocations={dropOffLocations}
       />
 
       {/* Job Form Dialog */}
