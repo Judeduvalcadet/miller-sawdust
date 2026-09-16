@@ -1,13 +1,61 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Camera, Loader2, Check, MapPin } from 'lucide-react';
+import { Camera, Loader2, Check, MapPin, X } from 'lucide-react';
 import { base44 } from '@/api/entities';
 import { useQueryClient } from '@tanstack/react-query';
 import StopsMap from '@/components/admin/StopsMap';
 import AddressAutocomplete from '@/components/admin/AddressAutocomplete';
 import MapSnapshotEditor from '@/components/admin/MapSnapshotEditor';
+
+// Full-screen viewer for a saved map picture. Portaled to <body> with
+// pointer events re-enabled (the open modal dialog disables them outside
+// itself); click the backdrop or the X to close.
+export function ImageLightbox({ src, onClose }) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4"
+      style={{ pointerEvents: 'auto' }}
+      onClick={onClose}
+    >
+      <img
+        src={src}
+        alt="Map picture"
+        className="max-w-[94vw] max-h-[90vh] rounded-xl shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close picture"
+        className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white shadow-md flex items-center justify-center text-gray-700 hover:bg-gray-100"
+      >
+        <X className="w-6 h-6" />
+      </button>
+    </div>,
+    document.body
+  );
+}
+
+// Left-aligned thumbnail that expands into the lightbox when clicked.
+export function MapThumb({ src, className = 'h-24' }) {
+  const [open, setOpen] = useState(false);
+  if (!src) return null;
+  return (
+    <>
+      <img
+        src={src}
+        alt="Map picture — tap to enlarge"
+        title="Tap to enlarge"
+        onClick={() => setOpen(true)}
+        className={`${className} w-auto max-w-full rounded-lg border border-gray-200 cursor-zoom-in hover:opacity-90 block`}
+      />
+      {open && <ImageLightbox src={src} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
 
 export async function uploadMapImage(blob) {
   const file = new File([blob], `map-${Date.now()}.png`, { type: 'image/png' });
@@ -20,7 +68,7 @@ export async function uploadMapImage(blob) {
 // with the snapshot-and-markup tool underneath. The capture asks the server
 // for the same view as an image (the live map can't be photographed by the
 // browser), then opens the markup editor.
-export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, savedNote }) {
+export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, savedNote, initialInstructions = '' }) {
   const mapApiRef = useRef(null);
   const [capturing, setCapturing] = useState(false);
   const [editorImage, setEditorImage] = useState(null);
@@ -47,10 +95,10 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
     setCapturing(false);
   };
 
-  const handleSave = async (blob) => {
+  const handleSave = async (blob, instructions) => {
     setSaving(true);
     try {
-      await onSaveImage(blob);
+      await onSaveImage(blob, instructions);
       setEditorImage(null);
     } catch {
       setError("Couldn't save the picture — try again.");
@@ -117,26 +165,33 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
         </div>
       )}
       {editorImage && (
-        <MapSnapshotEditor image={editorImage} saving={saving} onSave={handleSave} onClose={() => setEditorImage(null)} />
+        <MapSnapshotEditor image={editorImage} saving={saving} onSave={handleSave} onClose={() => setEditorImage(null)} initialInstructions={initialInstructions} />
       )}
     </div>
   );
 }
 
-// Saves an annotated capture as an existing customer's map picture.
-export async function saveCustomerMapImage(queryClient, customerId, blob) {
+// Saves an annotated capture (and any delivery instructions written in the
+// editor) onto an existing customer.
+export async function saveCustomerMapImage(queryClient, customerId, blob, instructions) {
   const url = await uploadMapImage(blob);
-  await base44.entities.Customer.update(customerId, { map_image_url: url });
+  const update = { map_image_url: url };
+  if (instructions) update.delivery_instructions = instructions;
+  await base44.entities.Customer.update(customerId, update);
   queryClient.invalidateQueries({ queryKey: ['customers'] });
 }
 
 // ---- Inline "new customer" form (left column; the map waits on the right) ----
-export function NewCustomerForm({ onCreated, onCancel, onPinChange, mapBlob, onDirty }) {
+export function NewCustomerForm({ onCreated, onCancel, onPinChange, mapBlob, mapInstructions = '', onDirty }) {
   const queryClient = useQueryClient();
   const [fields, setFields] = useState({ name: '', company_name: '', street_address: '', city: '', state: 'OH', zip_code: '', phone: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const set = (k, v) => { setFields(prev => ({ ...prev, [k]: v })); onDirty?.(); };
+
+  // Preview of the captured picture (click to enlarge)
+  const blobUrl = useMemo(() => (mapBlob ? URL.createObjectURL(mapBlob) : null), [mapBlob]);
+  useEffect(() => () => { if (blobUrl) URL.revokeObjectURL(blobUrl); }, [blobUrl]);
 
   const save = async () => {
     if (!fields.name.trim()) { setError('Name is required.'); return; }
@@ -145,7 +200,11 @@ export function NewCustomerForm({ onCreated, onCancel, onPinChange, mapBlob, onD
     setError('');
     try {
       // Address fields trigger server-side geocoding automatically on create.
-      const created = await base44.entities.Customer.create({ ...fields, country: 'USA' });
+      const created = await base44.entities.Customer.create({
+        ...fields,
+        country: 'USA',
+        ...(mapInstructions ? { delivery_instructions: mapInstructions } : {}),
+      });
       if (mapBlob) {
         const url = await uploadMapImage(mapBlob);
         await base44.entities.Customer.update(created.id, { map_image_url: url });
@@ -208,6 +267,19 @@ export function NewCustomerForm({ onCreated, onCancel, onPinChange, mapBlob, onD
           <Input value={fields.phone} onChange={(e) => set('phone', e.target.value)} placeholder="330-555-0100" />
         </div>
       </div>
+
+      {blobUrl && (
+        <div className="space-y-1">
+          <Label className="text-xs text-gray-500">Map picture <span className="text-gray-400">(tap to enlarge — saves with the customer)</span></Label>
+          <MapThumb src={blobUrl} className="h-20" />
+        </div>
+      )}
+      {mapInstructions && (
+        <div className="space-y-1">
+          <Label className="text-xs text-gray-500">Delivery instructions <span className="text-gray-400">(from the map editor)</span></Label>
+          <p className="text-sm text-gray-700 whitespace-pre-wrap bg-white border border-gray-200 rounded-lg px-3 py-2">{mapInstructions}</p>
+        </div>
+      )}
 
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end gap-2">

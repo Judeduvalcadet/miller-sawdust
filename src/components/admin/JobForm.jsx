@@ -60,6 +60,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   // Right-column map state
   const [newCustomerPin, setNewCustomerPin] = useState(null);
   const [newCustomerBlob, setNewCustomerBlob] = useState(null);
+  const [newCustomerInstructions, setNewCustomerInstructions] = useState('');
   const [newCustomerDirty, setNewCustomerDirty] = useState(false);
   const [customerMapNote, setCustomerMapNote] = useState('');
   // Exit guard: the popup only closes through the X, and asks first if
@@ -574,12 +575,14 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
             {!isPickup && showNewCustomer && (
               <NewCustomerForm
                 mapBlob={newCustomerBlob}
+                mapInstructions={newCustomerInstructions}
                 onPinChange={setNewCustomerPin}
                 onDirty={() => setNewCustomerDirty(true)}
                 onCancel={() => {
                   setShowNewCustomer(false);
                   setNewCustomerPin(null);
                   setNewCustomerBlob(null);
+                  setNewCustomerInstructions('');
                   setNewCustomerDirty(false);
                 }}
                 onCreated={(created) => {
@@ -589,6 +592,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                   setShowNewCustomer(false);
                   setNewCustomerPin(null);
                   setNewCustomerBlob(null);
+                  setNewCustomerInstructions('');
                   setNewCustomerDirty(false);
                 }}
               />
@@ -894,11 +898,15 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               savedNote={mapMode === 'new'
                 ? (newCustomerBlob ? 'Picture attached — saves with the customer' : '')
                 : customerMapNote}
-              onSaveImage={async (blob) => {
+              initialInstructions={mapMode === 'new'
+                ? newCustomerInstructions
+                : (selectedCustomer?.delivery_instructions || '')}
+              onSaveImage={async (blob, instructions) => {
                 if (mapMode === 'new') {
                   setNewCustomerBlob(blob);
+                  setNewCustomerInstructions(instructions || '');
                 } else if (mapMode === 'customer' && selectedCustomer) {
-                  await saveCustomerMapImage(queryClient, selectedCustomer.id, blob);
+                  await saveCustomerMapImage(queryClient, selectedCustomer.id, blob, instructions);
                   setCustomerMapNote("Saved as this customer's map picture");
                 }
               }}

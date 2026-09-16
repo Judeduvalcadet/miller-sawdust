@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import CsvImportModal from "@/components/admin/CsvImportModal";
 import AddressAutocomplete from "@/components/admin/AddressAutocomplete";
-import { JobMapPanel, uploadMapImage } from "@/components/admin/CustomerMapSection";
+import { JobMapPanel, uploadMapImage, MapThumb } from "@/components/admin/CustomerMapSection";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from 'sonner';
@@ -51,6 +51,8 @@ export default function CustomerManager() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   // Pin for the form's map: a fresh autocomplete pick wins over the stored pin
   const [pendingPin, setPendingPin] = useState(null);
+  // Read-only detail popup (opened by clicking a customer row)
+  const [viewingCustomer, setViewingCustomer] = useState(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [isBusy, setIsBusy] = useState(false);
@@ -397,7 +399,10 @@ export default function CustomerManager() {
                       <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                         <Building2 className="w-5 h-5 text-blue-600" />
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div
+                        className={selectMode ? 'flex-1 min-w-0' : 'flex-1 min-w-0 cursor-pointer'}
+                        onClick={() => { if (!selectMode) setViewingCustomer(customer); }}
+                      >
                         <h3 className="font-semibold">{customer.name || '—'}</h3>
                         {customer.company_name && (
                           <p className="text-sm text-gray-500">{customer.company_name}</p>
@@ -513,6 +518,78 @@ export default function CustomerManager() {
         onImport={handleCsvImport}
       />
 
+      {/* Customer detail popup — read-only; Edit switches to the edit form */}
+      <Dialog open={!!viewingCustomer} onOpenChange={(o) => { if (!o) setViewingCustomer(null); }}>
+        <DialogContent className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto">
+          {viewingCustomer && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{viewingCustomer.name || viewingCustomer.company_name || 'Customer'}</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+                {/* Left: details as plain text */}
+                <div className="flex-1 min-w-0 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Name</p>
+                      <p className="text-gray-900 mt-0.5">{viewingCustomer.name || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Company</p>
+                      <p className="text-gray-900 mt-0.5">{viewingCustomer.company_name || '—'}</p>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Address</p>
+                      <p className="text-gray-900 mt-0.5">{buildAddress(viewingCustomer) || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Phone</p>
+                      <p className="text-gray-900 mt-0.5">{viewingCustomer.phone || '—'}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Map / Location Screenshot</p>
+                    {viewingCustomer.map_image_url
+                      ? <MapThumb src={viewingCustomer.map_image_url} className="h-32" />
+                      : <p className="text-sm text-gray-400">None yet</p>}
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Delivery Instructions</p>
+                    {viewingCustomer.delivery_instructions
+                      ? <p className="text-sm text-gray-900 whitespace-pre-wrap">{viewingCustomer.delivery_instructions}</p>
+                      : <p className="text-sm text-gray-400">None yet</p>}
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      onClick={() => { const c = viewingCustomer; setViewingCustomer(null); handleEdit(c); }}
+                      className="bg-amber-600 hover:bg-amber-700"
+                    >
+                      <Edit2 className="w-4 h-4 mr-2" /> Edit
+                    </Button>
+                    <Button variant="outline" onClick={() => setViewingCustomer(null)}>Close</Button>
+                  </div>
+                </div>
+
+                {/* Right: live map on the customer's pin */}
+                <div className="w-full lg:w-[46%] shrink-0 self-start">
+                  <div className="h-[300px] lg:h-[58vh] lg:min-h-[400px]">
+                    <JobMapPanel
+                      pin={viewingCustomer.latitude != null ? { lat: viewingCustomer.latitude, lng: viewingCustomer.longitude } : null}
+                      title=""
+                      waitingText="This customer's address isn't map-verified yet."
+                      canCapture={false}
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Add/Edit Customer Dialog — same format as the New Job popup:
           fields on the left, big always-open map on the right */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
@@ -569,10 +646,10 @@ export default function CustomerManager() {
                 <Input value={formData.phone} onChange={(e) => set('phone', e.target.value)} placeholder="555-123-4567" />
               </div>
               <div className="col-span-2 space-y-2">
-                <Label>Map / Location Screenshot <span className="text-gray-400 font-normal text-xs">(optional)</span></Label>
+                <Label>Map / Location Screenshot <span className="text-gray-400 font-normal text-xs">(optional — tap the picture to enlarge)</span></Label>
                 {formData.map_image_url ? (
                   <div className="relative inline-block">
-                    <img src={formData.map_image_url} alt="Map screenshot" className="rounded-lg border max-h-40 object-cover" />
+                    <MapThumb src={formData.map_image_url} className="h-28" />
                     <button
                       type="button"
                       onClick={() => set('map_image_url', '')}
@@ -627,9 +704,11 @@ export default function CustomerManager() {
                       ? "This customer's address isn't map-verified yet — pick an address suggestion and the pin appears."
                       : 'Start typing the street address and pick a suggestion — the pin drops here.'}
                     canCapture
-                    onSaveImage={async (blob) => {
+                    initialInstructions={formData.delivery_instructions}
+                    onSaveImage={async (blob, instructions) => {
                       const url = await uploadMapImage(blob);
                       set('map_image_url', url);
+                      if (instructions) set('delivery_instructions', instructions);
                     }}
                   />
                 );

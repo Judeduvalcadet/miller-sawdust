@@ -1,22 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import { Pencil, MoveUpRight, Type, Undo2, Trash2, X, Loader2 } from 'lucide-react';
+import { Pencil, MoveUpRight, Truck, Undo2, Trash2, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const COLORS = ['#EF4444', '#FACC15', '#111827', '#FFFFFF'];
 
 // The editor is portaled OUTSIDE the modal dialog that opened it, and a
 // modal dialog relentlessly pulls keyboard focus back inside itself — a
-// focusable text input out here loses focus (and its content) instantly.
-// So the text tool doesn't use focus at all: while a text box is active,
-// keystrokes are intercepted document-wide in the capture phase, before the
-// dialog's focused field can receive them, and typed into the box manually.
+// focusable text field out here loses focus (and its content) instantly.
+// So the delivery-instructions box doesn't use focus at all: while it is
+// open, keystrokes are intercepted document-wide in the capture phase,
+// before the dialog's focused field can receive them.
 
-// Simple full-screen markup editor over a captured map image.
-// Tools: pencil (freehand), arrow, text. Color + thickness. Undo / clear.
-// onSave(blob) receives the final PNG; onClose() cancels.
-export default function MapSnapshotEditor({ image, onSave, onClose, saving = false }) {
+// Simple markup editor over a captured map image. Tools: pencil (freehand)
+// and arrow, with color + thickness, plus a delivery-instructions note that
+// saves to the customer. onSave(blob, instructions) receives the final PNG
+// and the note; onClose() cancels.
+export default function MapSnapshotEditor({ image, onSave, onClose, saving = false, initialInstructions = '' }) {
   const rootRef = useRef(null);
   const canvasRef = useRef(null);
   const imgRef = useRef(null);
@@ -26,7 +27,8 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
   const [color, setColor] = useState(COLORS[0]);
   const [size, setSize] = useState(8);
   const [opsCount, setOpsCount] = useState(0);
-  const [textBox, setTextBox] = useState(null); // { x, y, screenX, screenY, value }
+  const [instrOpen, setInstrOpen] = useState(false);
+  const [instructions, setInstructions] = useState(initialInstructions || '');
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -55,13 +57,6 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
         ctx.lineTo(to.x - head * Math.cos(angle - 0.45), to.y - head * Math.sin(angle - 0.45));
         ctx.lineTo(to.x - head * Math.cos(angle + 0.45), to.y - head * Math.sin(angle + 0.45));
         ctx.closePath(); ctx.fill();
-      } else if (op.type === 'text') {
-        const px = 30 + op.width * 1.6;
-        ctx.font = `700 ${px}px system-ui, sans-serif`;
-        ctx.lineWidth = Math.max(3, px / 8);
-        ctx.strokeStyle = op.color === '#FFFFFF' ? '#111827' : '#FFFFFF';
-        ctx.strokeText(op.text, op.x, op.y);
-        ctx.fillText(op.text, op.x, op.y);
       }
     }
   }, []);
@@ -71,12 +66,37 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
     img.onload = () => {
       imgRef.current = img;
       const canvas = canvasRef.current;
+      if (!canvas) return;
       canvas.width = img.width;
       canvas.height = img.height;
       redraw();
     };
     img.src = image;
   }, [image, redraw]);
+
+  // Global keystroke capture while the instructions box is open (see note above).
+  useEffect(() => {
+    if (!instrOpen) return;
+    const onKey = (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.key === 'Escape') { setInstrOpen(false); return; }
+      if (e.key === 'Enter') {
+        if (e.shiftKey || e.metaKey || e.ctrlKey) setInstrOpen(false);
+        else setInstructions(v => (v + '\n').slice(0, 600));
+        return;
+      }
+      if (e.key === 'Backspace') {
+        setInstructions(v => (e.metaKey || e.ctrlKey) ? '' : v.slice(0, -1));
+        return;
+      }
+      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        setInstructions(v => (v + e.key).slice(0, 600));
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [instrOpen]);
 
   const toCanvasPoint = (e) => {
     const canvas = canvasRef.current;
@@ -96,17 +116,9 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
   };
 
   const onPointerDown = (e) => {
-    if (textBox) return; // finish the text box first
     e.preventDefault();
+    if (instrOpen) { setInstrOpen(false); return; }
     const p = toCanvasPoint(e);
-    if (tool === 'text') {
-      const rect = canvasRef.current.getBoundingClientRect();
-      setTextBox({ x: p.x, y: p.y, screenX: e.clientX - rect.left, screenY: e.clientY - rect.top, value: '' });
-      // Pull focus into the main document (it may sit inside the map frame)
-      // so the document-level keystroke capture sees the typing.
-      rootRef.current?.focus();
-      return;
-    }
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* synthetic input */ }
     draftRef.current = tool === 'pencil'
       ? { type: 'path', points: [p], color, width: size }
@@ -124,44 +136,13 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
 
   const onPointerUp = () => { commitDraft(); redraw(); };
 
-  const commitText = () => {
-    setTextBox(current => {
-      if (current?.value.trim()) {
-        opsRef.current.push({ type: 'text', x: current.x, y: current.y, text: current.value.trim(), color, width: size });
-        setOpsCount(opsRef.current.length);
-      }
-      return null;
-    });
-    setTimeout(redraw, 0);
-  };
-
-  // Global keystroke capture while a text box is active (see note above).
-  useEffect(() => {
-    if (!textBox) return;
-    const onKey = (e) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (e.key === 'Enter') { commitText(); return; }
-      if (e.key === 'Escape') { setTextBox(null); return; }
-      if (e.key === 'Backspace') {
-        setTextBox(t => t ? { ...t, value: e.metaKey || e.ctrlKey ? '' : t.value.slice(0, -1) } : t);
-        return;
-      }
-      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        setTextBox(t => t ? { ...t, value: (t.value + e.key).slice(0, 80) } : t);
-      }
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [!!textBox]);
-
   const undo = () => { opsRef.current.pop(); setOpsCount(opsRef.current.length); redraw(); };
   const clearAll = () => { opsRef.current = []; setOpsCount(0); redraw(); };
 
   const save = () => {
     commitDraft();
     redraw();
-    canvasRef.current.toBlob((blob) => { if (blob) onSave(blob); }, 'image/png', 0.92);
+    canvasRef.current.toBlob((blob) => { if (blob) onSave(blob, instructions.trim()); }, 'image/png', 0.92);
   };
 
   const ToolBtn = ({ active, onClick, children, title }) => (
@@ -187,10 +168,9 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden max-h-full">
         {/* Toolbar */}
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 flex-wrap">
+        <div className="relative flex items-center gap-1 px-3 py-2 border-b border-gray-200 flex-wrap">
           <ToolBtn active={tool === 'pencil'} onClick={() => setTool('pencil')} title="Pencil"><Pencil className="w-4 h-4" /></ToolBtn>
           <ToolBtn active={tool === 'arrow'} onClick={() => setTool('arrow')} title="Arrow"><MoveUpRight className="w-4 h-4" /></ToolBtn>
-          <ToolBtn active={tool === 'text'} onClick={() => setTool('text')} title="Text"><Type className="w-4 h-4" /></ToolBtn>
           <div className="w-px h-6 bg-gray-200 mx-1" />
           {COLORS.map(c => (
             <button
@@ -213,10 +193,31 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
             />
             <span className="w-4 h-4 rounded-full bg-gray-500 shrink-0" />
           </div>
+          <div className="w-px h-6 bg-gray-200 mx-1" />
+          <ToolBtn active={instrOpen || !!instructions.trim()} onClick={() => { setInstrOpen(v => !v); rootRef.current?.focus(); }} title="Delivery instructions">
+            <Truck className="w-4 h-4" />
+          </ToolBtn>
           <div className="flex-1" />
           <ToolBtn onClick={undo} title="Undo"><Undo2 className="w-4 h-4" /></ToolBtn>
           <ToolBtn onClick={clearAll} title="Clear all"><Trash2 className="w-4 h-4" /></ToolBtn>
           <ToolBtn onClick={onClose} title="Close"><X className="w-4 h-4" /></ToolBtn>
+
+          {/* Delivery instructions dropdown */}
+          {instrOpen && (
+            <div className="absolute left-2 right-2 top-full mt-1 z-20 bg-white border border-gray-300 rounded-xl shadow-xl p-3">
+              <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5" /> Delivery instructions
+                <span className="font-normal text-gray-400">— saves to the customer</span>
+              </p>
+              <div className="mt-2 min-h-[64px] max-h-40 overflow-y-auto px-2.5 py-2 text-sm border-2 border-gray-900 rounded-lg bg-white whitespace-pre-wrap break-words">
+                {instructions || <span className="text-gray-400">Just start typing... e.g. Dump behind the barn, gate code 1234</span>}
+                <span className="animate-pulse">|</span>
+              </div>
+              <div className="mt-2 flex justify-end">
+                <Button type="button" size="sm" variant="outline" onClick={() => setInstrOpen(false)}>Done</Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Canvas */}
@@ -224,30 +225,21 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
           <canvas
             ref={canvasRef}
             className="w-full h-auto select-none"
-            style={{ touchAction: 'none', cursor: tool === 'text' ? 'text' : 'crosshair' }}
+            style={{ touchAction: 'none', cursor: 'crosshair' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
           />
-          {textBox && (
-            <div
-              className="absolute z-10 px-2 py-1 text-sm font-bold border-2 border-gray-900 rounded bg-white/95 whitespace-nowrap select-none"
-              style={{ left: textBox.screenX, top: textBox.screenY, color: color === '#FFFFFF' ? '#111827' : color }}
-            >
-              {textBox.value || <span className="text-gray-400 font-normal">Type, then Enter</span>}
-              <span className="animate-pulse font-normal">|</span>
-            </div>
-          )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-          <p className="text-xs text-gray-500">Circle the spot, add arrows or a note — drivers will see this picture.</p>
-          <div className="flex gap-2">
+        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 gap-3">
+          <p className="text-xs text-gray-500">Circle the spot, add arrows, note the instructions — drivers will see this.</p>
+          <div className="flex gap-2 shrink-0">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button type="button" onClick={save} disabled={saving} className="bg-gray-950 hover:bg-gray-800">
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Save picture
+              Save
             </Button>
           </div>
         </div>
