@@ -6,10 +6,18 @@ import { cn } from '@/lib/utils';
 
 const COLORS = ['#EF4444', '#FACC15', '#111827', '#FFFFFF'];
 
+// The editor is portaled OUTSIDE the modal dialog that opened it, and a
+// modal dialog relentlessly pulls keyboard focus back inside itself — a
+// focusable text input out here loses focus (and its content) instantly.
+// So the text tool doesn't use focus at all: while a text box is active,
+// keystrokes are intercepted document-wide in the capture phase, before the
+// dialog's focused field can receive them, and typed into the box manually.
+
 // Simple full-screen markup editor over a captured map image.
 // Tools: pencil (freehand), arrow, text. Color + thickness. Undo / clear.
 // onSave(blob) receives the final PNG; onClose() cancels.
 export default function MapSnapshotEditor({ image, onSave, onClose, saving = false }) {
+  const rootRef = useRef(null);
   const canvasRef = useRef(null);
   const imgRef = useRef(null);
   const opsRef = useRef([]);
@@ -94,6 +102,9 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
     if (tool === 'text') {
       const rect = canvasRef.current.getBoundingClientRect();
       setTextBox({ x: p.x, y: p.y, screenX: e.clientX - rect.left, screenY: e.clientY - rect.top, value: '' });
+      // Pull focus into the main document (it may sit inside the map frame)
+      // so the document-level keystroke capture sees the typing.
+      rootRef.current?.focus();
       return;
     }
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* synthetic input */ }
@@ -114,13 +125,35 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
   const onPointerUp = () => { commitDraft(); redraw(); };
 
   const commitText = () => {
-    if (textBox?.value.trim()) {
-      opsRef.current.push({ type: 'text', x: textBox.x, y: textBox.y, text: textBox.value.trim(), color, width: size });
-      setOpsCount(opsRef.current.length);
-    }
-    setTextBox(null);
-    redraw();
+    setTextBox(current => {
+      if (current?.value.trim()) {
+        opsRef.current.push({ type: 'text', x: current.x, y: current.y, text: current.value.trim(), color, width: size });
+        setOpsCount(opsRef.current.length);
+      }
+      return null;
+    });
+    setTimeout(redraw, 0);
   };
+
+  // Global keystroke capture while a text box is active (see note above).
+  useEffect(() => {
+    if (!textBox) return;
+    const onKey = (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.key === 'Enter') { commitText(); return; }
+      if (e.key === 'Escape') { setTextBox(null); return; }
+      if (e.key === 'Backspace') {
+        setTextBox(t => t ? { ...t, value: e.metaKey || e.ctrlKey ? '' : t.value.slice(0, -1) } : t);
+        return;
+      }
+      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        setTextBox(t => t ? { ...t, value: (t.value + e.key).slice(0, 80) } : t);
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [!!textBox]);
 
   const undo = () => { opsRef.current.pop(); setOpsCount(opsRef.current.length); redraw(); };
   const clearAll = () => { opsRef.current = []; setOpsCount(0); redraw(); };
@@ -147,7 +180,9 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
   // fall through to the page behind.
   return createPortal(
     <div
-      className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-3 sm:p-6"
+      ref={rootRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-3 sm:p-6 outline-none"
       style={{ pointerEvents: 'auto' }}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden max-h-full">
@@ -195,16 +230,13 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
             onPointerUp={onPointerUp}
           />
           {textBox && (
-            <input
-              autoFocus
-              value={textBox.value}
-              onChange={(e) => setTextBox(t => ({ ...t, value: e.target.value }))}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitText(); if (e.key === 'Escape') setTextBox(null); }}
-              onBlur={commitText}
-              placeholder="Type, then Enter"
-              className="absolute z-10 px-2 py-1 text-sm font-bold border-2 border-gray-900 rounded bg-white/95 outline-none"
+            <div
+              className="absolute z-10 px-2 py-1 text-sm font-bold border-2 border-gray-900 rounded bg-white/95 whitespace-nowrap select-none"
               style={{ left: textBox.screenX, top: textBox.screenY, color: color === '#FFFFFF' ? '#111827' : color }}
-            />
+            >
+              {textBox.value || <span className="text-gray-400 font-normal">Type, then Enter</span>}
+              <span className="animate-pulse font-normal">|</span>
+            </div>
           )}
         </div>
 

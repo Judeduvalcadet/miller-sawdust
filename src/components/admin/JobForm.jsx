@@ -549,7 +549,11 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                   <Label>Customer</Label>
                   <button
                     type="button"
-                    onClick={() => setShowNewCustomer(v => !v)}
+                    onClick={() => setShowNewCustomer(v => {
+                      // Opening the new-customer form starts from a clean slate
+                      if (!v) { set('customer_id', ''); setCustomerMapNote(''); }
+                      return !v;
+                    })}
                     className="text-xs font-medium text-amber-700 hover:text-amber-900"
                   >
                     {showNewCustomer ? 'Cancel new customer' : '+ New customer'}

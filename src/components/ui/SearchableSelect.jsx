@@ -5,6 +5,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Wheel-scroll the list ourselves: when this dropdown opens over a modal
+// dialog, the dialog's scroll lock swallows wheel events on portaled
+// content, leaving only the scrollbar working.
+function wheelScrollRef(el) {
+  if (el && !el._wheelFixed) {
+    el._wheelFixed = true;
+    el.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      el.scrollTop += e.deltaY;
+    }, { passive: false });
+  }
+}
+
 export function SearchableSelect({ value, onValueChange, options, placeholder, className, error, disabled }) {
   const [open, setOpen] = useState(false);
   const selected = options.find(o => o.value === value);
@@ -32,7 +45,7 @@ export function SearchableSelect({ value, onValueChange, options, placeholder, c
         <Command>
           <CommandInput placeholder="Search..." />
           <CommandEmpty>No results found.</CommandEmpty>
-          <CommandGroup className="max-h-60 overflow-y-auto">
+          <CommandGroup ref={wheelScrollRef} className="max-h-60 overflow-y-auto overscroll-contain">
             {options.map(option => (
               <CommandItem
                 key={option.value}
