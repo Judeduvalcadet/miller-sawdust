@@ -116,6 +116,23 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
     }
   }
 
+  // Real road geometry for the current order (cached server-side per leg)
+  const [roadLegs, setRoadLegs] = useState(null);
+  const roadReqRef = useRef(0);
+  const pointsKey = home && mapStops.length > 0
+    ? JSON.stringify([home, ...mapStops.map(s => ({ lat: s.lat, lng: s.lng })), home])
+    : '';
+  useEffect(() => {
+    setRoadLegs(null);
+    if (!pointsKey) return;
+    const reqId = ++roadReqRef.current;
+    base44.functions.invoke('route-path', { points: JSON.parse(pointsKey) })
+      .then(({ data }) => {
+        if (roadReqRef.current === reqId && Array.isArray(data?.legs)) setRoadLegs(data.legs);
+      })
+      .catch(() => { /* straight-line fallback stays */ });
+  }, [pointsKey]);
+
   const handleUseSuggestedOrder = () => {
     const suggested = routeCheck?.data?.suggested?.order;
     if (!suggested) return;
@@ -390,19 +407,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
             );
           })()}
 
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <div>
-              {canCheckRoute && orderedJobs.length >= 2 && (
-                <Button
-                  variant="outline"
-                  onClick={handleCheckRoute}
-                  disabled={routeCheck?.status === 'loading'}
-                >
-                  <Route className="w-4 h-4 mr-2 text-amber-600" />
-                  Check route
-                </Button>
-              )}
-            </div>
+          <div className="flex items-center justify-end gap-2 pt-1">
             <div className="flex gap-2">
               <Button variant="outline" onClick={onClose}>Cancel</Button>
               <Button
@@ -422,8 +427,23 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
         <div className="w-full md:w-[45%] shrink-0 flex flex-col gap-1">
           <div className="relative flex-1 min-h-[300px]">
             <div className="absolute inset-0 z-0">
-              <StopsMap stops={mapStops} home={home} height="100%" />
+              <StopsMap stops={mapStops} home={home} roadLegs={roadLegs} height="100%" />
             </div>
+            {/* Check route — always visible at the top of the map */}
+            {canCheckRoute && orderedJobs.length >= 2 && (
+              <button
+                type="button"
+                onClick={handleCheckRoute}
+                disabled={routeCheck?.status === 'loading'}
+                className="absolute top-2.5 right-2.5 z-10 flex items-center gap-2 h-10 px-4 rounded-full bg-white shadow-md border border-gray-200 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                style={{ transform: 'translateZ(0)' }}
+              >
+                {routeCheck?.status === 'loading'
+                  ? <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                  : <Route className="w-4 h-4 text-amber-600" />}
+                Check route
+              </button>
+            )}
             {mapStops.length === 0 && (
               <div className="absolute inset-x-3 top-3 z-10 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600 shadow-sm pointer-events-none" style={{ transform: 'translateZ(0)' }}>
                 {selectedDriverId ? 'No mapped stops for this day yet.' : "Pick a driver and the day's route appears here."}

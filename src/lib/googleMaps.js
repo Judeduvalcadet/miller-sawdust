@@ -10,7 +10,7 @@ export function loadGoogleMaps() {
     if (!key) { reject(new Error('missing VITE_GOOGLE_MAPS_BROWSER_KEY')); return; }
     window.__onGmapsReady = () => resolve(window.google.maps);
     const s = document.createElement('script');
-    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async&callback=__onGmapsReady`;
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly&loading=async&libraries=geometry&callback=__onGmapsReady`;
     s.async = true;
     s.onerror = () => reject(new Error('Google Maps failed to load'));
     document.head.appendChild(s);

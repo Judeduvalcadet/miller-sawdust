@@ -9,6 +9,7 @@ export default function StopsMap({
   stops = [],            // [{ label, lat, lng }] in driving order
   home = null,           // { lat, lng } — start/end base
   showRoute = true,
+  roadLegs = null,       // encoded Google polylines per leg — real road paths
   height = 200,
   mapTypeId = 'roadmap',
   mapApiRef = null,
@@ -71,12 +72,29 @@ export default function StopsMap({
     });
 
     if (showRoute && stops.length > 0 && home) {
-      const path = [home, ...stops.map(s => ({ lat: s.lat, lng: s.lng })), home];
-      overlaysRef.current.push(new gm.Polyline({
-        map, path,
-        strokeColor: '#111827', strokeOpacity: 0.55, strokeWeight: 3,
-        icons: [{ icon: { path: gm.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.2, strokeColor: '#111827' }, offset: '50%', repeat: '90px' }],
-      }));
+      const arrowIcons = [{ icon: { path: gm.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.2, strokeColor: '#111827' }, offset: '50%', repeat: '120px' }];
+      const encodedLegs = (roadLegs || []).filter(Boolean);
+      if (encodedLegs.length > 0 && gm.geometry?.encoding) {
+        // Real road geometry from the Routes API
+        for (const enc of encodedLegs) {
+          const path = gm.geometry.encoding.decodePath(enc);
+          overlaysRef.current.push(new gm.Polyline({
+            map, path,
+            strokeColor: '#111827', strokeOpacity: 0.7, strokeWeight: 3.5,
+            icons: arrowIcons,
+          }));
+        }
+      } else {
+        // Fallback while road paths load: light dashed straight lines
+        const path = [home, ...stops.map(s => ({ lat: s.lat, lng: s.lng })), home];
+        overlaysRef.current.push(new gm.Polyline({
+          map, path,
+          strokeOpacity: 0,
+          icons: [
+            { icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.35, strokeColor: '#111827', scale: 3 }, offset: '0', repeat: '14px' },
+          ],
+        }));
+      }
     }
 
     if (stops.length + (home ? 1 : 0) > 1) {
@@ -87,10 +105,10 @@ export default function StopsMap({
     }
   };
 
-  // Redraw when the stops change (order applied, pin added, ...)
+  // Redraw when the stops or road paths change (order applied, pin added, ...)
   useEffect(() => {
     if (mapRef.current && window.google?.maps) draw(window.google.maps);
-  }, [JSON.stringify(stops), JSON.stringify(home)]);
+  }, [JSON.stringify(stops), JSON.stringify(home), JSON.stringify(roadLegs)]);
 
   if (failed) {
     return (
