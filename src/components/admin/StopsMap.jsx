@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadGoogleMaps } from '@/lib/googleMaps';
 
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
+
 // Reusable Google map: numbered stop pins in driving order, optional home
 // base pin and route line. With a single stop it just centers on the pin.
 // `mapApiRef` (optional ref) receives { map } so callers can read the current
@@ -17,6 +21,7 @@ export default function StopsMap({
   const divRef = useRef(null);
   const mapRef = useRef(null);
   const overlaysRef = useRef([]);
+  const infoRef = useRef(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -62,12 +67,33 @@ export default function StopsMap({
       }));
       bounds.extend(home);
     }
+    // Hover card: customer name + loads
+    infoRef.current?.close();
+    if (!infoRef.current) {
+      try {
+        infoRef.current = new gm.InfoWindow({ disableAutoPan: true, headerDisabled: true });
+      } catch {
+        infoRef.current = new gm.InfoWindow({ disableAutoPan: true });
+      }
+    }
+    const info = infoRef.current;
+
     stops.forEach((s, i) => {
-      overlaysRef.current.push(new gm.Marker({
+      const marker = new gm.Marker({
         map, position: { lat: s.lat, lng: s.lng }, icon: pin('#111827'), zIndex: 2,
         label: { text: String(i + 1), color: '#ffffff', fontSize: '12px', fontWeight: '700' },
-        title: `${i + 1}. ${s.label || ''}`,
-      }));
+      });
+      if (s.label) {
+        marker.addListener('mouseover', () => {
+          const loads = s.loads != null
+            ? `<div style="font-weight:400;color:#6b7280;margin-top:1px">${s.loads} load${s.loads === 1 ? '' : 's'}</div>`
+            : '';
+          info.setContent(`<div style="font:600 13px system-ui,sans-serif;color:#111827;padding:2px 4px">${escapeHtml(s.label)}${loads}</div>`);
+          info.open({ map, anchor: marker });
+        });
+        marker.addListener('mouseout', () => info.close());
+      }
+      overlaysRef.current.push(marker);
       bounds.extend({ lat: s.lat, lng: s.lng });
     });
 

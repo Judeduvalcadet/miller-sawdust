@@ -107,10 +107,11 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
   for (const j of orderedJobs) {
     const label = (j.customer_company_name || j.location_name || '').trim();
     let rec = j.job_type === 'pickup' ? dropById.get(j.dropoff_location_id) : custById.get(j.customer_id);
+    const loads = parseInt(j.quantity) || 1;
     if (rec && /hoop building 257|own sawdust/i.test(rec.name || '') && home) {
-      mapStops.push({ label, ...home });
+      mapStops.push({ label, loads, ...home });
     } else if (rec?.latitude != null) {
-      mapStops.push({ label, lat: rec.latitude, lng: rec.longitude });
+      mapStops.push({ label, loads, lat: rec.latitude, lng: rec.longitude });
     } else {
       unmappedCount++;
     }
