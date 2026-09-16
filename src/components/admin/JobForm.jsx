@@ -880,8 +880,8 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         </form>
 
         {/* Right column: the map, open from the start */}
-        <div className="w-full lg:w-[42%] shrink-0 lg:sticky lg:top-0 self-start">
-          <div className="h-[320px] lg:h-[62vh] lg:min-h-[420px]">
+        <div className="w-full lg:w-[48%] shrink-0 lg:sticky lg:top-0 self-start">
+          <div className="h-[340px] lg:h-[72vh] lg:min-h-[480px]">
             <JobMapPanel
               pin={mapPin}
               title={mapTitle}

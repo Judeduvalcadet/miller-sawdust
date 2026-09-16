@@ -213,7 +213,7 @@ export default function AdminDashboard() {
           exit confirmation), never by clicking outside or pressing Escape */}
       <Dialog open={showJobForm} onOpenChange={() => {}}>
         <DialogContent
-          className="max-w-6xl max-h-[92vh] overflow-y-auto"
+          className="w-[97vw] max-w-[92rem] max-h-[94vh] overflow-y-auto"
           hideClose
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}

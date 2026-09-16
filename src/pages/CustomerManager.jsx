@@ -14,6 +14,8 @@ import {
   Loader2, ArrowLeft, Search, Upload, Download, X, Pencil, ImagePlus, RefreshCw
 } from "lucide-react";
 import CsvImportModal from "@/components/admin/CsvImportModal";
+import AddressAutocomplete from "@/components/admin/AddressAutocomplete";
+import { JobMapPanel, uploadMapImage } from "@/components/admin/CustomerMapSection";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { toast } from 'sonner';
@@ -47,6 +49,8 @@ export default function CustomerManager() {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState(EMPTY_FORM);
+  // Pin for the form's map: a fresh autocomplete pick wins over the stored pin
+  const [pendingPin, setPendingPin] = useState(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [isBusy, setIsBusy] = useState(false);
@@ -89,6 +93,7 @@ export default function CustomerManager() {
 
   const handleEdit = (customer) => {
     setEditingCustomer(customer);
+    setPendingPin(null);
     setFormData({
       name: customer.name || '',
       company_name: customer.company_name || '',
@@ -286,7 +291,7 @@ export default function CustomerManager() {
                 Import CSV
               </Button>
               <Button
-                onClick={() => { setEditingCustomer(null); setFormData(EMPTY_FORM); setShowForm(true); }}
+                onClick={() => { setEditingCustomer(null); setFormData(EMPTY_FORM); setPendingPin(null); setShowForm(true); }}
                 className="bg-amber-600 hover:bg-amber-700"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -508,13 +513,15 @@ export default function CustomerManager() {
         onImport={handleCsvImport}
       />
 
-      {/* Add/Edit Customer Dialog */}
+      {/* Add/Edit Customer Dialog — same format as the New Job popup:
+          fields on the left, big always-open map on the right */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[96vw] max-w-6xl max-h-[94vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+          <form onSubmit={handleSubmit} className="space-y-4 flex-1 min-w-0">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Name <span className="text-red-500">*</span></Label>
@@ -526,7 +533,20 @@ export default function CustomerManager() {
               </div>
               <div className="col-span-2 space-y-2">
                 <Label>Street Address</Label>
-                <Input value={formData.street_address} onChange={(e) => set('street_address', e.target.value)} placeholder="123 Farm Road" />
+                <AddressAutocomplete
+                  value={formData.street_address}
+                  onChange={(v) => set('street_address', v)}
+                  onResolve={(place) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      street_address: place.street || prev.street_address,
+                      city: place.city || prev.city,
+                      state: place.state || prev.state,
+                      zip_code: place.zip || prev.zip_code,
+                    }));
+                    if (place.lat != null) setPendingPin({ lat: place.lat, lng: place.lng });
+                  }}
+                />
               </div>
               <div className="space-y-2">
                 <Label>City</Label>
@@ -590,6 +610,33 @@ export default function CustomerManager() {
               </Button>
             </DialogFooter>
           </form>
+
+          {/* Right column: the map. Camera overlay captures the view and the
+              marked-up picture lands in the Map/Location Screenshot field. */}
+          <div className="w-full lg:w-[46%] shrink-0 lg:sticky lg:top-0 self-start">
+            <div className="h-[320px] lg:h-[66vh] lg:min-h-[440px]">
+              {(() => {
+                const pin = pendingPin || (editingCustomer?.latitude != null
+                  ? { lat: editingCustomer.latitude, lng: editingCustomer.longitude }
+                  : null);
+                return (
+                  <JobMapPanel
+                    pin={pin}
+                    title={[formData.name || formData.company_name, formData.street_address].filter(Boolean).join(' — ')}
+                    waitingText={editingCustomer
+                      ? "This customer's address isn't map-verified yet — pick an address suggestion and the pin appears."
+                      : 'Start typing the street address and pick a suggestion — the pin drops here.'}
+                    canCapture
+                    onSaveImage={async (blob) => {
+                      const url = await uploadMapImage(blob);
+                      set('map_image_url', url);
+                    }}
+                  />
+                );
+              })()}
+            </div>
+          </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

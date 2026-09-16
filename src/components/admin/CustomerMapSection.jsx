@@ -9,7 +9,7 @@ import StopsMap from '@/components/admin/StopsMap';
 import AddressAutocomplete from '@/components/admin/AddressAutocomplete';
 import MapSnapshotEditor from '@/components/admin/MapSnapshotEditor';
 
-async function uploadMapImage(blob) {
+export async function uploadMapImage(blob) {
   const file = new File([blob], `map-${Date.now()}.png`, { type: 'image/png' });
   const { file_url } = await base44.integrations.Core.UploadFile({ file });
   return file_url;
@@ -82,23 +82,28 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
             {waitingText}
           </div>
         )}
+        {canCapture && (
+          <button
+            type="button"
+            onClick={capture}
+            disabled={capturing || !pin}
+            title="Snapshot & mark up"
+            aria-label="Snapshot & mark up"
+            className="absolute top-2.5 right-2.5 z-10 w-11 h-11 rounded-full bg-white shadow-md border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40 transition-colors"
+          >
+            {capturing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
+          </button>
+        )}
       </div>
-      {canCapture && (
-        <>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button type="button" variant="outline" size="sm" onClick={capture} disabled={capturing || !pin}>
-              {capturing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Camera className="w-4 h-4 mr-2" />}
-              Snapshot &amp; mark up
-            </Button>
-            {savedNote && (
-              <span className="flex items-center gap-1 text-xs font-medium text-green-700">
-                <Check className="w-3.5 h-3.5" /> {savedNote}
-              </span>
-            )}
-            {error && <span className="text-xs text-red-600">{error}</span>}
-          </div>
-          <p className="text-xs text-gray-500">Zoom to the property, snapshot it, then circle the driveway or dump spot for the drivers.</p>
-        </>
+      {(savedNote || error) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {savedNote && (
+            <span className="flex items-center gap-1 text-xs font-medium text-green-700">
+              <Check className="w-3.5 h-3.5" /> {savedNote}
+            </span>
+          )}
+          {error && <span className="text-xs text-red-600">{error}</span>}
+        </div>
       )}
       {editorImage && (
         <MapSnapshotEditor image={editorImage} saving={saving} onSave={handleSave} onClose={() => setEditorImage(null)} />

@@ -5,7 +5,6 @@ import { Pencil, MoveUpRight, Type, Undo2, Trash2, X, Loader2 } from 'lucide-rea
 import { cn } from '@/lib/utils';
 
 const COLORS = ['#EF4444', '#FACC15', '#111827', '#FFFFFF'];
-const SIZES = [{ label: 'S', w: 4 }, { label: 'M', w: 8 }, { label: 'L', w: 14 }];
 
 // Simple full-screen markup editor over a captured map image.
 // Tools: pencil (freehand), arrow, text. Color + thickness. Undo / clear.
@@ -17,7 +16,7 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
   const draftRef = useRef(null);
   const [tool, setTool] = useState('pencil');
   const [color, setColor] = useState(COLORS[0]);
-  const [size, setSize] = useState(SIZES[1].w);
+  const [size, setSize] = useState(8);
   const [opsCount, setOpsCount] = useState(0);
   const [textBox, setTextBox] = useState(null); // { x, y, screenX, screenY, value }
 
@@ -142,9 +141,15 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
   );
 
   // Portal to <body>: ancestors with CSS transforms (the radix dialog) would
-  // otherwise trap this fixed overlay inside their box.
+  // otherwise trap this fixed overlay inside their box. pointer-events must be
+  // re-enabled explicitly — the open modal dialog sets pointer-events:none on
+  // everything outside itself, which this portal inherits and clicks would
+  // fall through to the page behind.
   return createPortal(
-    <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-3 sm:p-6">
+    <div
+      className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-3 sm:p-6"
+      style={{ pointerEvents: 'auto' }}
+    >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden max-h-full">
         {/* Toolbar */}
         <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 flex-wrap">
@@ -160,14 +165,19 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
             />
           ))}
           <div className="w-px h-6 bg-gray-200 mx-1" />
-          {SIZES.map(s => (
-            <button
-              key={s.label} type="button" onClick={() => setSize(s.w)}
-              className={cn('w-7 h-7 rounded-lg text-xs font-bold', size === s.w ? 'bg-gray-950 text-white' : 'text-gray-600 hover:bg-gray-100')}
-            >
-              {s.label}
-            </button>
-          ))}
+          <div className="flex items-center gap-1.5 px-1" title="Line thickness">
+            <span className="w-1.5 h-1.5 rounded-full bg-gray-500 shrink-0" />
+            <input
+              type="range"
+              min={2}
+              max={24}
+              value={size}
+              onChange={(e) => setSize(Number(e.target.value))}
+              className="w-24 sm:w-32 accent-gray-900 cursor-pointer"
+              aria-label="Line thickness"
+            />
+            <span className="w-4 h-4 rounded-full bg-gray-500 shrink-0" />
+          </div>
           <div className="flex-1" />
           <ToolBtn onClick={undo} title="Undo"><Undo2 className="w-4 h-4" /></ToolBtn>
           <ToolBtn onClick={clearAll} title="Clear all"><Trash2 className="w-4 h-4" /></ToolBtn>
