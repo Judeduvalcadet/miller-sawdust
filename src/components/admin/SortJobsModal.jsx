@@ -224,7 +224,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <GripVertical className="w-5 h-5 text-amber-600" />
@@ -232,7 +232,8 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="flex flex-col md:flex-row gap-5 items-stretch">
+        <div className="flex-1 min-w-0 space-y-3">
           {/* Driver selector */}
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-2">Select Driver</label>
@@ -319,18 +320,6 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
                 >
                   <JobCardContent job={orderedJobs[dragState.index]} index={dragState.index} isGhost={true} />
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Route map — pins follow the list order above */}
-          {orderedJobs.length > 0 && mapStops.length > 0 && (
-            <div className="space-y-1">
-              <StopsMap stops={mapStops} home={home} height={200} />
-              {unmappedCount > 0 && (
-                <p className="text-[11px] text-gray-400">
-                  {unmappedCount} stop{unmappedCount !== 1 ? 's' : ''} not shown (address not map-verified yet)
-                </p>
               )}
             </div>
           )}
@@ -426,6 +415,27 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Right column: the route map, stretching to the popup's height —
+            pins and route line follow the list order on the left */}
+        <div className="w-full md:w-[45%] shrink-0 flex flex-col gap-1">
+          <div className="relative flex-1 min-h-[300px]">
+            <div className="absolute inset-0 z-0">
+              <StopsMap stops={mapStops} home={home} height="100%" />
+            </div>
+            {mapStops.length === 0 && (
+              <div className="absolute inset-x-3 top-3 z-10 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600 shadow-sm pointer-events-none" style={{ transform: 'translateZ(0)' }}>
+                {selectedDriverId ? 'No mapped stops for this day yet.' : "Pick a driver and the day's route appears here."}
+              </div>
+            )}
+          </div>
+          {unmappedCount > 0 && (
+            <p className="text-[11px] text-gray-400">
+              {unmappedCount} stop{unmappedCount !== 1 ? 's' : ''} not shown (address not map-verified yet)
+            </p>
+          )}
+        </div>
         </div>
       </DialogContent>
     </Dialog>
