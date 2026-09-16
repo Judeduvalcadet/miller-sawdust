@@ -66,10 +66,14 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
           <p className="text-sm font-medium text-gray-700 truncate">{title}</p>
         </div>
       )}
-      <div className="relative flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0 isolate">
         {/* z-0 creates a stacking context that CONTAINS Google Maps' internal
             z-indexes (up to ~1,000,002) — without it they compete with the
-            overlays below and cover them intermittently during zoom. */}
+            overlays below and cover them intermittently during zoom. The
+            overlays additionally carry translateZ(0): Safari composites the
+            map's 3D-accelerated tiles above plain siblings regardless of
+            z-index, and promoting the overlays to their own layers is the
+            standard WebKit workaround. */}
         <div className="absolute inset-0 z-0">
           <StopsMap
             stops={pin ? [{ ...pin, label: 'Customer' }] : []}
@@ -81,7 +85,10 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
           />
         </div>
         {!pin && waitingText && (
-          <div className="absolute inset-x-3 top-3 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600 shadow-sm pointer-events-none">
+          <div
+            className="absolute inset-x-3 top-3 z-10 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600 shadow-sm pointer-events-none"
+            style={{ transform: 'translateZ(0)' }}
+          >
             {waitingText}
           </div>
         )}
@@ -93,6 +100,7 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
             title="Snapshot & mark up"
             aria-label="Snapshot & mark up"
             className="absolute top-2.5 right-2.5 z-10 w-11 h-11 rounded-full bg-white shadow-md border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40 transition-colors"
+            style={{ transform: 'translateZ(0)' }}
           >
             {capturing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
           </button>
