@@ -67,7 +67,10 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
         </div>
       )}
       <div className="relative flex-1 min-h-0">
-        <div className="absolute inset-0">
+        {/* z-0 creates a stacking context that CONTAINS Google Maps' internal
+            z-indexes (up to ~1,000,002) — without it they compete with the
+            overlays below and cover them intermittently during zoom. */}
+        <div className="absolute inset-0 z-0">
           <StopsMap
             stops={pin ? [{ ...pin, label: 'Customer' }] : []}
             home={null}
