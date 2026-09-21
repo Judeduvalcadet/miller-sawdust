@@ -58,6 +58,16 @@ export default function StopsMap({
       strokeColor: '#ffffff',
       strokeWeight: 2,
     });
+    // Pickup stops (suppliers) draw as blue squares so the load source reads
+    // apart from the numbered delivery circles and the amber home base.
+    const squarePin = (fill) => ({
+      path: 'M -1,-1 L 1,-1 L 1,1 L -1,1 Z',
+      scale: 11,
+      fillColor: fill,
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWeight: 2,
+    });
 
     if (home) {
       overlaysRef.current.push(new gm.Marker({
@@ -78,17 +88,28 @@ export default function StopsMap({
     }
     const info = infoRef.current;
 
-    stops.forEach((s, i) => {
+    let deliveryNum = 0;
+    stops.forEach((s) => {
+      const isPickup = s.kind === 'pickup';
+      if (!isPickup) deliveryNum += 1;
       const marker = new gm.Marker({
-        map, position: { lat: s.lat, lng: s.lng }, icon: pin('#111827'), zIndex: 2,
-        label: { text: String(i + 1), color: '#ffffff', fontSize: '12px', fontWeight: '700' },
+        map,
+        position: { lat: s.lat, lng: s.lng },
+        icon: isPickup ? squarePin('#2563eb') : pin('#111827'),
+        zIndex: isPickup ? 3 : 2,
+        label: {
+          text: isPickup ? 'P' : String(s.num ?? deliveryNum),
+          color: '#ffffff', fontSize: '12px', fontWeight: '700',
+        },
       });
       if (s.label) {
         marker.addListener('mouseover', () => {
-          const loads = s.loads != null
-            ? `<div style="font-weight:400;color:#6b7280;margin-top:1px">${s.loads} load${s.loads === 1 ? '' : 's'}</div>`
-            : '';
-          info.setContent(`<div style="font:600 13px system-ui,sans-serif;color:#111827;padding:2px 4px">${escapeHtml(s.label)}${loads}</div>`);
+          const sub = isPickup
+            ? '<div style="font-weight:400;color:#6b7280;margin-top:1px">Load pickup</div>'
+            : (s.loads != null
+              ? `<div style="font-weight:400;color:#6b7280;margin-top:1px">${s.loads} load${s.loads === 1 ? '' : 's'}</div>`
+              : '');
+          info.setContent(`<div style="font:600 13px system-ui,sans-serif;color:#111827;padding:2px 4px">${escapeHtml(s.label)}${sub}</div>`);
           info.open({ map, anchor: marker });
         });
         marker.addListener('mouseout', () => info.close());

@@ -96,32 +96,64 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
     }
   };
 
-  // Map pins: each job's end point (customer / drop-off) in the list's order.
-  // Same aliasing as the optimizer: unpinned home-property records = home.
+  // Map pins: the day's TRUE sequence — each job's load pickup (blue "P"
+  // square) followed by its delivery/drop-off (numbered circle), starting and
+  // ending at home. Loads picked up at the home base draw no extra pin.
   const homeBase = pickupLocations.find(p => p.location_type === 'my_building' && /home hoop/i.test(p.name || ''));
   const home = homeBase?.latitude != null ? { lat: homeBase.latitude, lng: homeBase.longitude } : null;
   const custById = new Map(customers.map(c => [c.id, c]));
+  const pickById = new Map(pickupLocations.map(p => [p.id, p]));
   const dropById = new Map(dropOffLocations.map(d => [d.id, d]));
+  const key5 = (p) => p.lat.toFixed(5) + ',' + p.lng.toFixed(5);
+
   const mapStops = [];
+  const seqPoints = [];  // for the road path: home -> P -> stop -> ... -> home
+  const pushPoint = (p) => {
+    if (p && (seqPoints.length === 0 || key5(seqPoints[seqPoints.length - 1]) !== key5(p))) {
+      seqPoints.push({ lat: p.lat, lng: p.lng });
+    }
+  };
   let unmappedCount = 0;
+  let jobNum = 0;
+  pushPoint(home);
   for (const j of orderedJobs) {
+    jobNum += 1;
     const label = (j.customer_company_name || j.location_name || '').trim();
-    let rec = j.job_type === 'pickup' ? dropById.get(j.dropoff_location_id) : custById.get(j.customer_id);
     const loads = parseInt(j.quantity) || 1;
-    if (rec && /hoop building 257|own sawdust/i.test(rec.name || '') && home) {
-      mapStops.push({ label, loads, ...home });
-    } else if (rec?.latitude != null) {
-      mapStops.push({ label, loads, lat: rec.latitude, lng: rec.longitude });
+
+    // Load source: the job's pickup location, or the home base when none set
+    const entryRec = j.pickup_location_id ? pickById.get(j.pickup_location_id) : null;
+    const entry = entryRec?.latitude != null
+      ? { lat: entryRec.latitude, lng: entryRec.longitude, name: (entryRec.name || '').trim() }
+      : (!j.pickup_location_id && j.job_type !== 'pickup' ? home : null);
+    if (entry) {
+      pushPoint(entry);
+      if (home && key5(entry) !== key5(home)) {
+        mapStops.push({ kind: 'pickup', label: entry.name, lat: entry.lat, lng: entry.lng });
+      }
+    }
+
+    // End point: the customer (deliveries) or the drop-off building (pickups)
+    const rec = j.job_type === 'pickup' ? dropById.get(j.dropoff_location_id) : custById.get(j.customer_id);
+    if (rec?.latitude != null) {
+      pushPoint({ lat: rec.latitude, lng: rec.longitude });
+      mapStops.push({ kind: 'delivery', num: jobNum, label, loads, lat: rec.latitude, lng: rec.longitude });
     } else {
       unmappedCount++;
     }
   }
+  pushPoint(home);
+  // The road-path endpoint accepts up to 16 points; on an over-long day fall
+  // back to the delivery chain only.
+  const roadPoints = seqPoints.length > 16 && home
+    ? [home, ...mapStops.filter(s => s.kind === 'delivery').map(s => ({ lat: s.lat, lng: s.lng })), home]
+    : seqPoints;
 
   // Real road geometry for the current order (cached server-side per leg)
   const [roadLegs, setRoadLegs] = useState(null);
   const roadReqRef = useRef(0);
-  const pointsKey = home && mapStops.length > 0
-    ? JSON.stringify([home, ...mapStops.map(s => ({ lat: s.lat, lng: s.lng })), home])
+  const pointsKey = home && mapStops.length > 0 && roadPoints.length >= 2
+    ? JSON.stringify(roadPoints)
     : '';
   useEffect(() => {
     setRoadLegs(null);
