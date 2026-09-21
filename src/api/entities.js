@@ -39,6 +39,7 @@ const TABLE_COLUMNS = {
   pickup_locations: [
     'id','name','phone','address','assigned_drivers','location_type','created_date','updated_date',
     'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
+    'pickup_days','pickups_per_day','pickup_schedule_notes',
   ],
   drop_off_locations: [
     'id','name','address','notes','created_date','updated_date',

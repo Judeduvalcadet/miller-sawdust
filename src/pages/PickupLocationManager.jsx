@@ -49,7 +49,17 @@ const emptyForm = {
   address: '',
   assigned_drivers: [],
   location_type: 'supplier',
+  pickup_days: [],
+  pickups_per_day: '',
+  pickup_schedule_notes: '',
 };
+
+const WEEKDAYS = [
+  { value: 'mon', label: 'Mon' }, { value: 'tue', label: 'Tue' },
+  { value: 'wed', label: 'Wed' }, { value: 'thu', label: 'Thu' },
+  { value: 'fri', label: 'Fri' }, { value: 'sat', label: 'Sat' },
+  { value: 'sun', label: 'Sun' },
+];
 
 export default function PickupLocationManager() {
   const queryClient = useQueryClient();
@@ -109,10 +119,16 @@ export default function PickupLocationManager() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const data = {
+      ...formData,
+      pickups_per_day: formData.pickups_per_day === '' ? null : parseInt(formData.pickups_per_day) || null,
+      pickup_days: (formData.pickup_days || []).length ? formData.pickup_days : null,
+      pickup_schedule_notes: formData.pickup_schedule_notes?.trim() || null,
+    };
     if (editingLocation) {
-      updateMutation.mutate({ id: editingLocation.id, data: formData });
+      updateMutation.mutate({ id: editingLocation.id, data });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(data);
     }
   };
 
@@ -124,8 +140,23 @@ export default function PickupLocationManager() {
       address: location.address,
       assigned_drivers: location.assigned_drivers || [],
       location_type: location.location_type || 'supplier',
+      pickup_days: location.pickup_days || [],
+      pickups_per_day: location.pickups_per_day != null ? String(location.pickups_per_day) : '',
+      pickup_schedule_notes: location.pickup_schedule_notes || '',
     });
     setShowForm(true);
+  };
+
+  const togglePickupDay = (value) => {
+    setFormData(prev => {
+      const current = prev.pickup_days || [];
+      return {
+        ...prev,
+        pickup_days: current.includes(value)
+          ? current.filter(d => d !== value)
+          : [...current, value],
+      };
+    });
   };
 
   const handleDelete = (location) => {
@@ -232,6 +263,13 @@ export default function PickupLocationManager() {
                           <MapPin className="w-3 h-3" />
                           {location.address}
                         </p>
+                        {(location.pickup_days?.length > 0 || location.pickups_per_day != null) && (
+                          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full inline-block px-2 py-0.5 mt-1.5">
+                            {(location.pickup_days || []).map(d => d[0].toUpperCase() + d.slice(1)).join(', ')}
+                            {location.pickups_per_day != null && ` · ${location.pickups_per_day}/day`}
+                            {location.pickup_schedule_notes && ` · ${location.pickup_schedule_notes}`}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -338,6 +376,52 @@ export default function PickupLocationManager() {
                   <SelectItem value="my_building">MS Location</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Standing pickup schedule — read by the dispatch assistant */}
+            <div className="space-y-3 border border-gray-200 rounded-xl p-3 bg-gray-50">
+              <div>
+                <Label>Pickup Schedule <span className="text-gray-400 font-normal text-xs">(optional)</span></Label>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  How often this location wants sawdust picked up — used by the AI assistant.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {WEEKDAYS.map(d => (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => togglePickupDay(d.value)}
+                    className={
+                      (formData.pickup_days || []).includes(d.value)
+                        ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 text-white'
+                        : 'px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-gray-300 text-gray-600 hover:border-amber-400'
+                    }
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Loads per pickup day</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 2"
+                    value={formData.pickups_per_day}
+                    onChange={(e) => setFormData({...formData, pickups_per_day: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Notes</Label>
+                  <Input
+                    placeholder="e.g. pine only, call first"
+                    value={formData.pickup_schedule_notes}
+                    onChange={(e) => setFormData({...formData, pickup_schedule_notes: e.target.value})}
+                  />
+                </div>
+              </div>
             </div>
 
             <DialogFooter>

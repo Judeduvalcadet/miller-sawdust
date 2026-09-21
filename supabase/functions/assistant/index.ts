@@ -70,6 +70,22 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'get_pickup_locations',
+    description: "List every pickup location: the company's own bases and the sawdust suppliers, with each one's standing pickup schedule (which weekdays they want pickups, how many loads per day, notes). An empty schedule means it has not been entered yet, not that they want none.",
+    input_schema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_supplier_pickups',
+    description: "How many loads have been taken from each pickup location on a given date and in that week so far (counts every job that loads there — pickup runs and supplier-sourced deliveries alike). Compare against the standing schedule to judge remaining availability, e.g. 'Weaver Pallet wants 2/day and 1 was taken today, so 1 more fits.'",
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'YYYY-MM-DD (defaults to today)' },
+      },
+      additionalProperties: false,
+    },
+  },
 ]
 
 async function resolveDriver(name: string) {
@@ -150,6 +166,84 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<un
     }
   }
 
+  if (name === 'get_pickup_locations') {
+    const { data } = await service.from('pickup_locations')
+      .select('name, location_type, address, pickup_days, pickups_per_day, pickup_schedule_notes, latitude')
+      .order('name')
+    return {
+      locations: (data ?? []).map((p) => ({
+        name: (p.name || '').trim(),
+        kind: p.location_type === 'my_building' ? 'our base' : 'supplier',
+        address: p.address,
+        map_verified: p.latitude != null,
+        schedule: (p.pickup_days?.length || p.pickups_per_day != null || p.pickup_schedule_notes)
+          ? {
+              days: p.pickup_days ?? null,
+              loads_per_day: p.pickups_per_day ?? null,
+              notes: p.pickup_schedule_notes ?? null,
+            }
+          : 'not entered yet',
+      })),
+    }
+  }
+
+  if (name === 'get_supplier_pickups') {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(input.date || '')) ? String(input.date) : today
+    // Week runs Monday..Sunday around the requested date
+    const d = new Date(date + 'T12:00:00Z')
+    const dow = (d.getUTCDay() + 6) % 7 // 0 = Monday
+    const monday = new Date(d); monday.setUTCDate(d.getUTCDate() - dow)
+    const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate() + 6)
+    const iso = (x: Date) => x.toISOString().slice(0, 10)
+
+    const [{ data: jobs }, { data: locs }] = await Promise.all([
+      service.from('jobs')
+        .select('pickup_location_id, scheduled_date, quantity')
+        .gte('scheduled_date', iso(monday)).lte('scheduled_date', iso(sunday))
+        .not('pickup_location_id', 'is', null)
+        .neq('status', 'cancelled').is('deleted_at', null).limit(1000),
+      service.from('pickup_locations')
+        .select('id, name, location_type, pickup_days, pickups_per_day, pickup_schedule_notes'),
+    ])
+    const byLoc = new Map((locs ?? []).map((l) => [l.id, l]))
+    const acc = new Map<string, { loads_on_date: number; loads_week_by_day: Record<string, number> }>()
+    for (const j of jobs ?? []) {
+      const loc = byLoc.get(j.pickup_location_id)
+      if (!loc || loc.location_type === 'my_building') continue
+      const key = (loc.name || '').trim()
+      if (!acc.has(key)) acc.set(key, { loads_on_date: 0, loads_week_by_day: {} })
+      const a = acc.get(key)!
+      const loads = Math.max(1, parseInt(j.quantity) || 1)
+      a.loads_week_by_day[j.scheduled_date] = (a.loads_week_by_day[j.scheduled_date] || 0) + loads
+      if (j.scheduled_date === date) a.loads_on_date += loads
+    }
+    // Include scheduled suppliers even with zero activity this week
+    for (const l of locs ?? []) {
+      if (l.location_type === 'my_building') continue
+      const key = (l.name || '').trim()
+      if (!acc.has(key) && (l.pickup_days?.length || l.pickups_per_day != null)) {
+        acc.set(key, { loads_on_date: 0, loads_week_by_day: {} })
+      }
+    }
+    const schedByName = new Map((locs ?? []).map((l) => [(l.name || '').trim(), l]))
+    return {
+      date,
+      week: `${iso(monday)}..${iso(sunday)}`,
+      suppliers: [...acc.entries()].map(([name, a]) => {
+        const l = schedByName.get(name)
+        return {
+          supplier: name,
+          schedule: (l?.pickup_days?.length || l?.pickups_per_day != null)
+            ? { days: l?.pickup_days ?? null, loads_per_day: l?.pickups_per_day ?? null, notes: l?.pickup_schedule_notes ?? null }
+            : 'not entered yet',
+          loads_on_date: a.loads_on_date,
+          loads_week_by_day: a.loads_week_by_day,
+        }
+      }).sort((x, y) => x.supplier.localeCompare(y.supplier)),
+    }
+  }
+
   return { error: 'unknown tool' }
 }
 
@@ -164,7 +258,19 @@ function systemPrompt(): string {
 Scope — the ONLY things you do:
 - look up drivers, jobs, and customers with your tools
 - run route checks and explain the results in plain language
+- answer pickup-logistics questions: suppliers, their standing pickup
+  schedules, and how many loads were taken from each and when
 - answer questions about this dispatch operation using tool data
+
+How pickups work here: sawdust is LOADED at a pickup location on every job —
+either one of our own bases (Home Hoop Building, Berlin) or an outside
+supplier (Weaver Pallet, Gregory, ...). Supplier stops can sit between
+deliveries on a route, not only at the start of a day. Some suppliers have a
+standing schedule (e.g. two loads every workday); when a supplier's schedule
+says N loads per day and fewer than N have been taken on a date, they likely
+still have availability that day — say so, and mention it's based on the
+entered schedule. A schedule shown as "not entered yet" means the office
+hasn't filled it in: don't guess availability, just report the load counts.
 
 You are read-only. You cannot create, change, assign, or delete anything, and you never claim you did or will. If asked to change something, say the dispatcher can do it on the board, and offer the lookup or route check you CAN do.
 
