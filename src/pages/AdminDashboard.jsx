@@ -155,6 +155,16 @@ export default function AdminDashboard() {
               <Button variant="outline" size="icon" onClick={() => refetchJobs()}>
                 <RefreshCw className="w-4 h-4" />
               </Button>
+              {['admin', 'assistant'].includes(window.localStorage.getItem('miller_driver_role')) && (
+                <Button
+                  variant="outline"
+                  onClick={() => { window.location.href = '/v2'; }}
+                  className="font-semibold"
+                  title="Open the V2 interface"
+                >
+                  V2
+                </Button>
+              )}
               <Button 
                 onClick={() => {
                   setEditingJob(null);

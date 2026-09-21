@@ -163,6 +163,31 @@ export async function login(driverId, pin) {
   return data.driver
 }
 
+// Office login (owner / secretary): email + password. Same token machinery;
+// the issued JWT carries amr='password', which the invoicing/QuickBooks
+// endpoints require even for admins.
+export async function loginWithEmail(email, password) {
+  const data = await callFn('login', {
+    email,
+    password,
+    device_id: getDeviceId(),
+  })
+  storeTokens(data)
+  return data.driver
+}
+
+// Reads a claim from the stored access token (client-side convenience only —
+// every server endpoint re-verifies the real thing).
+export function getTokenClaim(name) {
+  try {
+    const token = localStorage.getItem(KEYS.jwt)
+    if (!token) return null
+    return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))[name] ?? null
+  } catch {
+    return null
+  }
+}
+
 export async function logout() {
   const refresh = localStorage.getItem(KEYS.refresh)
   const session = localStorage.getItem(KEYS.session)

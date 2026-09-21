@@ -12,12 +12,53 @@ Deno.serve(async (req) => {
   if (opts) return opts
 
   try {
-    const { driver_id, pin, device_id } = await req.json()
+    const { driver_id, pin, email, password, device_id } = await req.json()
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
+
+    // ---- Email + password login (office roles: owner / secretary) ----
+    if (typeof email === 'string' && typeof password === 'string') {
+      const normalized = email.trim().toLowerCase()
+      if (!normalized || password.length < 1) return json(400, { error: 'invalid_request' })
+
+      const { data: cred } = await service
+        .from('driver_credentials')
+        .select('driver_id, password_bcrypt')
+        .ilike('email', normalized)
+        .maybeSingle()
+
+      // Lockout shares the PIN machinery, keyed by the matched account
+      if (cred) {
+        const winStart = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString()
+        const { count: fails } = await service
+          .from('login_attempts')
+          .select('id', { count: 'exact', head: true })
+          .eq('driver_id', cred.driver_id)
+          .eq('success', false)
+          .gte('attempted_at', winStart)
+        if ((fails ?? 0) >= MAX_FAILURES) return json(429, { error: 'too_many_attempts' })
+      }
+
+      const { data: user } = cred
+        ? await service.from('drivers').select('id, name, role, active')
+            .eq('id', cred.driver_id).maybeSingle()
+        : { data: null }
+
+      const passOk = !!(user?.active && cred?.password_bcrypt &&
+        bcrypt.compareSync(password, cred.password_bcrypt))
+
+      if (cred) await service.from('login_attempts').insert({ driver_id: cred.driver_id, ip, success: passOk })
+      if (!passOk || !user) return json(401, { error: 'invalid_credentials' })
+
+      const { refreshToken } = await createSession(user.id, device_id ?? null, 'password')
+      await service.from('drivers')
+        .update({ last_login_at: new Date().toISOString() }).eq('id', user.id)
+      return json(200, await tokenResponse(user, refreshToken, 'password'))
+    }
+
+    // ---- PIN login (unchanged) ----
     if (!driver_id || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin)) {
       return json(400, { error: 'invalid_request' })
     }
-
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
 
     // Lockout: too many recent failures for this driver
     const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString()
