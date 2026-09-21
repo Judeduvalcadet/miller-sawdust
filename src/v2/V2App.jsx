@@ -3,6 +3,7 @@ import { Truck, FileText, Users, Map, LogOut, ArrowLeft, Monitor } from 'lucide-
 import { getTokenClaim, logout } from '@/api/authClient';
 import { cn } from '@/lib/utils';
 import V2Login from './V2Login';
+import V2Settings from './V2Settings';
 
 // V2 shell — a parallel interface over the SAME data. V1 is never touched;
 // this whole tree lives under /v2. Office area (invoicing / QuickBooks)
@@ -101,7 +102,7 @@ export default function V2App() {
       <Route path="invoices" element={<RequireOffice><Placeholder title="Invoices" note="Day-by-day job list with one-click and batch invoice creation, QuickBooks sync, and combined printing — being built next." /></RequireOffice>} />
       <Route path="customers" element={<RequireOffice><Placeholder title="Customers" note="Customer detail overlays with tabs for info, loads, and invoices — with per-customer pricing." /></RequireOffice>} />
       <Route path="wallboard" element={<RequireOffice><Placeholder title="Wallboard V2" note="One row per driver, bigger cards, one day at a time with a day picker." /></RequireOffice>} />
-      <Route path="settings" element={<RequireOffice><Placeholder title="Settings" note="QuickBooks connection and office access management will live here." /></RequireOffice>} />
+      <Route path="settings" element={<RequireOffice><V2Settings /></RequireOffice>} />
       <Route path="*" element={<Navigate to="/v2" replace />} />
     </Routes>
   );

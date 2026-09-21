@@ -12,6 +12,7 @@ import CustomerDeliveriesFullReport from './pages/CustomerDeliveriesFullReport';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import V2App from './v2/V2App';
+import QBCallback from './v2/QBCallback';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -69,6 +70,7 @@ const AuthenticatedApp = () => {
 
       {/* V2 — parallel interface, own shell and login; V1 untouched */}
       <Route path="/v2/*" element={<V2App />} />
+      <Route path="/QBCallback" element={<QBCallback />} />
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>
