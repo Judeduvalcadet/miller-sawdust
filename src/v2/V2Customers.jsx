@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Loader2, Search, Star, Trash2, Plus, FileText, Check, Pencil, X,
-  User, Truck, Receipt, ChevronRight, ImagePlus, MoreVertical,
+  User, Truck, Receipt, ChevronRight, ChevronLeft, ImagePlus, MoreVertical,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -71,25 +71,14 @@ export default function V2Customers() {
               className="pl-9"
             />
           </div>
-          <Button
-            size="sm" className="w-full bg-gray-950 hover:bg-gray-800"
-            onClick={() => { setCreating(true); setSelectedId(null); }}
-          >
-            <Plus className="w-4 h-4 mr-1.5" /> New customer
-          </Button>
-          <div className="flex items-center justify-between text-[11px] text-gray-400 px-1">
-            <span>{filtered.length} customers</span>
-            <span className="flex items-center gap-1.5">
-              Show
-              <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
-                <SelectTrigger className="h-6 w-[60px] px-2 text-xs text-gray-700 rounded-lg border-gray-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAGE_SIZES.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </span>
+          <div className="flex items-center justify-between px-0.5">
+            <Button
+              size="sm" className="h-7 px-2 text-xs bg-gray-950 hover:bg-gray-800"
+              onClick={() => { setCreating(true); setSelectedId(null); }}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" /> New customer
+            </Button>
+            <span className="text-[11px] text-gray-400">{filtered.length} customers</span>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -109,13 +98,38 @@ export default function V2Customers() {
             </button>
           ))}
         </div>
-        {totalPages > 1 && (
-          <div className="p-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-            <Button variant="outline" size="sm" className="h-7 px-2" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>‹ Prev</Button>
-            <span>Page {safePage} of {totalPages}</span>
-            <Button variant="outline" size="sm" className="h-7 px-2" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Next ›</Button>
-          </div>
-        )}
+        <div className="px-2 py-1.5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+          <span className="flex items-center gap-1.5 text-[11px] text-gray-400">
+            Show
+            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+              <SelectTrigger className="h-6 w-[58px] px-2 text-xs text-gray-700 rounded-lg border-gray-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZES.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </span>
+          <span className="flex items-center gap-0.5">
+            <button
+              onClick={() => setPage(safePage - 1)}
+              disabled={safePage <= 1}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="tabular-nums text-[11px] text-gray-500 px-0.5">{safePage} / {totalPages}</span>
+            <button
+              onClick={() => setPage(safePage + 1)}
+              disabled={safePage >= totalPages}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent"
+              aria-label="Next page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </span>
+        </div>
       </div>
 
       {/* Detail */}
