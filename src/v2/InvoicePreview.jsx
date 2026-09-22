@@ -15,13 +15,22 @@ export function InvoiceTemplate({ invoice, customer, company }) {
     <div className="bg-white text-gray-900 p-8 text-sm" style={{ fontFamily: 'Georgia, serif' }}>
       {/* Header */}
       <div className="flex items-start justify-between gap-6">
-        <div>
+        <div className="flex items-start gap-4">
+          {/* The logo asset is white-on-black; inverted it prints black on the white paper. */}
+          <img
+            src="/logo.jpg"
+            alt=""
+            className="w-16 h-16 shrink-0"
+            style={{ filter: 'invert(1)' }}
+          />
+          <div>
           <p className="text-xl font-bold tracking-tight">{company?.company_name || 'Miller Sawdust'}</p>
           <p className="text-gray-600 mt-1 leading-snug">
             {company?.street_address}<br />
             {[company?.city, company?.state].filter(Boolean).join(', ')} {company?.zip}<br />
             {company?.phone}{company?.email ? <><br />{company.email}</> : null}
           </p>
+          </div>
         </div>
         <div className="text-right">
           <p className="text-2xl font-bold tracking-widest text-gray-800">INVOICE</p>
