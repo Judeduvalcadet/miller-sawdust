@@ -109,6 +109,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         load_configuration: found?.load_configuration || '',
         item_id: found?.item_id || '',
         yards_mode: found?.item_id ? 'preset' : (found?.yards_collected ? 'custom' : 'preset'),
+        config_custom: !found?.item_id && !!found?.load_configuration,
       };
     });
   };
@@ -121,7 +122,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         return Array.from({ length: qty }, (_, i) => {
           const loadNum = i + 1;
           return prev.find(l => l.load_number === loadNum) ||
-            { load_number: loadNum, pickup_location_name: '', yards_collected: '', load_configuration: '', item_id: '', yards_mode: 'preset' };
+            { load_number: loadNum, pickup_location_name: '', yards_collected: '', load_configuration: '', item_id: '', yards_mode: 'preset', config_custom: false };
         });
       });
     }
@@ -189,6 +190,13 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const assignedDriverName = assignedDriver?.name || '';
   const assignedPickupRole = assignedDriver?.pickup_role || 'none';
   const isSpreader = formData.truck_type === 'spreader';
+
+  // Load presets derived from the QuickBooks item catalog: yard options for
+  // the selected truck type, and the items behind the configuration select.
+  const truckLoadItems = loadItems.filter(it => !it.truck_type || it.truck_type === formData.truck_type);
+  const itemYardOptions = [...new Set(
+    truckLoadItems.filter(it => it.yards != null).map(it => Number(it.yards))
+  )].sort((a, b) => a - b);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -742,61 +750,44 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs text-gray-500">{loadItems.length ? 'Load' : 'Yards'} <span className="text-gray-400">(optional)</span></Label>
+                        <Label className="text-xs text-gray-500">Yards <span className="text-gray-400">(optional)</span></Label>
                         {load.yards_mode === 'preset' ? (
-                          loadItems.length ? (
-                            /* QuickBooks item presets — one source of truth: picking one
-                               sets the yards, the configuration, and the invoice item. */
-                            <Select
-                              value={load.item_id || ''}
-                              onValueChange={(v) => {
-                                const updated = [...deliveryLoads];
-                                if (v === 'custom') {
-                                  updated[i] = { ...updated[i], yards_mode: 'custom', item_id: '', yards_collected: '', load_configuration: '' };
-                                } else {
-                                  const it = loadItems.find(x => x.id === v);
-                                  updated[i] = {
-                                    ...updated[i],
-                                    item_id: v,
-                                    yards_collected: it?.yards != null ? String(it.yards) : updated[i].yards_collected,
-                                    load_configuration: it?.name || updated[i].load_configuration,
-                                  };
-                                }
-                                setDeliveryLoads(updated);
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
-                              <SelectContent>
-                                {loadItems
-                                  .filter(it => !it.truck_type || it.truck_type === formData.truck_type || it.id === load.item_id)
-                                  .map(it => (
-                                    <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>
-                                  ))}
-                                <SelectItem value="custom">Custom...</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          ) : (
+                          /* Yardages come from the QuickBooks item catalog for the
+                             selected truck type; the configuration select below then
+                             narrows to the items at that yardage. */
                           <Select
                             value={load.yards_collected !== '' ? String(load.yards_collected) : ''}
                             onValueChange={(v) => {
                               const updated = [...deliveryLoads];
                               if (v === 'custom') {
-                                updated[i] = { ...updated[i], yards_mode: 'custom', yards_collected: '' };
+                                updated[i] = { ...updated[i], yards_mode: 'custom', item_id: '', yards_collected: '', load_configuration: '', config_custom: true };
                               } else {
-                                updated[i] = { ...updated[i], yards_collected: v };
+                                const keepItem = updated[i].item_id &&
+                                  loadItems.some(x => x.id === updated[i].item_id && String(x.yards) === v);
+                                updated[i] = {
+                                  ...updated[i],
+                                  yards_collected: v,
+                                  ...(keepItem ? {} : { item_id: '', load_configuration: '', config_custom: false }),
+                                };
                               }
                               setDeliveryLoads(updated);
                             }}
                           >
                             <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
                             <SelectContent>
-                              {(yardPresets[formData.truck_type] || []).map(y => (
-                                <SelectItem key={y} value={String(y)}>{y} yds</SelectItem>
-                              ))}
+                              {(itemYardOptions.length ? itemYardOptions : (yardPresets[formData.truck_type] || []))
+                                .concat(
+                                  load.yards_collected !== '' &&
+                                  !(itemYardOptions.length ? itemYardOptions : (yardPresets[formData.truck_type] || []))
+                                    .some(y => String(y) === String(load.yards_collected))
+                                    ? [load.yards_collected] : []
+                                )
+                                .map(y => (
+                                  <SelectItem key={y} value={String(y)}>{y} yds</SelectItem>
+                                ))}
                               <SelectItem value="custom">Custom...</SelectItem>
                             </SelectContent>
                           </Select>
-                          )
                         ) : (
                           <div className="flex gap-1">
                             <Input
@@ -814,7 +805,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                               autoFocus
                             />
                             <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-2 shrink-0"
-                              onClick={() => { const updated = [...deliveryLoads]; updated[i] = { ...updated[i], yards_mode: 'preset', yards_collected: '' }; setDeliveryLoads(updated); }}
+                              onClick={() => { const updated = [...deliveryLoads]; updated[i] = { ...updated[i], yards_mode: 'preset', yards_collected: '', config_custom: false, load_configuration: '', item_id: '' }; setDeliveryLoads(updated); }}
                             >↩</Button>
                           </div>
                         )}
@@ -822,16 +813,61 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-500">Load Configuration <span className="text-gray-400">(optional)</span></Label>
-                      <Input
-                        placeholder="e.g. All dry, ½ pine / ½ dry"
-                        value={load.load_configuration}
-                        onChange={(e) => {
-                          const updated = [...deliveryLoads];
-                          updated[i] = { ...updated[i], load_configuration: e.target.value };
-                          setDeliveryLoads(updated);
-                        }}
-                        className="h-8 text-xs"
-                      />
+                      {loadItems.length && load.yards_mode === 'preset' && !load.config_custom ? (
+                        /* Only the QuickBooks items matching the selected truck +
+                           yardage show up; picking one links the invoice item. */
+                        <Select
+                          value={load.item_id || ''}
+                          onValueChange={(v) => {
+                            const updated = [...deliveryLoads];
+                            if (v === 'custom') {
+                              updated[i] = { ...updated[i], config_custom: true, item_id: '' };
+                            } else {
+                              const it = loadItems.find(x => x.id === v);
+                              updated[i] = {
+                                ...updated[i],
+                                item_id: v,
+                                load_configuration: it?.name || '',
+                                yards_collected: it?.yards != null ? String(it.yards) : updated[i].yards_collected,
+                              };
+                            }
+                            setDeliveryLoads(updated);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder={load.yards_collected !== '' ? 'Select configuration...' : 'Pick yards first...'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {truckLoadItems
+                              .filter(it =>
+                                load.yards_collected === '' ||
+                                String(it.yards) === String(load.yards_collected) ||
+                                it.id === load.item_id)
+                              .map(it => (
+                                <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>
+                              ))}
+                            <SelectItem value="custom">Custom text...</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div className="flex gap-1">
+                          <Input
+                            placeholder="e.g. All dry, ½ pine / ½ dry"
+                            value={load.load_configuration}
+                            onChange={(e) => {
+                              const updated = [...deliveryLoads];
+                              updated[i] = { ...updated[i], load_configuration: e.target.value };
+                              setDeliveryLoads(updated);
+                            }}
+                            className="h-8 text-xs"
+                          />
+                          {loadItems.length > 0 && load.yards_mode === 'preset' && (
+                            <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-2 shrink-0"
+                              onClick={() => { const updated = [...deliveryLoads]; updated[i] = { ...updated[i], config_custom: false, load_configuration: '', item_id: '' }; setDeliveryLoads(updated); }}
+                            >↩</Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

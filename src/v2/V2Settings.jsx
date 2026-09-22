@@ -138,8 +138,20 @@ function PresetsTab() {
     queryKey: ['settings'],
     queryFn: async () => (await base44.entities.Settings.list())[0] || null,
   });
+  const { data: items } = useQuery({
+    queryKey: ['items'],
+    queryFn: () => base44.entities.Item.list('sort_order'),
+  });
   const [newYard, setNewYard] = useState({});
   const [newInterval, setNewInterval] = useState('');
+
+  // Delivery yardages come from the QuickBooks item catalog — shown here
+  // read-only so the presets page reflects what the job form actually offers.
+  const itemYards = (truck) => [...new Set(
+    (items || [])
+      .filter((i) => i.active && i.is_load_item && i.yards != null && (!i.truck_type || i.truck_type === truck))
+      .map((i) => Number(i.yards))
+  )].sort((a, b) => a - b);
 
   const update = useMutation({
     mutationFn: async (patch) => {
@@ -158,9 +170,32 @@ function PresetsTab() {
 
   return (
     <div className="p-6 max-w-2xl space-y-5">
+      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
+          <Package className="w-4 h-4 text-gray-500" /> Delivery load yardages
+          <span className="text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1.5 py-0.5">from QuickBooks items</span>
+        </h3>
+        <p className="text-xs text-gray-500 mt-1">
+          These are what the job form offers per truck type — derived from the item catalog.
+          To change them, edit the items on the Items tab.
+        </p>
+        <div className="mt-3 space-y-2.5">
+          {TRUCK_TYPES.map(({ value, label }) => (
+            <div key={value} className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 w-28 shrink-0">{label}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {itemYards(value).map((y) => (
+                  <span key={y} className="bg-green-50 border border-green-200 text-green-800 rounded-lg px-2.5 py-1 text-xs font-medium">{y} yds</span>
+                ))}
+                {itemYards(value).length === 0 && <span className="text-xs text-gray-400 italic">none yet</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <p className="text-sm text-gray-500 -mb-1">
-        Custom yardage presets for the job form (used for pickups and custom loads). Delivery
-        loads use the QuickBooks items on the Items tab.
+        Custom yardage presets — used for pickup jobs and the "Custom" option on loads.
       </p>
       {TRUCK_TYPES.map(({ value, label }) => {
         const yards = presets[value] || [];
