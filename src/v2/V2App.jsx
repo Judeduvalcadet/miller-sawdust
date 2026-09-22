@@ -100,6 +100,11 @@ function V2Shell({ children }) {
           <div className="min-w-0">
             <p className="font-bold text-sm leading-tight">Miller Sawdust</p>
             <p className="text-[11px] text-gray-400">Version 2</p>
+            {import.meta.env.MODE === 'sandbox' && (
+              <span className="inline-block mt-1 text-[10px] font-bold tracking-wide bg-amber-500 text-gray-950 rounded px-1.5 py-0.5">
+                SANDBOX — local data
+              </span>
+            )}
           </div>
         </div>
         <nav className="flex-1 py-3 space-y-0.5 px-2">
