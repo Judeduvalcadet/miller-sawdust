@@ -1,10 +1,12 @@
-import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
-import { Truck, FileText, Users, Map, LogOut, ArrowLeft, Monitor } from 'lucide-react';
+import { useState } from 'react';
+import { Routes, Route, Navigate, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Truck, FileText, Users, Map, LogOut, ArrowLeft, Monitor, BookUser, Factory, MapPin, ChevronDown } from 'lucide-react';
 import { getTokenClaim, logout } from '@/api/authClient';
 import { cn } from '@/lib/utils';
 import V2Login from './V2Login';
 import V2Settings from './V2Settings';
 import V2Customers from './V2Customers';
+import { V2Pickups, V2Dropoffs } from './V2Directory';
 
 // V2 shell — a parallel interface over the SAME data. V1 is never touched;
 // this whole tree lives under /v2. Office area (invoicing / QuickBooks)
@@ -30,13 +32,60 @@ function Placeholder({ title, note }) {
   );
 }
 
-const NAV = [
+const NAV_TOP = [
   { to: '/v2', end: true, icon: Truck, label: 'Dispatch' },
   { to: '/v2/invoices', icon: FileText, label: 'Invoices' },
+];
+// The Directory: everyone the business deals with — customers we sell to,
+// suppliers we buy sawdust from, and drop-off points. Expands on hover.
+const DIRECTORY = [
   { to: '/v2/customers', icon: Users, label: 'Customers' },
+  { to: '/v2/pickups', icon: Factory, label: 'Pickup Locations' },
+  { to: '/v2/dropoffs', icon: MapPin, label: 'Drop-off Locations' },
+];
+const NAV_BOTTOM = [
   { to: '/v2/wallboard', icon: Monitor, label: 'Wallboard' },
   { to: '/v2/settings', icon: Map, label: 'Settings' },
 ];
+
+function navLinkClass({ isActive }) {
+  return cn(
+    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors',
+    isActive ? 'bg-white/15 text-white font-medium' : 'text-gray-400 hover:text-white hover:bg-white/5'
+  );
+}
+
+function DirectoryGroup() {
+  const location = useLocation();
+  const [hovered, setHovered] = useState(false);
+  const routeInside = DIRECTORY.some((d) => location.pathname.startsWith(d.to));
+  const open = hovered || routeInside;
+  return (
+    <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <div className={cn(
+        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm cursor-default transition-colors',
+        routeInside ? 'text-white font-medium' : 'text-gray-400 hover:text-white hover:bg-white/5'
+      )}>
+        <BookUser className="w-4 h-4 shrink-0" /> Directory
+        <ChevronDown className={cn('w-3.5 h-3.5 ml-auto transition-transform', open && 'rotate-180')} />
+      </div>
+      <div className={cn('overflow-hidden transition-all', open ? 'max-h-40' : 'max-h-0')}>
+        {DIRECTORY.map(({ to, icon: Icon, label }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) => cn(
+              'flex items-center gap-3 pl-9 pr-3 py-2 rounded-lg text-[13px] transition-colors',
+              isActive ? 'bg-white/15 text-white font-medium' : 'text-gray-400 hover:text-white hover:bg-white/5'
+            )}
+          >
+            <Icon className="w-3.5 h-3.5 shrink-0" /> {label}
+          </NavLink>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function V2Shell({ children }) {
   const navigate = useNavigate();
@@ -53,16 +102,14 @@ function V2Shell({ children }) {
           </div>
         </div>
         <nav className="flex-1 py-3 space-y-0.5 px-2">
-          {NAV.map(({ to, end, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) => cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors',
-                isActive ? 'bg-white/15 text-white font-medium' : 'text-gray-400 hover:text-white hover:bg-white/5'
-              )}
-            >
+          {NAV_TOP.map(({ to, end, icon: Icon, label }) => (
+            <NavLink key={to} to={to} end={end} className={navLinkClass}>
+              <Icon className="w-4 h-4 shrink-0" /> {label}
+            </NavLink>
+          ))}
+          <DirectoryGroup />
+          {NAV_BOTTOM.map(({ to, end, icon: Icon, label }) => (
+            <NavLink key={to} to={to} end={end} className={navLinkClass}>
               <Icon className="w-4 h-4 shrink-0" /> {label}
             </NavLink>
           ))}
@@ -102,6 +149,8 @@ export default function V2App() {
       <Route path="" element={<RequireOffice><Placeholder title="Dispatch V2" note="The new dispatch layout with the live route map is coming here. Everything reads the same data as V1." /></RequireOffice>} />
       <Route path="invoices" element={<RequireOffice><Placeholder title="Invoices" note="Day-by-day job list with one-click and batch invoice creation, QuickBooks sync, and combined printing — being built next." /></RequireOffice>} />
       <Route path="customers" element={<RequireOffice><V2Customers /></RequireOffice>} />
+      <Route path="pickups" element={<RequireOffice><V2Pickups /></RequireOffice>} />
+      <Route path="dropoffs" element={<RequireOffice><V2Dropoffs /></RequireOffice>} />
       <Route path="wallboard" element={<RequireOffice><Placeholder title="Wallboard V2" note="One row per driver, bigger cards, one day at a time with a day picker." /></RequireOffice>} />
       <Route path="settings" element={<RequireOffice><V2Settings /></RequireOffice>} />
       <Route path="*" element={<Navigate to="/v2" replace />} />

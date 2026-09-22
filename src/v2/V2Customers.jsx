@@ -35,6 +35,7 @@ export default function V2Customers() {
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const { data: customers, isLoading } = useQuery({
     queryKey: ['v2-customers'],
@@ -70,6 +71,12 @@ export default function V2Customers() {
               className="pl-9"
             />
           </div>
+          <Button
+            size="sm" className="w-full bg-gray-950 hover:bg-gray-800"
+            onClick={() => { setCreating(true); setSelectedId(null); }}
+          >
+            <Plus className="w-4 h-4 mr-1.5" /> New customer
+          </Button>
           <div className="flex items-center justify-between text-[11px] text-gray-400 px-1">
             <span>{filtered.length} customers</span>
             <span className="flex items-center gap-1.5">
@@ -91,10 +98,10 @@ export default function V2Customers() {
           ) : pageRows.map((c) => (
             <button
               key={c.id}
-              onClick={() => setSelectedId(c.id)}
+              onClick={() => { setSelectedId(c.id); setCreating(false); }}
               className={cn(
                 'w-full text-left px-4 py-2.5 border-b border-gray-50 hover:bg-gray-50',
-                selectedId === c.id && 'bg-gray-100 hover:bg-gray-100'
+                selectedId === c.id && !creating && 'bg-gray-100 hover:bg-gray-100'
               )}
             >
               <p className="text-sm font-medium text-gray-900 truncate">{(c.company_name || c.name || '').trim() || '—'}</p>
@@ -113,7 +120,12 @@ export default function V2Customers() {
 
       {/* Detail */}
       <div className="flex-1 min-w-0 overflow-y-auto">
-        {selected ? (
+        {creating ? (
+          <InfoEdit
+            customer={null}
+            onDone={(created) => { setCreating(false); if (created?.id) setSelectedId(created.id); }}
+          />
+        ) : selected ? (
           <CustomerDetail key={selected.id} customer={selected} />
         ) : (
           <div className="h-full flex items-center justify-center text-sm text-gray-400 p-10">
@@ -249,33 +261,38 @@ function Field({ label, value, pre }) {
   );
 }
 
+// Edit an existing customer, or create a new one when `customer` is null.
 function InfoEdit({ customer, onDone }) {
   const queryClient = useQueryClient();
+  const isNew = !customer;
   const [form, setForm] = useState({
-    name: customer.name || '',
-    company_name: customer.company_name || '',
-    phone: customer.phone || '',
-    email: customer.email || '',
-    street_address: customer.street_address || '',
-    city: customer.city || '',
-    state: customer.state || '',
-    zip_code: customer.zip_code || '',
-    delivery_instructions: customer.delivery_instructions || '',
-    map_image_url: customer.map_image_url || '',
+    name: customer?.name || '',
+    company_name: customer?.company_name || '',
+    phone: customer?.phone || '',
+    email: customer?.email || '',
+    street_address: customer?.street_address || '',
+    city: customer?.city || '',
+    state: customer?.state || '',
+    zip_code: customer?.zip_code || '',
+    delivery_instructions: customer?.delivery_instructions || '',
+    map_image_url: customer?.map_image_url || '',
   });
   const [pendingPin, setPendingPin] = useState(null);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const save = useMutation({
-    mutationFn: () => base44.entities.Customer.update(customer.id, form),
-    onSuccess: () => {
+    mutationFn: () => isNew
+      ? base44.entities.Customer.create(form)
+      : base44.entities.Customer.update(customer.id, form),
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['v2-customers'] });
-      onDone();
+      onDone(created);
     },
   });
 
   return (
     <div className="p-6">
+      {isNew && <h2 className="text-lg font-bold text-gray-900 mb-4">New customer</h2>}
       <div className="flex flex-col lg:flex-row gap-6 items-stretch max-w-5xl">
         <div className="flex-1 min-w-0 bg-white rounded-2xl border border-gray-200 p-5">
           <div className="grid grid-cols-2 gap-4">
@@ -353,8 +370,8 @@ function InfoEdit({ customer, onDone }) {
             </div>
           </div>
           <div className="flex gap-2 mt-5">
-            <Button onClick={() => save.mutate()} disabled={save.isPending} className="bg-gray-950 hover:bg-gray-800">
-              {save.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Save
+            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.name.trim()} className="bg-gray-950 hover:bg-gray-800">
+              {save.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} {isNew ? 'Create customer' : 'Save'}
             </Button>
             <Button variant="outline" onClick={onDone}>Cancel</Button>
           </div>
@@ -363,7 +380,7 @@ function InfoEdit({ customer, onDone }) {
         <div className="w-full lg:w-[44%] shrink-0 self-start">
           <div className="h-[320px] lg:h-[58vh] lg:min-h-[420px]">
             <JobMapPanel
-              pin={pendingPin || (customer.latitude != null ? { lat: customer.latitude, lng: customer.longitude } : null)}
+              pin={pendingPin || (customer?.latitude != null ? { lat: customer.latitude, lng: customer.longitude } : null)}
               title={[form.company_name || form.name, form.street_address].filter(Boolean).join(' — ')}
               waitingText="Start typing the street address and pick a suggestion — the pin drops here."
               canCapture
