@@ -58,7 +58,7 @@ const TABLE_COLUMNS = {
   // the rest is office-editable (name/price edits push to QBO in Phase 3).
   items: [
     'id','name','description','unit_price','item_type','yards','truck_type',
-    'is_load_item','active','sort_order','created_date','updated_date',
+    'is_load_item','active','sort_order','display_label','created_date','updated_date',
     'qb_id','qb_sync_token','qb_last_synced_at',
   ],
   customer_item_prices: [

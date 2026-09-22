@@ -132,19 +132,42 @@ const TRUCK_TYPES = [
   { value: 'spreader', label: 'Spreader' },
 ];
 
+const PRESET_SUBTABS = [
+  { key: 'delivery', label: 'Delivery' },
+  { key: 'configs', label: 'Load configurations' },
+  { key: 'old', label: 'Old presets' },
+];
+
 function PresetsTab() {
-  const queryClient = useQueryClient();
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => (await base44.entities.Settings.list())[0] || null,
-  });
+  const [subTab, setSubTab] = useState('delivery');
+  return (
+    <div className="p-6 max-w-3xl">
+      <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1 w-fit">
+        {PRESET_SUBTABS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setSubTab(key)}
+            className={cn(
+              'px-4 py-1.5 text-sm font-medium rounded-lg transition-colors',
+              subTab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {subTab === 'delivery' && <DeliveryYardagesPanel />}
+      {subTab === 'configs' && <LoadConfigsPanel />}
+      {subTab === 'old' && <OldPresetsPanel />}
+    </div>
+  );
+}
+
+function DeliveryYardagesPanel() {
   const { data: items } = useQuery({
     queryKey: ['items'],
     queryFn: () => base44.entities.Item.list('sort_order'),
   });
-  const [newYard, setNewYard] = useState({});
-  const [newInterval, setNewInterval] = useState('');
-
   // Delivery yardages come from the QuickBooks item catalog — shown here
   // read-only so the presets page reflects what the job form actually offers.
   const itemYards = (truck) => [...new Set(
@@ -152,6 +175,124 @@ function PresetsTab() {
       .filter((i) => i.active && i.is_load_item && i.yards != null && (!i.truck_type || i.truck_type === truck))
       .map((i) => Number(i.yards))
   )].sort((a, b) => a - b);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
+        <Package className="w-4 h-4 text-gray-500" /> Delivery load yardages
+        <span className="text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1.5 py-0.5">from QuickBooks items</span>
+      </h3>
+      <p className="text-xs text-gray-500 mt-1">
+        These are what the job form offers per truck type — derived from the item catalog.
+        To change them, edit the items on the Items tab.
+      </p>
+      <div className="mt-3 space-y-2.5">
+        {TRUCK_TYPES.map(({ value, label }) => (
+          <div key={value} className="flex items-center gap-3">
+            <span className="text-xs text-gray-500 w-28 shrink-0">{label}</span>
+            <div className="flex flex-wrap gap-1.5">
+              {itemYards(value).map((y) => (
+                <span key={y} className="bg-green-50 border border-green-200 text-green-800 rounded-lg px-2.5 py-1 text-xs font-medium">{y} yds</span>
+              ))}
+              {itemYards(value).length === 0 && <span className="text-xs text-gray-400 italic">none yet</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LoadConfigsPanel() {
+  const queryClient = useQueryClient();
+  const { data: items, isLoading } = useQuery({
+    queryKey: ['items'],
+    queryFn: () => base44.entities.Item.list('sort_order'),
+  });
+  const [edit, setEdit] = useState({}); // item id -> label being typed
+  const [savedId, setSavedId] = useState(null);
+
+  const save = useMutation({
+    mutationFn: ({ id, display_label }) => base44.entities.Item.update(id, { display_label }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['items'] });
+      setSavedId(vars.id);
+      setTimeout(() => setSavedId(null), 1500);
+    },
+  });
+
+  const commit = (i) => {
+    const raw = edit[i.id];
+    if (raw === undefined) return;
+    setEdit((p) => { const n = { ...p }; delete n[i.id]; return n; });
+    const v = raw.trim();
+    if (!v || v === (i.display_label || '')) return;
+    save.mutate({ id: i.id, display_label: v });
+  };
+
+  if (isLoading) return <TabLoading />;
+  const loads = (items || []).filter((i) => i.active && i.is_load_item);
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200">
+      <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+        <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
+          Load configurations
+          <span className="text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1.5 py-0.5">from QuickBooks items</span>
+        </h3>
+        <p className="text-xs text-gray-500 mt-0.5">
+          The front-end label is what shows on job cards when dispatch picks this
+          configuration. Invoicing always uses the QuickBooks item and its pricing —
+          the label is display only.
+        </p>
+      </div>
+      <table className="w-full text-left">
+        <thead>
+          <tr className="text-[11px] uppercase tracking-wide text-gray-400">
+            <th className="py-2.5 pl-5 pr-2 font-medium">QuickBooks item</th>
+            <th className="py-2.5 px-2 font-medium">Truck / yards</th>
+            <th className="py-2.5 px-2 pr-5 font-medium">Front-end label (job cards)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loads.map((i) => (
+            <tr key={i.id} className="border-t border-gray-100">
+              <td className="py-2.5 pl-5 pr-2">
+                <p className="text-sm font-medium text-gray-900">{i.name}</p>
+                {i.qb_id && <span className="text-[10px] text-gray-400">QB #{i.qb_id}</span>}
+              </td>
+              <td className="py-2.5 px-2 text-xs text-gray-500 whitespace-nowrap">
+                {(TRUCK_TYPES.find((t) => t.value === i.truck_type)?.label || 'Any')}{i.yards != null ? ` · ${i.yards} yds` : ''}
+              </td>
+              <td className="py-2.5 px-2 pr-5">
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={edit[i.id] !== undefined ? edit[i.id] : (i.display_label || '')}
+                    placeholder={i.name}
+                    onChange={(e) => setEdit((p) => ({ ...p, [i.id]: e.target.value }))}
+                    onBlur={() => commit(i)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    className="h-8 text-sm max-w-[220px]"
+                  />
+                  {savedId === i.id && <Check className="w-4 h-4 text-green-600 shrink-0" />}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OldPresetsPanel() {
+  const queryClient = useQueryClient();
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => (await base44.entities.Settings.list())[0] || null,
+  });
+  const [newYard, setNewYard] = useState({});
+  const [newInterval, setNewInterval] = useState('');
 
   const update = useMutation({
     mutationFn: async (patch) => {
@@ -169,33 +310,10 @@ function PresetsTab() {
     update.mutate({ truck_yard_presets: { ...presets, [truck]: list } });
 
   return (
-    <div className="p-6 max-w-2xl space-y-5">
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
-          <Package className="w-4 h-4 text-gray-500" /> Delivery load yardages
-          <span className="text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1.5 py-0.5">from QuickBooks items</span>
-        </h3>
-        <p className="text-xs text-gray-500 mt-1">
-          These are what the job form offers per truck type — derived from the item catalog.
-          To change them, edit the items on the Items tab.
-        </p>
-        <div className="mt-3 space-y-2.5">
-          {TRUCK_TYPES.map(({ value, label }) => (
-            <div key={value} className="flex items-center gap-3">
-              <span className="text-xs text-gray-500 w-28 shrink-0">{label}</span>
-              <div className="flex flex-wrap gap-1.5">
-                {itemYards(value).map((y) => (
-                  <span key={y} className="bg-green-50 border border-green-200 text-green-800 rounded-lg px-2.5 py-1 text-xs font-medium">{y} yds</span>
-                ))}
-                {itemYards(value).length === 0 && <span className="text-xs text-gray-400 italic">none yet</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
+    <div className="max-w-2xl space-y-5">
       <p className="text-sm text-gray-500 -mb-1">
-        Custom yardage presets — used for pickup jobs and the "Custom" option on loads.
+        The old custom yardage presets — still used for pickup jobs and the "Custom"
+        option on loads. Kept here until they're retired.
       </p>
       {TRUCK_TYPES.map(({ value, label }) => {
         const yards = presets[value] || [];

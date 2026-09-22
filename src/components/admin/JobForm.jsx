@@ -816,6 +816,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                       {loadItems.length && load.yards_mode === 'preset' && !load.config_custom ? (
                         /* Only the QuickBooks items matching the selected truck +
                            yardage show up; picking one links the invoice item. */
+                        <>
                         <Select
                           value={load.item_id || ''}
                           onValueChange={(v) => {
@@ -827,7 +828,9 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                               updated[i] = {
                                 ...updated[i],
                                 item_id: v,
-                                load_configuration: it?.name || '',
+                                // The job card shows the friendly label; the item
+                                // link is what pulls pricing into the invoice.
+                                load_configuration: it?.display_label || it?.name || '',
                                 yards_collected: it?.yards != null ? String(it.yards) : updated[i].yards_collected,
                               };
                             }
@@ -844,11 +847,31 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                                 String(it.yards) === String(load.yards_collected) ||
                                 it.id === load.item_id)
                               .map(it => (
-                                <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>
+                                <SelectItem key={it.id} value={it.id}>
+                                  {it.display_label || it.name}
+                                  {it.display_label && it.display_label !== it.name ? ` — ${it.name}` : ''}
+                                </SelectItem>
                               ))}
                             <SelectItem value="custom">Custom text...</SelectItem>
                           </SelectContent>
                         </Select>
+                        {load.item_id && (
+                          /* Preview of the job-card text — editable per job; the
+                             invoice still bills from the selected item above. */
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">On job card:</span>
+                            <Input
+                              value={load.load_configuration}
+                              onChange={(e) => {
+                                const updated = [...deliveryLoads];
+                                updated[i] = { ...updated[i], load_configuration: e.target.value };
+                                setDeliveryLoads(updated);
+                              }}
+                              className="h-7 text-xs"
+                            />
+                          </div>
+                        )}
+                        </>
                       ) : (
                         <div className="flex gap-1">
                           <Input
