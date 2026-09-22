@@ -6,8 +6,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Loader2, Search, Star, Trash2, Plus, FileText, Check, Pencil, X,
-  User, Truck, Receipt, ChevronRight, ImagePlus,
+  User, Truck, Receipt, ChevronRight, ImagePlus, MoreVertical,
 } from 'lucide-react';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { base44 } from '@/api/entities';
 import { cn } from '@/lib/utils';
 import AddressAutocomplete from '@/components/admin/AddressAutocomplete';
@@ -62,15 +72,16 @@ export default function V2Customers() {
           </div>
           <div className="flex items-center justify-between text-[11px] text-gray-400 px-1">
             <span>{filtered.length} customers</span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5">
               Show
-              <select
-                value={pageSize}
-                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-                className="border border-gray-200 rounded px-1 py-0.5 text-gray-700 bg-white"
-              >
-                {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
+              <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                <SelectTrigger className="h-6 w-[60px] px-2 text-xs text-gray-700 rounded-lg border-gray-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZES.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </span>
           </div>
         </div>
@@ -184,7 +195,14 @@ function InfoTab({ customer }) {
     <div className="p-6">
       <div className="flex flex-col lg:flex-row gap-6 items-stretch max-w-5xl">
         <div className="flex-1 min-w-0 space-y-5">
-          <div className="bg-white rounded-2xl border border-gray-200 p-5">
+          <div className="relative bg-white rounded-2xl border border-gray-200 p-5">
+            <Button
+              variant="outline" size="sm"
+              onClick={() => setEditing(true)}
+              className="absolute top-3 right-3 h-7 px-2.5 text-xs"
+            >
+              <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
+            </Button>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <Field label="Name" value={customer.name} />
               <Field label="Company" value={customer.company_name} />
@@ -198,11 +216,6 @@ function InfoTab({ customer }) {
               {customer.map_image_url
                 ? <MapThumb src={customer.map_image_url} className="h-32" />
                 : <p className="text-sm text-gray-400 italic">None yet</p>}
-            </div>
-            <div className="mt-5">
-              <Button onClick={() => setEditing(true)} className="bg-gray-950 hover:bg-gray-800">
-                <Pencil className="w-4 h-4 mr-2" /> Edit information
-              </Button>
             </div>
           </div>
 
@@ -524,7 +537,9 @@ function PriceBook({ customer }) {
     queryFn: () => base44.entities.CustomerItemPrice.filter({ customer_id: customer.id }),
   });
 
-  const [editPrice, setEditPrice] = useState({});
+  const [editingRowId, setEditingRowId] = useState(null);
+  const [editValue, setEditValue] = useState('');
+  const [deleteRow, setDeleteRow] = useState(null);
   const [savedRow, setSavedRow] = useState(null);
   const [adding, setAdding] = useState(false);
   const [addItemId, setAddItemId] = useState('');
@@ -558,11 +573,9 @@ function PriceBook({ customer }) {
   const usedItemIds = new Set(rows.map((r) => r.item_id));
   const addable = (items || []).filter((i) => i.active && !usedItemIds.has(i.id));
 
-  const commitPrice = (row) => {
-    const raw = editPrice[row.id];
-    if (raw === undefined) return;
-    const v = parseFloat(raw);
-    setEditPrice((p) => { const n = { ...p }; delete n[row.id]; return n; });
+  const commitEdit = (row) => {
+    const v = parseFloat(editValue);
+    setEditingRowId(null);
     if (isNaN(v) || v < 0 || v === Number(row.price)) return;
     update.mutate({ id: row.id, price: v });
   };
@@ -613,25 +626,51 @@ function PriceBook({ customer }) {
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-gray-400 text-sm">$</span>
-                  <Input
-                    type="number" step="0.01"
-                    value={editPrice[row.id] !== undefined ? editPrice[row.id] : String(row.price)}
-                    onChange={(e) => setEditPrice((p) => ({ ...p, [row.id]: e.target.value }))}
-                    onBlur={() => commitPrice(row)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    className={cn('h-8 w-24 text-sm text-right', differs && 'border-amber-300 bg-amber-50/50')}
-                  />
-                  {savedRow === row.id && <Check className="w-4 h-4 text-green-600" />}
-                </div>
-                <button
-                  onClick={() => remove.mutate(row.id)}
-                  className="text-gray-300 hover:text-red-500 shrink-0"
-                  title="Remove — falls back to the standard price"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {editingRowId === row.id ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-400 text-sm">$</span>
+                    <Input
+                      type="number" step="0.01" autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitEdit(row);
+                        if (e.key === 'Escape') setEditingRowId(null);
+                      }}
+                      className="h-8 w-24 text-sm text-right"
+                    />
+                    <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={() => commitEdit(row)}>Save</Button>
+                    <Button size="sm" variant="ghost" className="h-8 px-2" onClick={() => setEditingRowId(null)}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn('text-sm font-semibold tabular-nums', differs ? 'text-amber-700' : 'text-gray-900')}>
+                        ${Number(row.price).toLocaleString()}
+                      </span>
+                      {savedRow === row.id && <Check className="w-4 h-4 text-green-600" />}
+                    </div>
+                    {/* modal={false}: a modal dropdown + the delete AlertDialog fight
+                        over body pointer-events and leave the page unclickable. */}
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <button className="text-gray-300 hover:text-gray-700 shrink-0 p-1 rounded hover:bg-gray-100">
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => { setEditingRowId(row.id); setEditValue(String(row.price)); }}>
+                          <Pencil className="w-4 h-4 mr-2" /> Edit price
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setDeleteRow(row)} className="text-red-600 focus:text-red-600">
+                          <Trash2 className="w-4 h-4 mr-2" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
+                )}
               </div>
             );
           })}
@@ -678,6 +717,27 @@ function PriceBook({ customer }) {
           </div>
         </div>
       )}
+
+      <AlertDialog open={!!deleteRow} onOpenChange={(o) => { if (!o) setDeleteRow(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this price?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteRow && `${itemById.get(deleteRow.item_id)?.name || 'This item'} — $${Number(deleteRow.price).toLocaleString()}. `}
+              Invoices will fall back to the item's standard price.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { if (deleteRow) remove.mutate(deleteRow.id); setDeleteRow(null); }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

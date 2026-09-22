@@ -42,7 +42,7 @@ function V2Shell({ children }) {
   const navigate = useNavigate();
   const { name } = useOfficeSession();
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <div className="h-screen overflow-hidden bg-gray-100 flex">
       {/* Sidebar */}
       <aside className="w-56 shrink-0 bg-gray-950 text-white flex flex-col">
         <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10">
@@ -84,7 +84,7 @@ function V2Shell({ children }) {
       </aside>
 
       {/* Content */}
-      <main className="flex-1 min-w-0 flex flex-col">{children}</main>
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col">{children}</main>
     </div>
   );
 }
