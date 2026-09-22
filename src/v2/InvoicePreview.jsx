@@ -1,5 +1,6 @@
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { X, Printer } from 'lucide-react';
 
 // The invoice template. Fixed layout — only the variables change: date,
 // customer, addresses, line items, pricing. Used to preview imported
@@ -108,7 +109,7 @@ export function InvoiceTemplate({ invoice, customer, company }) {
   );
 }
 
-export default function InvoicePreview({ open, onClose, invoice, customer, company }) {
+export default function InvoicePreview({ open, onClose, invoice, customer, company, onPrint }) {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl p-0 overflow-hidden max-h-[92vh] overflow-y-auto">
@@ -120,6 +121,13 @@ export default function InvoicePreview({ open, onClose, invoice, customer, compa
           <X className="w-4 h-4 text-gray-600" />
         </button>
         {invoice && <InvoiceTemplate invoice={invoice} customer={customer} company={company} />}
+        {onPrint && invoice && (
+          <div className="border-t border-gray-100 px-5 py-3 flex justify-end bg-gray-50">
+            <Button size="sm" className="bg-gray-950 hover:bg-gray-800" onClick={onPrint}>
+              <Printer className="w-4 h-4 mr-2" /> Print
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
