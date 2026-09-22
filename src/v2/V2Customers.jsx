@@ -72,13 +72,13 @@ export default function V2Customers() {
             />
           </div>
           <div className="flex items-center justify-between px-0.5">
+            <span className="text-[11px] text-gray-400">{filtered.length} customers</span>
             <Button
               size="sm" className="h-7 px-2 text-xs bg-gray-950 hover:bg-gray-800"
               onClick={() => { setCreating(true); setSelectedId(null); }}
             >
               <Plus className="w-3.5 h-3.5 mr-1" /> New customer
             </Button>
-            <span className="text-[11px] text-gray-400">{filtered.length} customers</span>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">

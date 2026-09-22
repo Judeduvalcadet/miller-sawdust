@@ -77,13 +77,13 @@ function DirectoryPage({ kind, title, subtitle, entity, queryKey, newLabel }) {
             <Input placeholder={`Search ${title.toLowerCase()}…`} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
           <div className="flex items-center justify-between px-0.5">
+            <span className="text-[11px] text-gray-400">{filtered.length}</span>
             <Button
               size="sm" className="h-7 px-2 text-xs bg-gray-950 hover:bg-gray-800"
               onClick={() => { setCreating(true); setSelectedId(null); }}
             >
               <Plus className="w-3.5 h-3.5 mr-1" /> {newLabel}
             </Button>
-            <span className="text-[11px] text-gray-400">{filtered.length}</span>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
