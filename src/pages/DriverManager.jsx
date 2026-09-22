@@ -18,7 +18,9 @@ import CsvImportModal from "@/components/admin/CsvImportModal";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
-export default function DriverManager() {
+// `embedded` renders it as a section (no page header/back link) — used by the
+// V2 Settings "Team" tab. V1 renders it as its own page, unchanged.
+export default function DriverManager({ embedded = false } = {}) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -177,17 +179,19 @@ export default function DriverManager() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4">
+    <div className={embedded ? '' : 'min-h-screen bg-gray-50'}>
+      <div className={embedded ? '' : 'bg-white border-b sticky top-0 z-10'}>
+        <div className={embedded ? 'max-w-4xl mx-auto px-4 pt-6' : 'max-w-4xl mx-auto px-4 py-4'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Link to={createPageUrl('AdminDashboard')}>
-                <Button variant="ghost" size="icon">
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-              </Link>
-              <h1 className="font-bold text-xl">User Manager</h1>
+              {!embedded && (
+                <Link to={createPageUrl('AdminDashboard')}>
+                  <Button variant="ghost" size="icon">
+                    <ArrowLeft className="w-5 h-5" />
+                  </Button>
+                </Link>
+              )}
+              <h1 className={embedded ? 'font-semibold text-sm text-gray-900' : 'font-bold text-xl'}>{embedded ? 'Team' : 'User Manager'}</h1>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowCsvImport(true)}>

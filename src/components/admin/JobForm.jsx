@@ -76,6 +76,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const [isCreatingRecurring, setIsCreatingRecurring] = useState(false);
   const [recurringProgress, setRecurringProgress] = useState('');
   const [yardPresets, setYardPresets] = useState(DEFAULT_PRESETS);
+  const [loadItems, setLoadItems] = useState([]); // QuickBooks load catalog
   const [yardsMode, setYardsMode] = useState(() => {
     if (job?.delivery_yards) return 'custom';
     return 'preset';
@@ -106,7 +107,8 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         pickup_location_name: found?.pickup_location_name || '',
         yards_collected: found?.yards_collected ? String(found.yards_collected) : '',
         load_configuration: found?.load_configuration || '',
-        yards_mode: found?.yards_collected ? 'custom' : 'preset',
+        item_id: found?.item_id || '',
+        yards_mode: found?.item_id ? 'preset' : (found?.yards_collected ? 'custom' : 'preset'),
       };
     });
   };
@@ -119,7 +121,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         return Array.from({ length: qty }, (_, i) => {
           const loadNum = i + 1;
           return prev.find(l => l.load_number === loadNum) ||
-            { load_number: loadNum, pickup_location_name: '', yards_collected: '', load_configuration: '', yards_mode: 'preset' };
+            { load_number: loadNum, pickup_location_name: '', yards_collected: '', load_configuration: '', item_id: '', yards_mode: 'preset' };
         });
       });
     }
@@ -141,6 +143,11 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         }
       }
     });
+    // QuickBooks item catalog — the load presets. Falls back to the numeric
+    // yard presets if the catalog is empty or fails to load.
+    base44.entities.Item.filter({ is_load_item: true, active: true }, 'sort_order')
+      .then(list => setLoadItems(list || []))
+      .catch(() => {});
   }, []);
 
   // Calculate recurring dates with weekend push-to-Monday
@@ -238,6 +245,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       pickup_location_name: l.pickup_location_name || null,
       yards_collected: l.yards_collected ? parseFloat(l.yards_collected) : null,
       load_configuration: l.load_configuration || null,
+      item_id: l.item_id || null,
       completed: !!(l.pickup_location_name && l.yards_collected),
     })) : undefined;
 
@@ -263,6 +271,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       pickup_yards: isPickup ? (parseFloat(formData.pickup_yards) || null) : undefined,
       delivery_yards: !isPickup ? (totalYards || null) : undefined,
       load_configuration: !isPickup ? (joinedConfig || null) : undefined,
+      item_id: !isPickup ? (loadsData?.find(l => l.item_id)?.item_id || null) : undefined,
       loads: loadsData,
       invoice_sent: isPickup ? undefined : (formData.invoice_sent || 'no'),
     };
@@ -733,8 +742,40 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs text-gray-500">Yards <span className="text-gray-400">(optional)</span></Label>
+                        <Label className="text-xs text-gray-500">{loadItems.length ? 'Load' : 'Yards'} <span className="text-gray-400">(optional)</span></Label>
                         {load.yards_mode === 'preset' ? (
+                          loadItems.length ? (
+                            /* QuickBooks item presets — one source of truth: picking one
+                               sets the yards, the configuration, and the invoice item. */
+                            <Select
+                              value={load.item_id || ''}
+                              onValueChange={(v) => {
+                                const updated = [...deliveryLoads];
+                                if (v === 'custom') {
+                                  updated[i] = { ...updated[i], yards_mode: 'custom', item_id: '', yards_collected: '', load_configuration: '' };
+                                } else {
+                                  const it = loadItems.find(x => x.id === v);
+                                  updated[i] = {
+                                    ...updated[i],
+                                    item_id: v,
+                                    yards_collected: it?.yards != null ? String(it.yards) : updated[i].yards_collected,
+                                    load_configuration: it?.name || updated[i].load_configuration,
+                                  };
+                                }
+                                setDeliveryLoads(updated);
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
+                              <SelectContent>
+                                {loadItems
+                                  .filter(it => !it.truck_type || it.truck_type === formData.truck_type || it.id === load.item_id)
+                                  .map(it => (
+                                    <SelectItem key={it.id} value={it.id}>{it.name}</SelectItem>
+                                  ))}
+                                <SelectItem value="custom">Custom...</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
                           <Select
                             value={load.yards_collected !== '' ? String(load.yards_collected) : ''}
                             onValueChange={(v) => {
@@ -755,6 +796,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                               <SelectItem value="custom">Custom...</SelectItem>
                             </SelectContent>
                           </Select>
+                          )
                         ) : (
                           <div className="flex gap-1">
                             <Input

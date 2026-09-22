@@ -4,6 +4,7 @@ import { getTokenClaim, logout } from '@/api/authClient';
 import { cn } from '@/lib/utils';
 import V2Login from './V2Login';
 import V2Settings from './V2Settings';
+import V2Customers from './V2Customers';
 
 // V2 shell — a parallel interface over the SAME data. V1 is never touched;
 // this whole tree lives under /v2. Office area (invoicing / QuickBooks)
@@ -100,7 +101,7 @@ export default function V2App() {
       <Route path="login" element={<V2Login />} />
       <Route path="" element={<RequireOffice><Placeholder title="Dispatch V2" note="The new dispatch layout with the live route map is coming here. Everything reads the same data as V1." /></RequireOffice>} />
       <Route path="invoices" element={<RequireOffice><Placeholder title="Invoices" note="Day-by-day job list with one-click and batch invoice creation, QuickBooks sync, and combined printing — being built next." /></RequireOffice>} />
-      <Route path="customers" element={<RequireOffice><Placeholder title="Customers" note="Customer detail overlays with tabs for info, loads, and invoices — with per-customer pricing." /></RequireOffice>} />
+      <Route path="customers" element={<RequireOffice><V2Customers /></RequireOffice>} />
       <Route path="wallboard" element={<RequireOffice><Placeholder title="Wallboard V2" note="One row per driver, bigger cards, one day at a time with a day picker." /></RequireOffice>} />
       <Route path="settings" element={<RequireOffice><V2Settings /></RequireOffice>} />
       <Route path="*" element={<Navigate to="/v2" replace />} />

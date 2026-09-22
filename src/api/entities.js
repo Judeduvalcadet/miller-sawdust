@@ -22,7 +22,7 @@ const TABLE_COLUMNS = {
     'id','job_type','truck_type','scheduled_date','assigned_driver_id','assigned_driver_name',
     'assigned_driver_pickup_role','customer_id','customer_company_name','pickup_location_id',
     'dropoff_location_id','dropoff_location_name','location_name','address','phone','quantity',
-    'pickup_yards','delivery_yards','yards_collected','load_configuration','loads','sort_order',
+    'pickup_yards','delivery_yards','yards_collected','load_configuration','loads','sort_order','item_id',
     'status','dispatcher_notes','driver_notes','invoice_sent','payment_collected',
     'invoice_marked_by','invoice_marked_at','payment_marked_by','payment_marked_at',
     'completed_at','deleted_at','created_date','updated_date',
@@ -52,7 +52,17 @@ const TABLE_COLUMNS = {
     'id','driver_id','message','read','created_date','updated_date',
   ],
   settings: [
-    'id','truck_yard_presets','recurring_interval_presets','created_date','updated_date',
+    'id','truck_yard_presets','recurring_interval_presets','company_profile','created_date','updated_date',
+  ],
+  // QuickBooks item catalog — qb_* columns are stamped by the server sync,
+  // the rest is office-editable (name/price edits push to QBO in Phase 3).
+  items: [
+    'id','name','description','unit_price','item_type','yards','truck_type',
+    'is_load_item','active','sort_order','created_date','updated_date',
+    'qb_id','qb_sync_token','qb_last_synced_at',
+  ],
+  customer_item_prices: [
+    'id','customer_id','item_id','price','is_default','notes','created_date','updated_date',
   ],
   log_entries: [
     'id','timestamp','level','message','category','user_id','details','created_date','updated_date',
@@ -65,7 +75,7 @@ const TABLE_COLUMNS = {
 
 // UUID foreign key columns — empty strings must become null
 const UUID_COLUMNS = new Set([
-  'assigned_driver_id','customer_id','pickup_location_id','dropoff_location_id','driver_id',
+  'assigned_driver_id','customer_id','pickup_location_id','dropoff_location_id','driver_id','item_id',
 ])
 
 /**
@@ -336,6 +346,8 @@ export const base44 = {
     DriverSession: createEntity('driver_sessions'),
     DriverNotification: createEntity('driver_notifications'),
     Settings: createEntity('settings'),
+    Item: createEntity('items'),
+    CustomerItemPrice: createEntity('customer_item_prices'),
     LogEntry: createEntity('log_entries'),
     JobEvent: createEntity('job_events'),
   },
