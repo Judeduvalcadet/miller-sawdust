@@ -68,7 +68,7 @@ const TABLE_COLUMNS = {
   invoices: [
     'id','customer_id','qb_customer_id','qb_id','qb_sync_token','doc_number',
     'txn_date','due_date','total','balance','status','lines','source',
-    'created_date','updated_date',
+    'job_id','note','sent_at','created_date','updated_date',
   ],
   log_entries: [
     'id','timestamp','level','message','category','user_id','details','created_date','updated_date',
@@ -81,7 +81,7 @@ const TABLE_COLUMNS = {
 
 // UUID foreign key columns — empty strings must become null
 const UUID_COLUMNS = new Set([
-  'assigned_driver_id','customer_id','pickup_location_id','dropoff_location_id','driver_id','item_id',
+  'assigned_driver_id','customer_id','pickup_location_id','dropoff_location_id','driver_id','item_id','job_id',
 ])
 
 /**

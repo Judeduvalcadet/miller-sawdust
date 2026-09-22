@@ -7,6 +7,7 @@ import V2Login from './V2Login';
 import V2Settings from './V2Settings';
 import V2Customers from './V2Customers';
 import { V2Pickups, V2Dropoffs } from './V2Directory';
+import V2Invoices from './V2Invoices';
 
 // V2 shell — a parallel interface over the SAME data. V1 is never touched;
 // this whole tree lives under /v2. Office area (invoicing / QuickBooks)
@@ -147,7 +148,7 @@ export default function V2App() {
     <Routes>
       <Route path="login" element={<V2Login />} />
       <Route path="" element={<RequireOffice><Placeholder title="Dispatch V2" note="The new dispatch layout with the live route map is coming here. Everything reads the same data as V1." /></RequireOffice>} />
-      <Route path="invoices" element={<RequireOffice><Placeholder title="Invoices" note="Day-by-day job list with one-click and batch invoice creation, QuickBooks sync, and combined printing — being built next." /></RequireOffice>} />
+      <Route path="invoices" element={<RequireOffice><V2Invoices /></RequireOffice>} />
       <Route path="customers" element={<RequireOffice><V2Customers /></RequireOffice>} />
       <Route path="pickups" element={<RequireOffice><V2Pickups /></RequireOffice>} />
       <Route path="dropoffs" element={<RequireOffice><V2Dropoffs /></RequireOffice>} />

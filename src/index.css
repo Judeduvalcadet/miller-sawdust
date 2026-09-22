@@ -109,3 +109,11 @@
   border-style: solid !important;
   border-radius: 0.75rem;
 }
+/* Invoice printing: when the print portal is active, the app disappears and
+   only the invoice pages print — one invoice per page. */
+@media print {
+  body.printing-invoices #root { display: none !important; }
+  .invoice-print-root { display: block !important; }
+  .invoice-print-page { page-break-after: always; }
+}
+.invoice-print-root { display: none; }

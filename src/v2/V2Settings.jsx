@@ -14,6 +14,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+import InvoicePreview from './InvoicePreview';
 
 // V2 Settings — tabbed: Company | Presets | Items | Team | QuickBooks.
 // Items is the QuickBooks catalog imported into the app: the same record
@@ -81,6 +82,7 @@ function CompanyTab() {
   });
   const [form, setForm] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [showTemplate, setShowTemplate] = useState(false);
   useEffect(() => {
     if (settings && form === null) setForm(settings.company_profile || {});
   }, [settings, form]);
@@ -120,9 +122,40 @@ function CompanyTab() {
           {saved && <span className="flex items-center gap-1 text-sm text-green-600"><Check className="w-4 h-4" /> Saved</span>}
         </div>
       </div>
+
+      {/* Invoice template — fixed layout; these company details fill its header. */}
+      <div className="mt-5 bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-gray-900 text-sm">Invoice template</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            The layout every invoice uses — logo, these company details, the customer,
+            and the line items. Only the variables change per invoice.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setShowTemplate(true)}>Preview</Button>
+      </div>
+
+      <InvoicePreview
+        open={showTemplate}
+        onClose={() => setShowTemplate(false)}
+        invoice={SAMPLE_INVOICE}
+        customer={SAMPLE_CUSTOMER}
+        company={form}
+      />
     </div>
   );
 }
+
+const SAMPLE_INVOICE = {
+  doc_number: '00000',
+  txn_date: new Date().toISOString().slice(0, 10),
+  total: 345, balance: 345, status: 'open', source: 'app',
+  lines: [
+    { name: '35yd Load Mixed Shavings 1/2', description: '35yd Load Shavings 1/2 Pine x 1/2 Kiln Dry', qty: 1, unit_price: 335, amount: 335 },
+    { name: 'Fuel Surcharge', description: 'Fuel Surcharge', qty: 1, unit_price: 10, amount: 10 },
+  ],
+};
+const SAMPLE_CUSTOMER = { name: 'Sample Customer', street_address: '1234 Township Road 1', city: 'Millersburg', state: 'OH', zip_code: '44654' };
 
 /* ------------------------------- Presets -------------------------------- */
 
