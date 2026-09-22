@@ -33,7 +33,7 @@ const TABLE_COLUMNS = {
   ],
   customers: [
     'id','name','company_name','street_address','city','state','country','zip_code',
-    'phone','map_image_url','delivery_instructions','created_date','updated_date',
+    'phone','email','map_image_url','delivery_instructions','created_date','updated_date',
     'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
   ],
   pickup_locations: [
@@ -63,6 +63,12 @@ const TABLE_COLUMNS = {
   ],
   customer_item_prices: [
     'id','customer_id','item_id','price','is_default','notes','created_date','updated_date',
+  ],
+  // Invoice history — QuickBooks import now, app-created invoices later.
+  invoices: [
+    'id','customer_id','qb_customer_id','qb_id','qb_sync_token','doc_number',
+    'txn_date','due_date','total','balance','status','lines','source',
+    'created_date','updated_date',
   ],
   log_entries: [
     'id','timestamp','level','message','category','user_id','details','created_date','updated_date',
@@ -348,6 +354,7 @@ export const base44 = {
     Settings: createEntity('settings'),
     Item: createEntity('items'),
     CustomerItemPrice: createEntity('customer_item_prices'),
+    Invoice: createEntity('invoices'),
     LogEntry: createEntity('log_entries'),
     JobEvent: createEntity('job_events'),
   },
