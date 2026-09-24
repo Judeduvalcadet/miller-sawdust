@@ -8,6 +8,11 @@ import V2Settings from './V2Settings';
 import V2Customers from './V2Customers';
 import { V2Pickups, V2Dropoffs } from './V2Directory';
 import V2Invoices from './V2Invoices';
+import { installV2LiveGuard } from './guard';
+import { base44 } from '@/api/entities';
+
+// Enforce THE FREEZE: live-connected builds cannot write from V2 routes.
+installV2LiveGuard(base44);
 
 // V2 shell — a parallel interface over the SAME data. V1 is never touched;
 // this whole tree lives under /v2. Office area (invoicing / QuickBooks)
@@ -100,9 +105,13 @@ function V2Shell({ children }) {
           <div className="min-w-0">
             <p className="font-bold text-sm leading-tight">Miller Sawdust</p>
             <p className="text-[11px] text-gray-400">Version 2</p>
-            {import.meta.env.MODE === 'sandbox' && (
+            {import.meta.env.MODE === 'sandbox' ? (
               <span className="inline-block mt-1 text-[10px] font-bold tracking-wide bg-amber-500 text-gray-950 rounded px-1.5 py-0.5">
                 SANDBOX — local data
+              </span>
+            ) : (
+              <span className="inline-block mt-1 text-[10px] font-bold tracking-wide bg-red-600 text-white rounded px-1.5 py-0.5">
+                LIVE DATA — read-only
               </span>
             )}
           </div>
