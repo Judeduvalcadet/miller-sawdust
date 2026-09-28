@@ -590,6 +590,14 @@ function CreateView() {
             className="absolute inset-0 opacity-0 cursor-pointer"
           />
         </label>
+        {checked.size > 0 && !batch && (
+          <span className="inline-flex items-center gap-1 bg-gray-950 rounded-xl p-1.5 ml-1">
+            <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={startBatch} disabled={uninvoicedChecked.length === 0}>
+              Create {uninvoicedChecked.length} invoice{uninvoicedChecked.length !== 1 ? 's' : ''}
+            </Button>
+            <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs px-2">Cancel</button>
+          </span>
+        )}
         {batch && (
           <span className="ml-auto flex items-center gap-2.5 bg-gray-200/80 text-gray-700 rounded-lg px-4 py-2.5 text-[13px] font-medium">
             Batch invoice {Math.min(batch.index + 1, batch.ids.length)} of {batch.ids.length}
@@ -598,16 +606,6 @@ function CreateView() {
         )}
       </div>
 
-      {/* Batch bar */}
-      {checked.size > 0 && !batch && (
-        <div className="mb-3 inline-flex w-fit items-center gap-3 bg-gray-950 text-white rounded-xl px-4 py-2 text-sm">
-          <span>{checked.size} selected{uninvoicedChecked.length !== checked.size ? ` (${checked.size - uninvoicedChecked.length} already invoiced)` : ''}</span>
-          <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={startBatch} disabled={uninvoicedChecked.length === 0}>
-            Create {uninvoicedChecked.length} invoice{uninvoicedChecked.length !== 1 ? 's' : ''}
-          </Button>
-          <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs">Clear</button>
-        </div>
-      )}
 
       {/* Day jobs — flat table */}
       {isLoading ? (
@@ -628,12 +626,13 @@ function CreateView() {
                   />
                 </th>
                 <th className="py-3 px-3 font-medium">Customer</th>
+                <th className="py-3 px-3 font-medium w-16">Yds</th>
                 <th className="py-3 px-3 font-medium">Load</th>
-                <th className="py-3 px-3 font-medium">Loads</th>
+                <th className="py-3 px-3 font-medium w-16">Loads</th>
                 <th className="py-3 px-3 font-medium">Driver</th>
-                <th className="py-3 px-3 font-medium">Invoice #</th>
-                <th className="py-3 px-3 font-medium text-right">Total</th>
-                <th className="py-3 px-3 font-medium">Status</th>
+                <th className="py-3 px-3 font-medium w-24">Invoice #</th>
+                <th className="py-3 px-3 font-medium text-right w-24">Total</th>
+                <th className="py-3 px-3 font-medium w-[150px]">Status</th>
                 <th className="py-3 px-3 pr-4 w-16"></th>
               </tr>
             </thead>
@@ -705,6 +704,10 @@ function CreateView() {
 }
 
 function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, composer }) {
+  const [showNote, setShowNote] = useState(false);
+  const notes = [job.dispatcher_notes, job.driver_notes].map((n) => (n || '').trim()).filter(Boolean);
+  const yards = job.delivery_yards
+    ?? ((job.loads || []).reduce((s2, l) => s2 + (Number(l.yards_collected) || 0), 0) || null);
   return (
     <>
       <tr
@@ -714,13 +717,41 @@ function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, 
         <td className="py-3.5 pl-4 pr-1" onClick={(e) => e.stopPropagation()}>
           {!inv && <Checkbox checked={checkedSet.has(job.id)} onCheckedChange={onToggleCheck} disabled={!!batch} />}
         </td>
-        <td className="py-3.5 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">{label}</td>
+        <td className="py-3.5 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5">
+            {label}
+            {notes.length > 0 && (
+              <Popover open={showNote} onOpenChange={setShowNote}>
+                <PopoverTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-0.5 bg-black text-white text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                  >
+                    <StickyNote className="w-2.5 h-2.5" /> NOTE
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-72 p-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">Job notes</p>
+                    <button onClick={() => setShowNote(false)} className="text-gray-300 hover:text-gray-700 -mt-1 -mr-1 p-1">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {notes.map((n, i) => (
+                    <p key={i} className="text-sm text-gray-800 whitespace-pre-wrap mt-1">{n}</p>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            )}
+          </span>
+        </td>
+        <td className="py-3.5 px-3 text-sm text-gray-600 whitespace-nowrap">{yards ?? '—'}</td>
         <td className="py-3.5 px-3 text-sm text-gray-600 max-w-[280px] truncate">{loadText}</td>
         <td className="py-3.5 px-3 text-sm text-gray-600 whitespace-nowrap">{job.quantity || 1}</td>
         <td className="py-3.5 px-3 text-sm text-gray-500 whitespace-nowrap">{job.assigned_driver_name || '—'}</td>
         <td className="py-3.5 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">{inv?.doc_number || '—'}</td>
         <td className="py-3.5 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{inv ? money(inv.total) : '—'}</td>
-        <td className="py-3.5 px-3 whitespace-nowrap">
+        <td className="py-3.5 px-3 whitespace-nowrap w-[150px]">
           {inv ? (
             <div className="flex items-center gap-1.5">
               <StatusChip status={inv.status} />
@@ -751,7 +782,7 @@ function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, 
       </tr>
       {open && (
         <tr className="bg-gray-50/60">
-          <td colSpan={9} className="p-0">
+          <td colSpan={10} className="p-0">
             {inv ? <InvoiceDetail inv={inv} /> : composer}
           </td>
         </tr>
@@ -764,10 +795,10 @@ function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, 
 function InvoiceDetail({ inv }) {
   return (
     <div className="px-6 py-4 border-t border-gray-100">
-      <table className="w-full max-w-2xl text-left">
+      <table className="w-full max-w-4xl text-left">
         <thead>
           <tr className="text-[10px] uppercase tracking-wide text-gray-400">
-            <th className="py-1.5 font-medium">Item</th>
+            <th className="py-1.5 font-medium min-w-[320px]">Item</th>
             <th className="py-1.5 px-2 font-medium text-right w-16">Qty</th>
             <th className="py-1.5 px-2 font-medium text-right w-24">Price</th>
             <th className="py-1.5 px-2 font-medium text-right w-28">Amount</th>
@@ -874,10 +905,10 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
 
   return (
     <div className="border-t border-gray-100 px-6 py-4">
-      <table className="w-full max-w-2xl text-left">
+      <table className="w-full max-w-4xl text-left">
         <thead>
           <tr className="text-[10px] uppercase tracking-wide text-gray-400">
-            <th className="py-1.5 font-medium">Item</th>
+            <th className="py-1.5 font-medium min-w-[320px]">Item</th>
             <th className="py-1.5 px-2 font-medium w-14 text-right">Yds</th>
             <th className="py-1.5 px-2 font-medium w-16 text-right">Qty</th>
             <th className="py-1.5 px-2 font-medium w-28 text-right">Price</th>
@@ -903,7 +934,7 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
                         onKeyDown={(e) => { if (e.key === 'Escape') setPicking(null); }}
                         className="h-8 text-sm bg-white"
                       />
-                      <div className="absolute z-20 mt-1 w-[340px] max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                      <div className="absolute z-20 mt-1 w-[460px] max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
                         {(items || [])
                           .filter((it) => it.active)
                           .filter((it) => {
@@ -970,7 +1001,7 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
         </tbody>
       </table>
 
-      <div className="flex items-center gap-2 mt-2 max-w-2xl">
+      <div className="flex items-center gap-2 mt-2 max-w-4xl">
         {showAdd ? (
           <select
             autoFocus
