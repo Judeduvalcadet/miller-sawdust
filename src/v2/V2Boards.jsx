@@ -12,7 +12,12 @@ import { Calendar } from '@/components/ui/calendar';
 import { base44 } from '@/api/entities';
 import { supabase } from '@/api/supabaseClient';
 import { cn } from '@/lib/utils';
-import DispatchJobCard from '@/components/admin/DispatchJobCard';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Truck, Package, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import JobForm from '@/components/admin/JobForm';
 import SortJobsModal from '@/components/admin/SortJobsModal';
 import GlobalSearch from '@/components/admin/GlobalSearch';
@@ -125,6 +130,77 @@ function DayStrip({ day, onChangeDay, weekJobsByDate, dark }) {
   );
 }
 
+/* ------------------------------ job card --------------------------------- */
+// Compact board card: type icon inline with the title (no icon column), no
+// address — date, driver, loads, yards, configuration, all truncating so
+// nothing escapes the box. Same status colors as V1's card.
+
+function BoardJobCard({ job, driver, readOnly, onEdit, onCancel }) {
+  const isCompleted = job.status === 'completed';
+  const isCancelled = job.status === 'cancelled';
+  const isPending = job.status === 'pending';
+  const isPickup = job.job_type === 'pickup';
+  const name = (job.customer_company_name || job.location_name || '').trim() || '—';
+  const yards = isPickup ? job.pickup_yards : job.delivery_yards;
+  const configs = ((job.loads || []).map((l) => l.load_configuration).filter(Boolean).join(', ')
+    || job.load_configuration || '').trim();
+  const TypeIcon = isPickup ? Package : Truck;
+
+  return (
+    <Card className={cn(
+      'p-3 border-l-4 h-full',
+      isPending && 'border-l-gray-300 bg-gray-50/40',
+      isCompleted && 'border-l-green-500 bg-green-50/30',
+      isCancelled && 'border-l-gray-400 bg-gray-50 opacity-60',
+      !isPending && !isCompleted && !isCancelled && 'border-l-blue-400'
+    )}>
+      <div className="flex items-start justify-between gap-1">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <TypeIcon className={cn('w-3.5 h-3.5 shrink-0', isPickup ? 'text-amber-600' : 'text-blue-600')} />
+            <span className={cn('text-[10px] font-semibold uppercase shrink-0', isPickup ? 'text-amber-700' : 'text-blue-700')}>
+              {job.job_type}
+            </span>
+            <Badge className={cn(
+              'text-[10px] px-1.5 py-0 shrink-0',
+              isCompleted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+            )}>
+              {job.status}
+            </Badge>
+          </div>
+          <p className="font-semibold text-sm text-gray-900 truncate mt-0.5">{name}</p>
+          <p className="text-xs text-gray-500 truncate">
+            {fmtDay(job.scheduled_date)}
+            {(driver?.name || job.assigned_driver_name) ? ` · ${driver?.name || job.assigned_driver_name}` : ''}
+            {` · ${job.quantity || 1} load${(job.quantity || 1) !== 1 ? 's' : ''}`}
+            {yards ? ` · ${yards} yds` : ''}
+          </p>
+          {configs && (
+            <p className="text-xs font-medium text-amber-800 truncate mt-0.5">{configs}</p>
+          )}
+        </div>
+        {!readOnly && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <button className="text-gray-300 hover:text-gray-700 p-0.5 rounded hover:bg-gray-100 shrink-0 -mr-1 -mt-1">
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onEdit(job)}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+              {job.status !== 'cancelled' && (
+                <DropdownMenuItem onClick={() => onCancel(job)} className="text-red-600 focus:text-red-600">
+                  <Trash2 className="w-4 h-4 mr-2" /> Cancel Job
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 /* ----------------------------- board grid -------------------------------- */
 
 function BoardGrid({ drivers, weekJobsByDate, day, view, dark, readOnly, filter, onEdit, onCancel, onSortDay }) {
@@ -153,8 +229,16 @@ function BoardGrid({ drivers, weekJobsByDate, day, view, dark, readOnly, filter,
 
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const cardWrap = (job) => (
-    <div key={job.id} className={cn('w-[300px] shrink-0 transition-opacity', dark && 'bg-white rounded-xl', filter && !match(job) && 'opacity-25')}>
-      <DispatchJobCard
+    <div
+      key={job.id}
+      className={cn(
+        'transition-opacity',
+        view === 'week' ? 'w-full' : 'flex-1 min-w-[210px] max-w-[300px]',
+        dark && 'bg-white rounded-xl',
+        filter && !match(job) && 'opacity-25'
+      )}
+    >
+      <BoardJobCard
         job={job}
         driver={driverById.get(job.assigned_driver_id) || null}
         readOnly={readOnly}
