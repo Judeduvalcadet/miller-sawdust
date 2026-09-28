@@ -142,7 +142,12 @@ function BoardGrid({ drivers, weekJobsByDate, day, view, dark, readOnly, filter,
       .filter((j) => (driverId ? j.assigned_driver_id === driverId : !j.assigned_driver_id))
       .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
 
-  const activeDrivers = drivers.filter((d) => d.active && d.role !== 'dispatcher' && d.role !== 'assistant' && d.name !== 'Wallboard TV');
+  // Only drivers with something in view get a row — no dead rows for
+  // whoever is off that day.
+  const activeDrivers = drivers.filter((d) =>
+    d.active && d.role !== 'dispatcher' && d.role !== 'assistant' && d.name !== 'Wallboard TV' &&
+    days.some((day) => jobsFor(d.id, day).length > 0)
+  );
   const hasUnassigned = days.some((d) => jobsFor(null, d).length > 0);
   const rows = [...activeDrivers.map((d) => ({ key: d.id, driver: d })), ...(hasUnassigned ? [{ key: 'unassigned', driver: null }] : [])];
 
@@ -213,7 +218,11 @@ function BoardGrid({ drivers, weekJobsByDate, day, view, dark, readOnly, filter,
           </div>
         </div>
       ))}
-      {rows.length === 0 && <p className={cn('p-8 text-sm italic', dark ? 'text-gray-500' : 'text-gray-400')}>No active drivers.</p>}
+      {rows.length === 0 && (
+        <p className={cn('p-10 text-sm italic text-center', dark ? 'text-gray-500' : 'text-gray-400')}>
+          Nothing scheduled {view === 'week' ? 'this week' : 'for this day'}.
+        </p>
+      )}
     </div>
   );
 }
