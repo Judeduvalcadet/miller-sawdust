@@ -253,12 +253,12 @@ function InvoiceList() {
 
       {/* Bulk bar */}
       {checked.size > 0 && (
-        <div className="mb-2 flex items-center gap-3 bg-gray-950 text-white rounded-xl px-4 py-2 text-sm">
+        <div className="mb-2 inline-flex w-fit items-center gap-3 bg-gray-950 text-white rounded-xl px-4 py-2 text-sm">
           <span>{checked.size} selected</span>
           <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => setPrintQueue(checkedRows)}>
             <Printer className="w-3.5 h-3.5 mr-1.5" /> Send (print all)
           </Button>
-          <button onClick={() => setChecked(new Set())} className="ml-auto text-gray-400 hover:text-white text-xs">Clear</button>
+          <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs">Clear</button>
         </div>
       )}
 
@@ -446,14 +446,45 @@ function CreateView() {
   const { data: customers } = useQuery({
     queryKey: ['v2-customers'],
     queryFn: () => base44.entities.Customer.list('name', 5000),
+    staleTime: 300000,
   });
   const { data: items } = useQuery({
     queryKey: ['items'],
     queryFn: () => base44.entities.Item.list('sort_order'),
+    staleTime: 300000,
   });
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await base44.entities.Settings.list())[0] || null,
+    staleTime: 300000,
+  });
+
+  // Pre-warm every price book the week's jobs will need, in ONE query, so
+  // opening any composer (single or batch Next) is instant — no per-customer
+  // fetch at click time.
+  const weekCustIds = useMemo(
+    () => [...new Set((weekJobs || []).map((j) => j.customer_id).filter(Boolean))],
+    [weekJobs]
+  );
+  useQuery({
+    queryKey: ['prices-prefetch', weekStart, weekCustIds.length],
+    enabled: weekCustIds.length > 0,
+    staleTime: 60000,
+    queryFn: async () => {
+      const rows = [];
+      for (let i = 0; i < weekCustIds.length; i += 100) {
+        const { data, error } = await supabase.from('customer_item_prices').select('*')
+          .in('customer_id', weekCustIds.slice(i, i + 100));
+        if (error) throw error;
+        rows.push(...(data || []));
+      }
+      const byCust = new Map(weekCustIds.map((id) => [id, []]));
+      for (const r of rows) byCust.get(r.customer_id)?.push(r);
+      for (const [cid, list] of byCust) {
+        queryClient.setQueryData(['customer-prices', cid], list);
+      }
+      return true;
+    },
   });
 
   const custById = useMemo(() => new Map((customers || []).map((c) => [c.id, c])), [customers]);
@@ -529,7 +560,7 @@ function CreateView() {
         <button onClick={() => { const w = addDays(weekStart, -7); setWeekStart(w); changeDay(w); }} className="p-1.5 rounded-lg hover:bg-gray-200" aria-label="Previous week">
           <ChevronLeft className="w-4 h-4 text-gray-500" />
         </button>
-        <div className="flex gap-1.5 flex-1">
+        <div className="flex gap-1.5">
           {weekDays.map((d) => {
             const dt = new Date(d + 'T00:00:00');
             return (
@@ -537,7 +568,7 @@ function CreateView() {
                 key={d}
                 onClick={() => changeDay(d)}
                 className={cn(
-                  'flex-1 rounded-xl border px-2 py-2 text-center transition-colors',
+                  'rounded-xl border px-3 py-2 text-center transition-colors min-w-[88px]',
                   day === d ? 'bg-gray-950 text-white border-gray-950' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
                 )}
               >
@@ -560,7 +591,7 @@ function CreateView() {
           />
         </label>
         {batch && (
-          <span className="ml-auto flex items-center gap-2 bg-gray-200/80 text-gray-700 rounded-lg px-3 py-1.5 text-xs font-medium">
+          <span className="ml-auto flex items-center gap-2.5 bg-gray-200/80 text-gray-700 rounded-lg px-4 py-2.5 text-[13px] font-medium">
             Batch invoice {Math.min(batch.index + 1, batch.ids.length)} of {batch.ids.length}
             <button onClick={() => setBatch(null)} className="text-gray-400 hover:text-gray-700">Stop</button>
           </span>
@@ -569,12 +600,12 @@ function CreateView() {
 
       {/* Batch bar */}
       {checked.size > 0 && !batch && (
-        <div className="mb-3 flex items-center gap-3 bg-gray-950 text-white rounded-xl px-4 py-2 text-sm">
+        <div className="mb-3 inline-flex w-fit items-center gap-3 bg-gray-950 text-white rounded-xl px-4 py-2 text-sm">
           <span>{checked.size} selected{uninvoicedChecked.length !== checked.size ? ` (${checked.size - uninvoicedChecked.length} already invoiced)` : ''}</span>
           <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={startBatch} disabled={uninvoicedChecked.length === 0}>
             Create {uninvoicedChecked.length} invoice{uninvoicedChecked.length !== 1 ? 's' : ''}
           </Button>
-          <button onClick={() => setChecked(new Set())} className="ml-auto text-gray-400 hover:text-white text-xs">Clear</button>
+          <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs">Clear</button>
         </div>
       )}
 
@@ -768,6 +799,7 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
     queryKey: ['customer-prices', job.customer_id],
     queryFn: () => base44.entities.CustomerItemPrice.filter({ customer_id: job.customer_id }),
     enabled: !!job.customer_id,
+    staleTime: 60000, // primed by the Create tab's prefetch — no fetch on open
   });
 
   const itemById = useMemo(() => new Map((items || []).map((i) => [i.id, i])), [items]);

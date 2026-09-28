@@ -223,7 +223,7 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <button className={cn(
-              'mt-2 w-full flex items-center justify-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold transition-colors',
+              'mt-2 self-start inline-flex items-center gap-1 rounded px-2.5 py-1 text-[10px] font-semibold transition-colors',
               job.assigned_driver_id
                 ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
                 : 'bg-gray-950 hover:bg-gray-800 text-white'
