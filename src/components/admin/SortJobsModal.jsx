@@ -29,7 +29,7 @@ function JobCardContent({ job, index, isGhost }) {
   );
 }
 
-export default function SortJobsModal({ open, onClose, jobs, drivers, preSelectedDate = null, customers = [], pickupLocations = [], dropOffLocations = [] }) {
+export default function SortJobsModal({ open, onClose, jobs, drivers, preSelectedDate = null, preSelectedDriverId = null, customers = [], pickupLocations = [], dropOffLocations = [] }) {
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [selectedDate, setSelectedDate] = useState(preSelectedDate || format(new Date(), 'yyyy-MM-dd'));
   const [orderedJobs, setOrderedJobs] = useState([]);
@@ -61,9 +61,15 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
   useEffect(() => {
     if (open && preSelectedDate) {
       setSelectedDate(preSelectedDate);
-      setDriverDropdownOpen(true);
+      // With a preselected driver (V2 day view rows) skip the driver step.
+      if (preSelectedDriverId) {
+        setSelectedDriverId(preSelectedDriverId);
+        setDriverDropdownOpen(false);
+      } else {
+        setDriverDropdownOpen(true);
+      }
     }
-  }, [open, preSelectedDate]);
+  }, [open, preSelectedDate, preSelectedDriverId]);
 
   useEffect(() => {
     if (!selectedDriverId || !selectedDate) { setOrderedJobs([]); return; }

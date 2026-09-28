@@ -177,11 +177,6 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
                 <StickyNote className="w-2.5 h-2.5" /> NOTE
               </span>
             )}
-            {invoiced && (
-              <span className="inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0">
-                <Receipt className="w-2.5 h-2.5" /> INVOICED
-              </span>
-            )}
           </div>
           <p className="font-semibold text-sm text-gray-900 truncate mt-0.5">{name}</p>
           <p className="text-xs text-gray-500 truncate">
@@ -212,6 +207,14 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
           </DropdownMenu>
         )}
       </div>
+
+      {invoiced && (
+        <div className="mt-1.5 flex justify-end">
+          <span className="inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
+            <Receipt className="w-2.5 h-2.5" /> INVOICED
+          </span>
+        </div>
+      )}
 
       {/* Assign / Reassign — same behavior and look as V1 */}
       {!readOnly && !isCancelled && !isCompleted && onAssign && (
@@ -379,7 +382,7 @@ function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filt
             <p className={cn('text-sm font-semibold leading-tight', dark ? 'text-white' : 'text-gray-900')}>{driver.name}</p>
             {!readOnly && onSortDay && (
               <button
-                onClick={() => onSortDay(day)}
+                onClick={() => onSortDay(day, driver.id)}
                 className="absolute bottom-1.5 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-950 text-white rounded-full p-1.5 shadow"
                 title="Reorder routes"
               >
@@ -439,7 +442,7 @@ export function V2Dispatch() {
   const [showJobForm, setShowJobForm] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
   const [defaultJobDate, setDefaultJobDate] = useState(null);
-  const [sortDate, setSortDate] = useState(null);
+  const [sortTarget, setSortTarget] = useState(null); // { date, driverId? }
 
   const { byDate, isLoading } = useWeekJobs(day);
   const weekStart = mondayOf(day);
@@ -456,18 +459,24 @@ export function V2Dispatch() {
     queryFn: async () => (await base44.entities.Job.list('-scheduled_date', 6000)).filter((j) => !j.deleted_at),
   });
 
-  // Green INVOICED badge: the job's linked invoice was sent (admin board only).
-  const { data: sentInvoices = [] } = useQuery({
-    queryKey: ['board-week-sent-invoices', weekStart],
+  // Green INVOICED badge: the job has a linked invoice (open or sent).
+  // Queried by the week's job ids so invoices dated after the job still count.
+  const weekJobIds = useMemo(() => weekJobs.map((j) => j.id), [weekJobs]);
+  const { data: linkedInvoices = [] } = useQuery({
+    queryKey: ['board-week-linked-invoices', weekStart, weekJobIds.length],
+    enabled: weekJobIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase.from('invoices').select('job_id, sent_at')
-        .not('job_id', 'is', null)
-        .gte('txn_date', weekStart).lte('txn_date', addDays(weekStart, 6));
-      if (error) throw error;
-      return data;
+      const out = [];
+      for (let i = 0; i < weekJobIds.length; i += 100) {
+        const { data, error } = await supabase.from('invoices').select('job_id, sent_at, status')
+          .in('job_id', weekJobIds.slice(i, i + 100));
+        if (error) throw error;
+        out.push(...(data || []));
+      }
+      return out;
     },
   });
-  const invoicedMap = useMemo(() => new Map(sentInvoices.filter((i) => i.sent_at).map((i) => [i.job_id, true])), [sentInvoices]);
+  const invoicedMap = useMemo(() => new Map(linkedInvoices.map((i) => [i.job_id, true])), [linkedInvoices]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['board-week-jobs'] });
@@ -523,7 +532,7 @@ export function V2Dispatch() {
             isAdmin={true}
             onAddJob={(date) => { setEditingJob(null); setDefaultJobDate(date); setShowJobForm(true); }}
             onEditJob={onEdit}
-            onSortJobs={(date) => setSortDate(date)}
+            onSortJobs={(date) => setSortTarget({ date })}
           />
         </div>
       ) : isLoading ? (
@@ -538,7 +547,7 @@ export function V2Dispatch() {
           onEdit={onEdit}
           onCancel={onCancel}
           onAssign={onAssign}
-          onSortDay={(d) => setSortDate(d)}
+          onSortDay={(d, driverId) => setSortTarget({ date: d, driverId })}
           headerExtra={
             <div className="relative flex-1 max-w-xs">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -573,11 +582,12 @@ export function V2Dispatch() {
       </Dialog>
 
       <SortJobsModal
-        open={!!sortDate}
-        onClose={() => { setSortDate(null); invalidate(); }}
+        open={!!sortTarget}
+        onClose={() => { setSortTarget(null); invalidate(); }}
         jobs={view === 'week' ? allJobs : weekJobs}
         drivers={drivers}
-        preSelectedDate={sortDate}
+        preSelectedDate={sortTarget?.date || null}
+        preSelectedDriverId={sortTarget?.driverId || null}
         customers={customers}
         pickupLocations={pickupLocations}
         dropOffLocations={dropOffLocations}
