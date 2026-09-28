@@ -29,7 +29,7 @@ const TABLE_COLUMNS = {
   ],
   drivers: [
     'id','username','name','phone','role','driver_type','pickup_role',
-    'active','last_login_at','created_date','updated_date',
+    'active','last_login_at','avatar_url','created_date','updated_date',
   ],
   customers: [
     'id','name','company_name','street_address','city','state','country','zip_code',

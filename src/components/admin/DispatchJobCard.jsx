@@ -15,7 +15,8 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
-export default function DispatchJobCard({ job, driver, onEdit, onCancel }) {
+// `readOnly` hides the action menu — used by the V2 wallboard (display only).
+export default function DispatchJobCard({ job, driver, onEdit, onCancel, readOnly = false }) {
   const isCompleted = job.status === 'completed';
   const isCancelled = job.status === 'cancelled';
   const isPending = job.status === 'pending';
@@ -112,6 +113,7 @@ export default function DispatchJobCard({ job, driver, onEdit, onCancel }) {
           </div>
         </div>
         
+        {!readOnly && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
@@ -134,6 +136,7 @@ export default function DispatchJobCard({ job, driver, onEdit, onCancel }) {
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
       </div>
     </Card>
   );

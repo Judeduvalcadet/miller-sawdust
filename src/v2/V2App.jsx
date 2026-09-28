@@ -8,6 +8,7 @@ import V2Settings from './V2Settings';
 import V2Customers from './V2Customers';
 import { V2Pickups, V2Dropoffs } from './V2Directory';
 import V2Invoices from './V2Invoices';
+import { V2Dispatch, V2Wallboard } from './V2Boards';
 import { installV2LiveGuard } from './guard';
 import { base44 } from '@/api/entities';
 
@@ -161,12 +162,12 @@ export default function V2App() {
   return (
     <Routes>
       <Route path="login" element={<V2Login />} />
-      <Route path="" element={<RequireOffice><Placeholder title="Dispatch V2" note="The new dispatch layout with the live route map is coming here. Everything reads the same data as V1." /></RequireOffice>} />
+      <Route path="" element={<RequireOffice><V2Dispatch /></RequireOffice>} />
       <Route path="invoices" element={<RequireOffice><V2Invoices /></RequireOffice>} />
       <Route path="customers" element={<RequireOffice><V2Customers /></RequireOffice>} />
       <Route path="pickups" element={<RequireOffice><V2Pickups /></RequireOffice>} />
       <Route path="dropoffs" element={<RequireOffice><V2Dropoffs /></RequireOffice>} />
-      <Route path="wallboard" element={<RequireOffice><Placeholder title="Wallboard V2" note="One row per driver, bigger cards, one day at a time with a day picker." /></RequireOffice>} />
+      <Route path="wallboard" element={<RequireOffice><V2Wallboard /></RequireOffice>} />
       <Route path="settings" element={<RequireOffice><V2Settings /></RequireOffice>} />
       <Route path="*" element={<Navigate to="/v2" replace />} />
     </Routes>

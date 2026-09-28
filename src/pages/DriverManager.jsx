@@ -18,6 +18,27 @@ import CsvImportModal from "@/components/admin/CsvImportModal";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
+
+// Driver photos: resized client-side to a small data URL stored on the row.
+// Upload is sandbox-only until the avatar column ships to production.
+const AVATARS_ENABLED = import.meta.env.MODE === 'sandbox';
+async function fileToAvatarDataUrl(file) {
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = URL.createObjectURL(file);
+  });
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const s = Math.min(img.width, img.height);
+  ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+  URL.revokeObjectURL(img.src);
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
 // `embedded` renders it as a section (no page header/back link) — used by the
 // V2 Settings "Team" tab. V1 renders it as its own page, unchanged.
 export default function DriverManager({ embedded = false } = {}) {
@@ -66,7 +87,8 @@ export default function DriverManager({ embedded = false } = {}) {
     role: 'driver',
     driver_type: 'delivery',
     pickup_role: 'none',
-    active: true
+    active: true,
+    avatar_url: ''
   });
 
   const { data: drivers = [], isLoading } = useQuery({
@@ -119,7 +141,8 @@ export default function DriverManager({ embedded = false } = {}) {
       role: 'driver',
       driver_type: 'delivery',
       pickup_role: 'none',
-      active: true
+      active: true,
+      avatar_url: ''
     });
   };
 
@@ -135,6 +158,8 @@ export default function DriverManager({ embedded = false } = {}) {
       pickup_role: formData.pickup_role || 'none',
       active: formData.active
     };
+    // only send the avatar field where the column exists (sandbox)
+    if (AVATARS_ENABLED) data.avatar_url = formData.avatar_url || null;
 
     if (editingDriver) {
       updateMutation.mutate({ id: editingDriver.id, data, pin: formData.pin });
@@ -153,7 +178,8 @@ export default function DriverManager({ embedded = false } = {}) {
       role: driver.role,
       driver_type: driver.driver_type || 'delivery',
       pickup_role: driver.pickup_role || 'none',
-      active: driver.active
+      active: driver.active,
+      avatar_url: driver.avatar_url || ''
     });
     setShowForm(true);
   };
@@ -226,11 +252,15 @@ export default function DriverManager({ embedded = false } = {}) {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
+                      {driver.avatar_url ? (
+                        <img src={driver.avatar_url} alt="" className={`w-12 h-12 rounded-full object-cover ${driver.active ? '' : 'opacity-50 grayscale'}`} />
+                      ) : (
                       <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
                         driver.active ? 'bg-amber-100' : 'bg-gray-100'
                       }`}>
                         <User className={`w-6 h-6 ${driver.active ? 'text-amber-600' : 'text-gray-400'}`} />
                       </div>
+                      )}
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="font-semibold">{driver.name}</h3>
@@ -335,6 +365,34 @@ export default function DriverManager({ embedded = false } = {}) {
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
+              {AVATARS_ENABLED && (
+                <div className="space-y-2">
+                  <Label>Photo</Label>
+                  <div className="flex items-center gap-3">
+                    {formData.avatar_url ? (
+                      <img src={formData.avatar_url} alt="" className="w-14 h-14 rounded-full object-cover border" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center border">
+                        <User className="w-6 h-6 text-gray-400" />
+                      </div>
+                    )}
+                    <label className="text-sm text-amber-700 cursor-pointer hover:underline">
+                      {formData.avatar_url ? 'Change photo' : 'Upload photo'}
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          const url = await fileToAvatarDataUrl(f);
+                          setFormData((p) => ({ ...p, avatar_url: url }));
+                        }} />
+                    </label>
+                    {formData.avatar_url && (
+                      <button type="button" className="text-xs text-gray-400 hover:text-red-500"
+                        onClick={() => setFormData((p) => ({ ...p, avatar_url: '' }))}>Remove</button>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Username</Label>
                 <Input
