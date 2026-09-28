@@ -844,6 +844,7 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
   const [lines, setLines] = useState(null);
   const [note, setNote] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [showNote, setShowNote] = useState(false);
   const [picking, setPicking] = useState(null); // { idx, query } — inline item search
 
   useEffect(() => {
@@ -1019,9 +1020,27 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
             <Plus className="w-3.5 h-3.5" /> Add item
           </button>
         )}
-        <Input placeholder="Invoice note (optional)…" value={note} onChange={(e) => setNote(e.target.value)} className="h-8 text-xs flex-1 bg-white" />
-        <span className="text-sm font-bold text-gray-900 whitespace-nowrap ml-2">Total {money(total)}</span>
+        <button onClick={() => setShowNote((v) => !v)} className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1">
+          {note.trim()
+            ? <><StickyNote className="w-3.5 h-3.5" /> Invoice note ✓</>
+            : <><Plus className="w-3.5 h-3.5" /> Invoice note</>}
+        </button>
+        <span className="text-sm font-bold text-gray-900 whitespace-nowrap ml-auto">Total {money(total)}</span>
       </div>
+
+      {showNote && (
+        <div className="mt-2 max-w-4xl">
+          <Textarea
+            rows={2}
+            autoFocus
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. picked up by John, leave at the barn…"
+            className="text-xs bg-white"
+          />
+          <Button size="sm" variant="outline" className="h-7 text-xs mt-1.5" onClick={() => setShowNote(false)}>Done</Button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mt-3">
         <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={create} disabled={total <= 0}>
