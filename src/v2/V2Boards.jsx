@@ -49,7 +49,7 @@ export function DriverAvatar({ driver, size = 48, dark = false }) {
     <div
       style={{ width: size, height: size }}
       className={cn('rounded-full flex items-center justify-center font-bold',
-        dark ? 'bg-white/10 text-white/80' : 'bg-amber-100 text-amber-700')}
+        dark ? 'bg-white/10 text-white/80' : 'bg-gray-200 text-gray-700')}
     >
       {initials || <User className="w-5 h-5" />}
     </div>
@@ -76,7 +76,7 @@ function DayStrip({ day, onChangeDay, weekJobsByDate, dark, disabled }) {
   });
 
   return (
-    <div className={cn('flex items-center gap-2', disabled && 'opacity-40 pointer-events-none select-none')}>
+    <div className="flex items-center gap-2">
       <button onClick={() => onChangeDay(addDays(weekStart, -7))} className={cn('p-1.5 rounded-lg', dark ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-gray-200 text-gray-500')} aria-label="Previous week">
         <ChevronLeft className="w-4 h-4" />
       </button>
@@ -89,7 +89,9 @@ function DayStrip({ day, onChangeDay, weekJobsByDate, dark, disabled }) {
             <button
               key={d}
               onClick={() => onChangeDay(d)}
+              disabled={disabled}
               className={cn(
+                disabled && 'opacity-40 cursor-not-allowed',
                 'rounded-xl border px-3 py-1.5 text-center transition-colors min-w-[84px]',
                 active
                   ? (dark ? 'bg-white text-gray-950 border-white' : 'bg-gray-950 text-white border-gray-950')
@@ -122,7 +124,7 @@ function DayStrip({ day, onChangeDay, weekJobsByDate, dark, disabled }) {
             modifiers={{ hasJobs: monthDates || [] }}
             modifiersClassNames={{ hasJobs: 'board-cal-dot' }}
           />
-          <style>{`.board-cal-dot { position: relative; } .board-cal-dot::after { content:''; position:absolute; bottom:3px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:9999px; background:#d97706; }`}</style>
+          <style>{`.board-cal-dot { position: relative; } .board-cal-dot::after { content:''; position:absolute; bottom:3px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:9999px; background:#111827; }`}</style>
         </PopoverContent>
       </Popover>
     </div>
@@ -186,7 +188,7 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
             {yards ? ` · ${yards} yds` : ''}
           </p>
           {configs && (
-            <p className="text-xs font-medium text-amber-800 truncate mt-0.5">{configs}</p>
+            <p className="text-xs font-medium text-gray-700 truncate mt-0.5">{configs}</p>
           )}
         </div>
         {!readOnly && (
@@ -224,7 +226,7 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
               'mt-2 w-full flex items-center justify-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold transition-colors',
               job.assigned_driver_id
                 ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                : 'bg-amber-100 hover:bg-amber-200 text-amber-800'
+                : 'bg-gray-950 hover:bg-gray-800 text-white'
             )}>
               <UserPlus className="w-2.5 h-2.5" />
               {job.assigned_driver_id ? 'Reassign' : 'Assign'}
@@ -268,7 +270,7 @@ function UnassignedCards({ jobs, expanded, onToggle, renderCard }) {
         {visible.map((j) => renderCard(j, true))}
       </div>
       {hidden > 0 && (
-        <button onClick={onToggle} className="mt-2 text-xs font-medium text-amber-700 hover:text-amber-900 hover:underline">
+        <button onClick={onToggle} className="mt-2 text-xs font-medium text-gray-600 hover:text-gray-900 hover:underline">
           + {hidden} more unassigned job{hidden !== 1 ? 's' : ''}
         </button>
       )}
@@ -351,10 +353,10 @@ function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filt
       {unassignedJobs.length > 0 && (
         <div className={cn('flex border-t', dark ? 'border-white/10' : 'border-gray-100')}>
           <div className={cn(railCls, 'py-4 gap-2')}>
-            <div className={cn('w-[52px] h-[52px] rounded-full border-2 border-dashed flex items-center justify-center', dark ? 'border-white/20 text-white/40' : 'border-amber-300 text-amber-500')}>
+            <div className={cn('w-[52px] h-[52px] rounded-full border-2 border-dashed flex items-center justify-center', dark ? 'border-white/20 text-white/40' : 'border-gray-300 text-gray-400')}>
               <UserPlus className="w-5 h-5" />
             </div>
-            <p className={cn('text-sm font-semibold', dark ? 'text-gray-300' : 'text-amber-700')}>Unassigned</p>
+            <p className={cn('text-sm font-semibold', dark ? 'text-gray-300' : 'text-gray-600')}>Unassigned</p>
             <button
               onClick={() => setUnassignedOpen((v) => !v)}
               className={cn('p-1 rounded-full', dark ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-gray-100 text-gray-400')}
@@ -530,6 +532,7 @@ export function V2Dispatch() {
             drivers={drivers}
             pickupLocations={pickupLocations}
             isAdmin={true}
+            weekAnchor={mondayOf(day)}
             onAddJob={(date) => { setEditingJob(null); setDefaultJobDate(date); setShowJobForm(true); }}
             onEditJob={onEdit}
             onSortJobs={(date) => setSortTarget({ date })}

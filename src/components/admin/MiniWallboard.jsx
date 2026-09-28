@@ -471,7 +471,9 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 }
 
-export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin }) {
+// `weekAnchor` (optional, 'yyyy-MM-dd'): a parent-controlled week — the board
+// follows it while its own internal nav keeps working. Absent = V1 behavior.
+export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin, weekAnchor = null }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [filterDriver, setFilterDriver] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -487,6 +489,13 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const [moveToDate, setMoveToDate] = useState('');
   const [dragOverDay, setDragOverDay] = useState(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!weekAnchor) return;
+    const target = startOfWeek(new Date(weekAnchor + 'T00:00:00'), { weekStartsOn: 1 });
+    const current = startOfWeek(new Date(), { weekStartsOn: 1 });
+    setWeekOffset(Math.round((target - current) / (7 * 86400000)));
+  }, [weekAnchor]);
 
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const weekDays = DAYS.map((_, i) => addDays(weekStart, i));

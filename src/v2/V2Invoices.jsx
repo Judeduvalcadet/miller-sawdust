@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -406,6 +406,10 @@ function StatusChip({ status }) {
 
 function CreateView() {
   const queryClient = useQueryClient();
+  // Fast batch: Next advances immediately; creations run through this queue
+  // one at a time while the finished rows show a "Creating invoice" chip.
+  const queueRef = useRef(Promise.resolve());
+  const [creating, setCreating] = useState(new Map()); // job id -> 'creating' | 'error'
   const today = iso(new Date());
   const [weekStart, setWeekStart] = useState(mondayOf(today));
   const [day, setDay] = useState(today);
@@ -480,6 +484,35 @@ function CreateView() {
     setBatch({ ids, index: 0 });
   };
 
+  const enqueueCreate = (job, payload) => {
+    setCreating((m) => new Map(m).set(job.id, 'creating'));
+    queueRef.current = queueRef.current.then(async () => {
+      try {
+        const { data: num, error: numErr } = await supabase.rpc('next_invoice_number');
+        if (numErr) throw numErr;
+        await base44.entities.Invoice.create({
+          customer_id: job.customer_id,
+          job_id: job.id,
+          doc_number: num,
+          txn_date: job.scheduled_date,
+          due_date: addDays(job.scheduled_date, 30),
+          total: payload.total,
+          balance: payload.total,
+          status: 'open',
+          lines: payload.lines,
+          source: 'app',
+          note: payload.note,
+        });
+        setCreating((m) => { const n = new Map(m); n.delete(job.id); return n; });
+        queryClient.invalidateQueries({ queryKey: ['inv-week-invoices'] });
+        queryClient.invalidateQueries({ queryKey: ['v2-invoices'] });
+      } catch (e) {
+        console.error('invoice create failed', e);
+        setCreating((m) => new Map(m).set(job.id, 'error'));
+      }
+    });
+  };
+
   const jobLabel = (j) => {
     const c = custById.get(j.customer_id);
     return (c?.company_name || c?.name || j.location_name || '').trim();
@@ -491,8 +524,8 @@ function CreateView() {
 
   return (
     <div className="p-6">
-      {/* Week strip — unchanged look, capped width */}
-      <div className="flex items-center gap-2 mb-4 max-w-4xl">
+      {/* Week strip; batch progress sits quietly at the right of this row */}
+      <div className="flex items-center gap-2 mb-4">
         <button onClick={() => { const w = addDays(weekStart, -7); setWeekStart(w); changeDay(w); }} className="p-1.5 rounded-lg hover:bg-gray-200" aria-label="Previous week">
           <ChevronLeft className="w-4 h-4 text-gray-500" />
         </button>
@@ -526,6 +559,12 @@ function CreateView() {
             className="absolute inset-0 opacity-0 cursor-pointer"
           />
         </label>
+        {batch && (
+          <span className="ml-auto flex items-center gap-2 bg-gray-200/80 text-gray-700 rounded-lg px-3 py-1.5 text-xs font-medium">
+            Batch invoice {Math.min(batch.index + 1, batch.ids.length)} of {batch.ids.length}
+            <button onClick={() => setBatch(null)} className="text-gray-400 hover:text-gray-700">Stop</button>
+          </span>
+        )}
       </div>
 
       {/* Batch bar */}
@@ -536,12 +575,6 @@ function CreateView() {
             Create {uninvoicedChecked.length} invoice{uninvoicedChecked.length !== 1 ? 's' : ''}
           </Button>
           <button onClick={() => setChecked(new Set())} className="ml-auto text-gray-400 hover:text-white text-xs">Clear</button>
-        </div>
-      )}
-      {batch && (
-        <div className="mb-3 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-sm text-amber-800">
-          <span>Batch: invoice {Math.min(batch.index + 1, batch.ids.length)} of {batch.ids.length}</span>
-          <button onClick={() => setBatch(null)} className="ml-auto text-amber-500 hover:text-amber-800 text-xs">Stop</button>
         </div>
       )}
 
@@ -582,10 +615,15 @@ function CreateView() {
                   <JobRow
                     key={job.id}
                     job={job} inv={inv} open={open}
+                    creating={creating.get(job.id)}
                     label={jobLabel(job)} loadText={loadText(job)}
                     checkedSet={checked} batch={batch}
                     onToggleCheck={() => setChecked((p) => { const n = new Set(p); n.has(job.id) ? n.delete(job.id) : n.add(job.id); return n; })}
-                    onToggleOpen={() => !batch && setExpandedId(open ? null : job.id)}
+                    onToggleOpen={() => {
+                      if (batch || creating.get(job.id) === 'creating') return;
+                      if (creating.get(job.id) === 'error') setCreating((m) => { const n = new Map(m); n.delete(job.id); return n; });
+                      setExpandedId(open ? null : job.id);
+                    }}
                     onPreview={() => setPreviewInv(inv)}
                     composer={open && customers && items ? (
                       <InvoiceComposer
@@ -595,8 +633,8 @@ function CreateView() {
                         isBatch={!!isBatchCurrent}
                         batchInfo={isBatchCurrent ? { index: batch.index, count: batch.ids.length } : null}
                         onCancel={() => { setExpandedId(null); setBatch(null); }}
-                        onCreated={() => {
-                          refresh();
+                        onCreated={(payload) => {
+                          enqueueCreate(job, payload);
                           if (isBatchCurrent) {
                             if (batch.index + 1 >= batch.ids.length) { setBatch(null); setChecked(new Set()); }
                             else setBatch({ ...batch, index: batch.index + 1 });
@@ -635,7 +673,7 @@ function CreateView() {
   );
 }
 
-function JobRow({ job, inv, open, label, loadText, checkedSet, batch, onToggleCheck, onToggleOpen, onPreview, composer }) {
+function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, composer }) {
   return (
     <>
       <tr
@@ -657,6 +695,12 @@ function JobRow({ job, inv, open, label, loadText, checkedSet, batch, onToggleCh
               <StatusChip status={inv.status} />
               {inv.sent_at && <span className="text-[10px] text-gray-400">sent</span>}
             </div>
+          ) : creating === 'creating' ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
+              <Loader2 className="w-3 h-3 animate-spin" /> Creating invoice…
+            </span>
+          ) : creating === 'error' ? (
+            <span className="text-[11px] font-medium border border-red-200 bg-red-50 text-red-600 rounded-full px-2 py-0.5">Failed — open to retry</span>
           ) : (
             <span className="text-[11px] font-medium border border-gray-200 bg-gray-50 text-gray-500 rounded-full px-2 py-0.5">Not invoiced</span>
           )}
@@ -736,9 +780,8 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
 
   const [lines, setLines] = useState(null);
   const [note, setNote] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [picking, setPicking] = useState(null); // { idx, query } — inline item search
 
   useEffect(() => {
     if (lines !== null || (job.customer_id && prices === undefined)) return;
@@ -777,36 +820,20 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
     setLines((p) => [...p, { item_id: it.id, item_qb_id: it.qb_id, name: it.name, description: it.description, qty: 1, unit_price: priceFor(it.id) }]);
   };
 
-  const create = async () => {
-    setSaving(true);
-    setError('');
-    try {
-      const { data: num, error: numErr } = await supabase.rpc('next_invoice_number');
-      if (numErr) throw numErr;
-      const finalLines = (lines || []).map((l) => ({
-        ...l,
-        qty: Number(l.qty) || 0,
-        unit_price: Number(l.unit_price) || 0,
-        amount: Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * 100) / 100,
-      })).filter((l) => l.qty > 0);
-      await base44.entities.Invoice.create({
-        customer_id: job.customer_id,
-        job_id: job.id,
-        doc_number: num,
-        txn_date: job.scheduled_date,
-        due_date: addDays(job.scheduled_date, 30),
-        total: Math.round(total * 100) / 100,
-        balance: Math.round(total * 100) / 100,
-        status: 'open',
-        lines: finalLines,
-        source: 'app',
-        note: note.trim() || null,
-      });
-      onCreated();
-    } catch (e) {
-      setError(e.message || 'Could not create the invoice.');
-      setSaving(false);
-    }
+  // Hand the finished lines up — the parent queues the actual creation so
+  // batch Next can move on instantly.
+  const create = () => {
+    const finalLines = (lines || []).map((l) => ({
+      ...l,
+      qty: Number(l.qty) || 0,
+      unit_price: Number(l.unit_price) || 0,
+      amount: Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * 100) / 100,
+    })).filter((l) => l.qty > 0);
+    onCreated({
+      lines: finalLines,
+      total: Math.round(total * 100) / 100,
+      note: note.trim() || null,
+    });
   };
 
   if (lines === null) {
@@ -819,6 +846,7 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
         <thead>
           <tr className="text-[10px] uppercase tracking-wide text-gray-400">
             <th className="py-1.5 font-medium">Item</th>
+            <th className="py-1.5 px-2 font-medium w-14 text-right">Yds</th>
             <th className="py-1.5 px-2 font-medium w-16 text-right">Qty</th>
             <th className="py-1.5 px-2 font-medium w-28 text-right">Price</th>
             <th className="py-1.5 px-2 font-medium w-24 text-right">Amount</th>
@@ -832,10 +860,62 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
             return (
               <tr key={i} className="border-t border-gray-50">
                 <td className="py-1.5 pr-3">
-                  <p className="text-sm text-gray-900">{l.name}</p>
-                  {std != null
-                    ? <p className="text-[10px] text-gray-400">standard ${Number(std).toLocaleString()}{custom ? ' — this invoice only' : ''}</p>
-                    : <p className="text-[10px] text-gray-400">no catalog item — enter the price</p>}
+                  {picking?.idx === i ? (
+                    <div className="relative">
+                      <Input
+                        autoFocus
+                        value={picking.query}
+                        placeholder="Type to search items…"
+                        onChange={(e) => setPicking({ idx: i, query: e.target.value })}
+                        onBlur={() => setTimeout(() => setPicking(null), 150)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setPicking(null); }}
+                        className="h-8 text-sm bg-white"
+                      />
+                      <div className="absolute z-20 mt-1 w-[340px] max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                        {(items || [])
+                          .filter((it) => it.active)
+                          .filter((it) => {
+                            const q = picking.query.trim().toLowerCase();
+                            return !q || `${it.name} ${it.display_label || ''}`.toLowerCase().includes(q);
+                          })
+                          .slice(0, 12)
+                          .map((it) => (
+                            <button
+                              key={it.id}
+                              onMouseDown={() => {
+                                setLine(i, {
+                                  item_id: it.id,
+                                  item_qb_id: it.qb_id,
+                                  name: it.name,
+                                  description: it.description,
+                                  unit_price: priceFor(it.id),
+                                });
+                                setPicking(null);
+                              }}
+                              className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-baseline gap-2"
+                            >
+                              <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">{it.name}</span>
+                              {it.yards != null && <span className="text-[10px] text-gray-400 shrink-0">{it.yards} yds</span>}
+                              <span className="text-xs font-medium text-gray-600 shrink-0">${priceFor(it.id)}</span>
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="text-left w-full group"
+                      onClick={() => setPicking({ idx: i, query: '' })}
+                      title="Click to change the item"
+                    >
+                      <p className="text-sm text-gray-900 group-hover:underline decoration-dotted underline-offset-2">{l.name}</p>
+                      {std != null
+                        ? <p className="text-[10px] text-gray-400">standard ${Number(std).toLocaleString()}{custom ? ' — this invoice only' : ''}</p>
+                        : <p className="text-[10px] text-gray-400">no catalog item — click to pick one, or price it manually</p>}
+                    </button>
+                  )}
+                </td>
+                <td className="py-1.5 px-2 text-xs text-gray-500 text-right whitespace-nowrap">
+                  {l.item_id && itemById.get(l.item_id)?.yards != null ? itemById.get(l.item_id).yards : '—'}
                 </td>
                 <td className="py-1.5 px-2">
                   <Input type="number" min="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} className="h-8 text-sm text-right bg-white" />
@@ -880,11 +960,8 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
         <span className="text-sm font-bold text-gray-900 whitespace-nowrap ml-2">Total {money(total)}</span>
       </div>
 
-      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
-
       <div className="flex items-center gap-2 mt-3">
-        <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={create} disabled={saving || total <= 0}>
-          {saving && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+        <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={create} disabled={total <= 0}>
           {isBatch ? (batchInfo.index + 1 >= batchInfo.count ? 'Done' : 'Next') : 'Create invoice'}
         </Button>
         <Button size="sm" variant="outline" className="h-8" onClick={onCancel}>Cancel</Button>
