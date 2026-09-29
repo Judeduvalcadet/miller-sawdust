@@ -221,7 +221,7 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
                   'inline-flex items-center gap-1 rounded px-2.5 py-1 text-[10px] font-semibold transition-colors',
                   job.assigned_driver_id
                     ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                    : 'bg-blue-900 hover:bg-blue-800 text-white'
+                    : 'bg-gray-950 hover:bg-gray-800 text-white'
                 )}>
                   <UserPlus className="w-2.5 h-2.5" />
                   {job.assigned_driver_id ? 'Reassign' : 'Assign'}
