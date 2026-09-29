@@ -43,12 +43,16 @@ async function installFonts(pdf) {
 /* Small drawing helpers — everything positions by the text box's TOP edge,
    like CSS, and advances a y cursor. */
 
+// jsPDF font sizes are in POINTS while this layout is in CSS px; PT converts
+// so a "13.5px" label renders at exactly the template's visual size.
+const PT = 0.75;
+
 function text(pdf, str, x, y, { font = 'Lato', size = 13.5, align = 'left', charSpace = 0, color = '#000000', maxWidth = null, lineHeight = 1.55 } = {}) {
   pdf.setFont(font, 'normal');
-  pdf.setFontSize(size);
+  pdf.setFontSize(size * PT);
   pdf.setTextColor(color);
   const opts = { baseline: 'top', align };
-  if (charSpace) opts.charSpace = charSpace;
+  if (charSpace) opts.charSpace = charSpace * PT;
   if (maxWidth) {
     const lines = pdf.splitTextToSize(String(str), maxWidth);
     lines.forEach((ln, i) => pdf.text(ln, x, y + i * size * lineHeight, opts));
@@ -104,7 +108,7 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
 
   // Doc id, centered on its own column at the right edge
   pdf.setFont('LatoLight', 'normal');
-  pdf.setFontSize(28);
+  pdf.setFontSize(28 * PT);
   const numStr = `No. ${invoice.doc_number || '—'}`;
   const numW = pdf.getTextWidth(numStr);
   const cx = RIGHT - numW / 2;
@@ -155,11 +159,11 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   label(pdf, 'Amount due', LEFT + 24, bandTop + 18);
   text(pdf, paid ? 'Paid in full' : invoice.due_date ? `Payable by ${fmtDate(invoice.due_date)}` : 'Due on receipt',
     LEFT + 24, bandTop + 18 + 11 * 1.2 + 4, { size: 13.5, lineHeight: 1.2 });
-  // The amount: bold, vertically centered in the band.
-  pdf.setFont('LatoBold', 'normal');
-  pdf.setFontSize(32);
+  // The amount: light weight like the template, vertically centered.
+  pdf.setFont('LatoLight', 'normal');
+  pdf.setFontSize(32 * PT);
   pdf.setTextColor('#000000');
-  pdf.text(money(balance), RIGHT - 24, bandTop + bandH / 2, { baseline: 'middle', align: 'right', charSpace: 0.3 });
+  pdf.text(money(balance), RIGHT - 24, bandTop + bandH / 2, { baseline: 'middle', align: 'right', charSpace: 0.3 * PT });
 
   /* ---- Line items ---- */
   const DESC_W = CONTENT_W - (64 + 104 + 112 + 3 * 16);
@@ -177,10 +181,10 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   const rows = lines.length ? lines : [{ name: 'No line detail on this invoice', qty: null, unit_price: null, amount: null }];
   for (const l of rows) {
     pdf.setFont('Lato', 'normal');
-    pdf.setFontSize(14);
+    pdf.setFontSize(14 * PT);
     const nameLines = pdf.splitTextToSize(l.name || '—', DESC_W);
     const hasNote = l.description && l.description !== l.name;
-    const noteLines = hasNote ? (pdf.setFontSize(12.5), pdf.splitTextToSize(l.description, DESC_W)) : [];
+    const noteLines = hasNote ? (pdf.setFontSize(12.5 * PT), pdf.splitTextToSize(l.description, DESC_W)) : [];
     const descH = nameLines.length * 14 * 1.2 + (hasNote ? 3 + noteLines.length * 12.5 * 1.2 : 0);
     const rowH = 14 + descH + 14;
     let dy = y + 14;
@@ -191,7 +195,7 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
     }
     const mid = y + rowH / 2;
     pdf.setFont('Lato', 'normal');
-    pdf.setFontSize(14);
+    pdf.setFontSize(14 * PT);
     pdf.setTextColor('#000000');
     if (l.qty != null) pdf.text(String(l.qty), QTY_R, mid, { baseline: 'middle', align: 'right' });
     if (l.unit_price != null) pdf.text(money(l.unit_price), RATE_R, mid, { baseline: 'middle', align: 'right' });
