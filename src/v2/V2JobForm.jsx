@@ -670,8 +670,6 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
             {!isPickup && (
               <div className="col-span-1 md:col-span-2 space-y-3">
                 {loads.map((load, i) => {
-                  const item = loadItems.find((it) => it.id === load.item_id);
-                  const truckLocked = !!item?.truck_type;
                   return (
                     <div key={load.load_number} className="border rounded-lg p-3 space-y-3 bg-gray-50 border-gray-200">
                       <p className="text-sm font-semibold text-blue-900">Load {load.load_number}</p>
@@ -698,10 +696,9 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                           <Label className="text-xs text-gray-500">Truck Type</Label>
                           <Select
                             value={load.truck_type || ''}
-                            disabled={truckLocked}
                             onValueChange={(v) => setLoad(i, { truck_type: v })}
                           >
-                            <SelectTrigger className={cn('h-8 text-xs', truckLocked && 'opacity-80')}>
+                            <SelectTrigger className="h-8 text-xs">
                               <SelectValue placeholder={load.item_id ? 'Choose truck…' : '—'} />
                             </SelectTrigger>
                             <SelectContent>
