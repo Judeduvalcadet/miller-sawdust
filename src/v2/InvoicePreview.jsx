@@ -128,7 +128,7 @@ export function InvoiceTemplate({ invoice, customer, company }) {
     >
       {/* Big diagonal PAID stamp across the middle of a settled invoice */}
       {paid && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{
             transform: 'rotate(-30deg)',
             border: '10px solid #16a34a',
