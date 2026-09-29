@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Loader2, Search, Plus, ChevronLeft, ChevronRight, ChevronDown, MoreVertical,
+  Loader2, Search, Plus, ChevronLeft, ChevronRight, MoreVertical,
   Printer, Eye, X, CalendarDays, Receipt, StickyNote, CircleDollarSign, Trash2,
 } from 'lucide-react';
 import {
@@ -165,6 +165,7 @@ function InvoiceList() {
   const [previewInv, setPreviewInv] = useState(null);
   const [noteInv, setNoteInv] = useState(null);
   const [noteText, setNoteText] = useState('');
+  const [statusInv, setStatusInv] = useState(null);
   const [checked, setChecked] = useState(new Set());
   const [printQueue, setPrintQueue] = useState(null);
 
@@ -243,7 +244,7 @@ function InvoiceList() {
           <SelectTrigger className="h-9 w-[130px] text-xs bg-white"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
-            <SelectItem value="open">Open</SelectItem>
+            <SelectItem value="open">Unpaid</SelectItem>
             <SelectItem value="paid">Paid</SelectItem>
           </SelectContent>
         </Select>
@@ -306,12 +307,7 @@ function InvoiceList() {
                     {inv.note && <span className="ml-1.5 text-[10px] text-amber-600" title={inv.note}>📝</span>}
                   </td>
                   <td className="py-3 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{money(inv.total)}</td>
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-1.5">
-                      <StatusChip status={inv.status} />
-                      {inv.sent_at && <span className="text-[10px] text-gray-400 whitespace-nowrap" title={`Sent ${new Date(inv.sent_at).toLocaleString()}`}>sent</span>}
-                    </div>
-                  </td>
+                  <td className="py-3 px-3"><StatusChip inv={inv} /></td>
                   <td className="py-3 px-3 pr-4 text-right">
                     <DropdownMenu modal={false}>
                       <DropdownMenuTrigger asChild>
@@ -320,12 +316,8 @@ function InvoiceList() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setPreviewInv(inv)}><Eye className="w-4 h-4 mr-2" /> Preview</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setPrintQueue([inv])}><Printer className="w-4 h-4 mr-2" /> Send (print)</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => update.mutate(
-                          inv.status === 'paid'
-                            ? { id: inv.id, status: 'open', balance: inv.total }
-                            : { id: inv.id, status: 'paid', balance: 0 }
-                        )}>
-                          <CircleDollarSign className="w-4 h-4 mr-2" /> Mark as {inv.status === 'paid' ? 'open' : 'paid'}
+                        <DropdownMenuItem onClick={() => setStatusInv(inv)}>
+                          <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => { setNoteInv(inv); setNoteText(inv.note || ''); }}>
                           <StickyNote className="w-4 h-4 mr-2" /> {inv.note ? 'Edit note' : 'Add note'}
@@ -368,6 +360,15 @@ function InvoiceList() {
         onPrint={() => { const inv = previewInv; setPreviewInv(null); setPrintQueue([inv]); }}
       />
 
+      {statusInv && (
+        <UpdateStatusDialog
+          key={statusInv.id}
+          inv={statusInv}
+          onClose={() => setStatusInv(null)}
+          onSave={(patch) => update.mutate({ id: statusInv.id, ...patch })}
+        />
+      )}
+
       <Dialog open={!!noteInv} onOpenChange={(o) => { if (!o) setNoteInv(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Invoice note</DialogTitle></DialogHeader>
@@ -391,14 +392,75 @@ function InvoiceList() {
   );
 }
 
-function StatusChip({ status }) {
+/* ------------------------------ Status ----------------------------------
+   Display status is derived: QB's "open" just means created-and-unpaid, so
+   we show Created → Sent (printed) → Paid instead. The list will grow when
+   the real status set is decided.                                          */
+
+const STATUS_OPTIONS = [
+  { key: 'created', label: 'Created', hint: 'The invoice exists but hasn’t gone out yet.' },
+  { key: 'sent', label: 'Sent', hint: 'Printed / delivered to the customer, awaiting payment.' },
+  { key: 'paid', label: 'Paid', hint: 'Payment received — balance goes to zero.' },
+];
+const invStatusKey = (inv) => inv.status === 'paid' ? 'paid' : inv.sent_at ? 'sent' : 'created';
+const statusPatch = (inv, key) => {
+  if (key === 'paid') return { status: 'paid', balance: 0 };
+  if (key === 'sent') return { status: 'open', balance: inv.total, sent_at: inv.sent_at || new Date().toISOString() };
+  return { status: 'open', balance: inv.total, sent_at: null };
+};
+
+function StatusChip({ inv }) {
+  const key = invStatusKey(inv);
   return (
-    <span className={cn(
-      'text-[11px] font-medium border rounded-full px-2 py-0.5 whitespace-nowrap',
-      status === 'paid' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-    )}>
-      {status === 'paid' ? 'Paid' : 'Open'}
+    <span
+      className={cn(
+        'text-[11px] font-medium border rounded-full px-2 py-0.5 whitespace-nowrap',
+        key === 'paid' && 'bg-green-50 text-green-700 border-green-200',
+        key === 'sent' && 'bg-gray-950 text-white border-gray-950',
+        key === 'created' && 'bg-gray-100 text-gray-600 border-gray-200'
+      )}
+      title={key === 'sent' && inv.sent_at ? `Sent ${new Date(inv.sent_at).toLocaleString()}` : undefined}
+    >
+      {STATUS_OPTIONS.find((o) => o.key === key)?.label}
     </span>
+  );
+}
+
+function UpdateStatusDialog({ inv, onClose, onSave }) {
+  const [sel, setSel] = useState(invStatusKey(inv));
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Update status — invoice #{inv.doc_number}</DialogTitle></DialogHeader>
+        <div className="space-y-1.5">
+          {STATUS_OPTIONS.map((o) => (
+            <button
+              key={o.key}
+              onClick={() => setSel(o.key)}
+              className={cn(
+                'w-full flex items-start gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors',
+                sel === o.key ? 'border-gray-950 bg-gray-50' : 'border-gray-200 hover:border-gray-400'
+              )}
+            >
+              <span className={cn(
+                'mt-1 w-3.5 h-3.5 rounded-full border-2 shrink-0',
+                sel === o.key ? 'border-gray-950 bg-gray-950' : 'border-gray-300'
+              )} />
+              <span>
+                <p className="text-sm font-medium text-gray-900">{o.label}</p>
+                <p className="text-xs text-gray-500">{o.hint}</p>
+              </span>
+            </button>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button className="bg-gray-950 hover:bg-gray-800" onClick={() => { onSave(statusPatch(inv, sel)); onClose(); }}>
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -420,6 +482,7 @@ function CreateView() {
   const [previewInv, setPreviewInv] = useState(null);
   const [printQueue, setPrintQueue] = useState(null);
   const [deleteInv, setDeleteInv] = useState(null); // invoice pending delete confirmation
+  const [statusInv, setStatusInv] = useState(null); // invoice whose status is being updated
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
   const weekEnd = addDays(weekStart, 6);
@@ -673,11 +736,7 @@ function CreateView() {
                     onPreview={() => setPreviewInv(inv)}
                     onSend={() => setPrintQueue([inv])}
                     onEdit={() => { setEditingId(job.id); setExpandedId(job.id); }}
-                    onTogglePaid={() => update.mutate(
-                      inv.status === 'paid'
-                        ? { id: inv.id, status: 'open', balance: inv.total }
-                        : { id: inv.id, status: 'paid', balance: 0 }
-                    )}
+                    onUpdateStatus={() => setStatusInv(inv)}
                     onDelete={() => setDeleteInv(inv)}
                     composer={open && (!inv || editing) && customers && items ? (
                       <InvoiceComposer
@@ -737,6 +796,15 @@ function CreateView() {
         />
       )}
 
+      {statusInv && (
+        <UpdateStatusDialog
+          key={statusInv.id}
+          inv={statusInv}
+          onClose={() => setStatusInv(null)}
+          onSave={(patch) => update.mutate({ id: statusInv.id, ...patch })}
+        />
+      )}
+
       <Dialog open={!!deleteInv} onOpenChange={(o) => { if (!o) setDeleteInv(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Delete invoice {deleteInv?.doc_number ? `#${deleteInv.doc_number}` : ''}?</DialogTitle></DialogHeader>
@@ -767,7 +835,7 @@ function CreateView() {
   );
 }
 
-function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, onSend, onEdit, onTogglePaid, onDelete, composer }) {
+function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, onSend, onEdit, onUpdateStatus, onDelete, composer }) {
   const [showNote, setShowNote] = useState(false);
   const notes = [job.dispatcher_notes, job.driver_notes].map((n) => (n || '').trim()).filter(Boolean);
   const yards = job.delivery_yards
@@ -817,10 +885,7 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
         <td className="py-3.5 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{inv ? money(inv.total) : '—'}</td>
         <td className="py-3.5 px-3 whitespace-nowrap w-[150px]">
           {inv ? (
-            <div className="flex items-center gap-1.5">
-              <StatusChip status={inv.status} />
-              {inv.sent_at && <span className="text-[10px] text-gray-400">sent</span>}
-            </div>
+            <StatusChip inv={inv} />
           ) : creating === 'creating' ? (
             <span className="inline-flex items-center gap-1.5 text-[11px] font-medium bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
               <Loader2 className="w-3 h-3 animate-spin" /> Creating invoice…
@@ -834,32 +899,29 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
         <td className="py-3.5 px-3 pr-4" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-end gap-1">
             {inv && (
-              <button onClick={onPreview} className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="Preview invoice">
-                <Eye className="w-4 h-4" />
-              </button>
+              <>
+                <button onClick={onPreview} className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="Preview invoice">
+                  <Eye className="w-4 h-4" />
+                </button>
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <button className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="Invoice actions">
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={onEdit}><Receipt className="w-4 h-4 mr-2" /> Edit invoice</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onSend}><Printer className="w-4 h-4 mr-2" /> Send (print)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onUpdateStatus}>
+                      <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-600">
+                      <Trash2 className="w-4 h-4 mr-2" /> Delete invoice
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             )}
-            {inv && (
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <button className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="Invoice actions">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={onEdit}><Receipt className="w-4 h-4 mr-2" /> Edit invoice</DropdownMenuItem>
-                  <DropdownMenuItem onClick={onSend}><Printer className="w-4 h-4 mr-2" /> Send (print)</DropdownMenuItem>
-                  <DropdownMenuItem onClick={onTogglePaid}>
-                    <CircleDollarSign className="w-4 h-4 mr-2" /> Mark as {inv.status === 'paid' ? 'open' : 'paid'}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-600">
-                    <Trash2 className="w-4 h-4 mr-2" /> Delete invoice
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <button onClick={onToggleOpen} className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title={open ? 'Collapse' : 'Expand'}>
-              <ChevronDown className={cn('w-4 h-4 transition-transform', open && 'rotate-180')} />
-            </button>
           </div>
         </td>
       </tr>
