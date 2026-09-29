@@ -1,18 +1,57 @@
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { X, Printer } from 'lucide-react';
+import { X, Download } from 'lucide-react';
 
 // The invoice template: US Letter (816 x 1056 px at 96dpi), Oswald for the
 // company name, Lato for everything else. All text black; the only fills are
 // the Amount-due band and hairline rules. Used by the preview dialog and the
-// print portal (one .invoice-print-page per invoice).
+// PDF saver (one page per invoice).
 
 const money = (v) => v == null ? '—' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
 const INK = '#000000';
-const BAND = '#e8e8e8';
+const BAND = '#dedede';
 const RULE = '#cccccc';
+
+// The logo asset is white-on-black. The template needs it black-on-white, and
+// the PDF renderer (html2canvas) can't apply CSS filters, so it is inverted
+// once through a canvas and served everywhere as a data URL.
+let invertedLogoUrl = null;
+let invertedLogoPromise = null;
+export function ensureInvertedLogo() {
+  if (invertedLogoUrl) return Promise.resolve(invertedLogoUrl);
+  if (!invertedLogoPromise) {
+    invertedLogoPromise = new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth;
+          c.height = img.naturalHeight;
+          const ctx = c.getContext('2d');
+          ctx.filter = 'invert(1)';
+          ctx.drawImage(img, 0, 0);
+          invertedLogoUrl = c.toDataURL('image/png');
+        } catch {
+          invertedLogoUrl = '/logo.jpg';
+        }
+        resolve(invertedLogoUrl);
+      };
+      img.onerror = () => { invertedLogoUrl = '/logo.jpg'; resolve(invertedLogoUrl); };
+      img.src = '/logo.jpg';
+    });
+  }
+  return invertedLogoPromise;
+}
+function useInvertedLogo() {
+  const [url, setUrl] = useState(invertedLogoUrl);
+  useEffect(() => {
+    if (!url) ensureInvertedLogo().then(setUrl);
+  }, [url]);
+  return url;
+}
 const LATO = "'Lato', system-ui, -apple-system, 'Segoe UI', sans-serif";
 const OSWALD = "'Oswald', 'Lato', sans-serif";
 
@@ -21,6 +60,7 @@ const num = { textAlign: 'right' };
 const itemGrid = { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 64px 104px 112px', gap: 16 };
 
 export function InvoiceTemplate({ invoice, customer, company }) {
+  const logo = useInvertedLogo();
   const lines = invoice.lines || [];
   const paid = invoice.status === 'paid';
   const subtotal = lines.length
@@ -67,8 +107,9 @@ export function InvoiceTemplate({ invoice, customer, company }) {
       {/* Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 36 }}>
-          {/* The logo asset is white-on-black; inverted it prints black on the white paper. */}
-          <img src="/logo.jpg" alt="" style={{ width: 132, height: 132, display: 'block', filter: 'invert(1)' }} />
+          {logo
+            ? <img src={logo} alt="" style={{ width: 132, height: 132, display: 'block' }} />
+            : <div style={{ width: 132, height: 132 }} />}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <h1 style={{ fontFamily: OSWALD, fontWeight: 700, fontSize: 40, lineHeight: 1, letterSpacing: '0.4px', margin: 0 }}>
               {coName}
@@ -211,7 +252,7 @@ export default function InvoicePreview({ open, onClose, invoice, customer, compa
         {onPrint && invoice && (
           <div className="sticky bottom-0 border-t border-gray-200 px-5 py-3 flex justify-end bg-white">
             <Button size="sm" className="bg-gray-950 hover:bg-gray-800" onClick={onPrint}>
-              <Printer className="w-4 h-4 mr-2" /> Print
+              <Download className="w-4 h-4 mr-2" /> Save PDF
             </Button>
           </div>
         )}

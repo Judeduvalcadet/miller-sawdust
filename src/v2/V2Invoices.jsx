@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Loader2, Search, Plus, ChevronLeft, ChevronRight, MoreVertical,
-  Printer, Eye, X, CalendarDays, Receipt, StickyNote, CircleDollarSign, Trash2,
+  Loader2, Search, Plus, ChevronLeft, ChevronRight, MoreVertical, Download,
+  Eye, X, CalendarDays, Receipt, StickyNote, CircleDollarSign, Trash2,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -23,7 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { base44 } from '@/api/entities';
 import { supabase } from '@/api/supabaseClient';
 import { cn } from '@/lib/utils';
-import InvoicePreview, { InvoiceTemplate } from './InvoicePreview';
+import InvoicePreview, { InvoiceTemplate, ensureInvertedLogo } from './InvoicePreview';
 
 // V2 Invoices — "All invoices" (the whole system: QuickBooks import +
 // app-created, filterable) and "Create" (a week of delivery jobs as a flat
@@ -257,7 +257,7 @@ function InvoiceList() {
         <div className="mb-2 inline-flex w-fit items-center gap-3 bg-gray-950 text-white rounded-xl px-4 py-2 text-sm">
           <span>{checked.size} selected</span>
           <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => setPrintQueue(checkedRows)}>
-            <Printer className="w-3.5 h-3.5 mr-1.5" /> Send (print all)
+            <Download className="w-3.5 h-3.5 mr-1.5" /> Send (save PDF)
           </Button>
           <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs">Clear</button>
         </div>
@@ -307,7 +307,12 @@ function InvoiceList() {
                     {inv.note && <span className="ml-1.5 text-[10px] text-amber-600" title={inv.note}>📝</span>}
                   </td>
                   <td className="py-3 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{money(inv.total)}</td>
-                  <td className="py-3 px-3"><StatusChip inv={inv} /></td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-1.5">
+                      <StatusChip inv={inv} />
+                      <EditedBadge inv={inv} />
+                    </div>
+                  </td>
                   <td className="py-3 px-3 pr-4 text-right">
                     <DropdownMenu modal={false}>
                       <DropdownMenuTrigger asChild>
@@ -315,7 +320,7 @@ function InvoiceList() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setPreviewInv(inv)}><Eye className="w-4 h-4 mr-2" /> Preview</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setPrintQueue([inv])}><Printer className="w-4 h-4 mr-2" /> Send (print)</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setPrintQueue([inv])}><Download className="w-4 h-4 mr-2" /> Send (PDF)</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setStatusInv(inv)}>
                           <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
                         </DropdownMenuItem>
@@ -381,7 +386,7 @@ function InvoiceList() {
       </Dialog>
 
       {printQueue && (
-        <PrintInvoices
+        <SaveInvoicesPdf
           invoices={printQueue}
           custById={custById}
           company={settings?.company_profile}
@@ -408,6 +413,22 @@ const statusPatch = (inv, key) => {
   if (key === 'sent') return { status: 'open', balance: inv.total, sent_at: inv.sent_at || new Date().toISOString() };
   return { status: 'open', balance: inv.total, sent_at: null };
 };
+
+// Badges "Edited" when an invoice was changed after it went out.
+const editedAfterSend = (inv) =>
+  inv.sent_at && inv.edited_at && new Date(inv.edited_at) > new Date(inv.sent_at);
+
+function EditedBadge({ inv }) {
+  if (!editedAfterSend(inv)) return null;
+  return (
+    <span
+      className="text-[10px] font-medium text-gray-500 border border-gray-300 rounded-full px-1.5 py-0.5 whitespace-nowrap"
+      title={`Edited ${new Date(inv.edited_at).toLocaleString()}`}
+    >
+      Edited
+    </span>
+  );
+}
 
 function StatusChip({ inv }) {
   const key = invStatusKey(inv);
@@ -692,7 +713,7 @@ function CreateView() {
             )}
             {invoicedChecked.length > 0 && (
               <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => setPrintQueue(invoicedChecked)}>
-                <Printer className="w-3.5 h-3.5 mr-1.5" /> Send {invoicedChecked.length}
+                <Download className="w-3.5 h-3.5 mr-1.5" /> Send {invoicedChecked.length}
               </Button>
             )}
             <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs px-2">Cancel</button>
@@ -778,6 +799,7 @@ function CreateView() {
                               total: payload.total,
                               balance: inv.status === 'paid' ? 0 : payload.total,
                               note: payload.note,
+                              edited_at: new Date().toISOString(),
                             });
                             setEditingId(null);
                             setExpandedId(null);
@@ -811,7 +833,7 @@ function CreateView() {
       />
 
       {printQueue && (
-        <PrintInvoices
+        <SaveInvoicesPdf
           invoices={printQueue}
           custById={custById}
           company={settings?.company_profile}
@@ -907,7 +929,10 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
         <td className="py-3.5 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{inv ? money(inv.total) : '—'}</td>
         <td className="py-3.5 px-3 whitespace-nowrap w-[150px]">
           {inv ? (
-            <StatusChip inv={inv} />
+            <div className="flex items-center gap-1.5">
+              <StatusChip inv={inv} />
+              <EditedBadge inv={inv} />
+            </div>
           ) : creating === 'creating' ? (
             <span className="inline-flex items-center gap-1.5 text-[11px] font-medium bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
               <Loader2 className="w-3 h-3 animate-spin" /> Creating invoice…
@@ -933,7 +958,7 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={onEdit}><Receipt className="w-4 h-4 mr-2" /> Edit invoice</DropdownMenuItem>
-                    <DropdownMenuItem onClick={onSend}><Printer className="w-4 h-4 mr-2" /> Send (print)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onSend}><Download className="w-4 h-4 mr-2" /> Send (PDF)</DropdownMenuItem>
                     <DropdownMenuItem onClick={onUpdateStatus}>
                       <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
                     </DropdownMenuItem>
@@ -1235,34 +1260,86 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
   );
 }
 
-/* ----------------------------- Printing --------------------------------- */
+/* ---------------------------- Save as PDF --------------------------------
+   "Send" renders each invoice on the letterhead template off-screen, captures
+   every page, and compiles them into one PDF (one invoice per page). The file
+   is named with the day, the date, and the invoice numbers it holds.         */
 
-function PrintInvoices({ invoices, custById, company, onDone }) {
+function pdfFilename(invoices) {
+  const dates = [...new Set(invoices.map((i) => i.txn_date).filter(Boolean))].sort();
+  const dayLabel = (d) => new Date(d + 'T00:00:00')
+    .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    .replace(/,/g, '');
+  const when = dates.length === 0
+    ? dayLabel(iso(new Date()))
+    : dates.length === 1
+      ? dayLabel(dates[0])
+      : `${dayLabel(dates[0])} to ${dayLabel(dates[dates.length - 1])}`;
+  const nums = invoices.map((i) => Number(i.doc_number)).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
+  const which = invoices.length === 1
+    ? `Invoice ${invoices[0].doc_number || ''}`.trim()
+    : nums.length
+      ? `Invoices ${nums[0]}-${nums[nums.length - 1]}`
+      : `Invoices (${invoices.length})`;
+  return `${which} - ${when}.pdf`;
+}
+
+function SaveInvoicesPdf({ invoices, custById, company, onDone }) {
+  const [progress, setProgress] = useState(0);
+  const [ready, setReady] = useState(false);
+  const rootRef = useRef(null);
+  const ranRef = useRef(false);
+
   useEffect(() => {
-    document.body.classList.add('printing-invoices');
-    const after = () => {
-      window.removeEventListener('afterprint', after);
-      document.body.classList.remove('printing-invoices');
-      onDone(true);
-    };
-    window.addEventListener('afterprint', after);
-    const t = setTimeout(() => window.print(), 150);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener('afterprint', after);
-      document.body.classList.remove('printing-invoices');
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    Promise.all([ensureInvertedLogo(), document.fonts?.ready].filter(Boolean))
+      .then(() => setReady(true));
   }, []);
 
+  useEffect(() => {
+    if (!ready || ranRef.current) return;
+    ranRef.current = true;
+    (async () => {
+      try {
+        // Let the off-screen pages paint with fonts and the inverted logo.
+        await new Promise((r) => setTimeout(r, 120));
+        const [{ jsPDF }, html2canvasMod] = await Promise.all([import('jspdf'), import('html2canvas')]);
+        const html2canvas = html2canvasMod.default;
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [816, 1056], hotfixes: ['px_scaling'] });
+        const pages = rootRef.current.querySelectorAll('.pdf-page');
+        for (let i = 0; i < pages.length; i++) {
+          const canvas = await html2canvas(pages[i], { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+          if (i > 0) pdf.addPage([816, 1056], 'portrait');
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 816, 1056);
+          setProgress(i + 1);
+        }
+        pdf.save(pdfFilename(invoices));
+        onDone(true);
+      } catch (e) {
+        console.error('PDF save failed', e);
+        onDone(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
   return createPortal(
-    <div className="invoice-print-root">
-      {invoices.map((inv) => (
-        <div key={inv.id} className="invoice-print-page">
-          <InvoiceTemplate invoice={inv} customer={custById.get(inv.customer_id)} company={company} />
+    <>
+      {ready && (
+        <div ref={rootRef} style={{ position: 'absolute', left: -10000, top: 0, width: 816 }} aria-hidden="true">
+          {invoices.map((inv) => (
+            <div key={inv.id} className="pdf-page">
+              <InvoiceTemplate invoice={inv} customer={custById.get(inv.customer_id)} company={company} />
+            </div>
+          ))}
         </div>
-      ))}
-    </div>,
+      )}
+      <div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center">
+        <div className="bg-white rounded-xl shadow-xl px-6 py-4 text-sm text-gray-700 flex items-center gap-3">
+          <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+          Saving PDF… {progress} of {invoices.length}
+        </div>
+      </div>
+    </>,
     document.body
   );
 }
