@@ -72,23 +72,19 @@ function hline(pdf, y, color = RULE, x1 = LEFT, x2 = RIGHT, width = 1) {
   pdf.line(x1, y, x2, y);
 }
 
-// The small green PAID badge (horizontal), centered at (cx, cy), mirroring
-// the screen template's PaidBadge. Height is 52 * scale (plus border floor).
+// The small solid-green PAID badge (horizontal), centered at (cx, cy),
+// mirroring the screen template's PaidBadge. Height is 52 * scale.
 function drawPaidBadge(pdf, cx, cy, scale = 1) {
   const FS = 34 * scale, PADX = 18 * scale, PADY = 5 * scale, B = Math.max(4 * scale, 3.5), R = 8 * scale, LS = 4 * scale;
-  pdf.saveGraphicsState();
-  pdf.setGState(new pdf.GState({ opacity: 0.7, 'stroke-opacity': 0.7 }));
   pdf.setFont('Oswald', 'normal');
   pdf.setFontSize(FS * PT);
-  pdf.setTextColor('#16a34a');
   const textW = pdf.getTextWidth('PAID') + 3 * LS;
-  const w = textW + 2 * PADX + B;
-  const h = FS + 2 * PADY + B;
-  pdf.setDrawColor('#16a34a');
-  pdf.setLineWidth(B);
-  pdf.roundedRect(cx - w / 2, cy - h / 2, w, h, R, R, 'S');
+  const w = textW + 2 * PADX + 2 * B;
+  const h = FS + 2 * PADY + 2 * B;
+  pdf.setFillColor('#16a34a');
+  pdf.roundedRect(cx - w / 2, cy - h / 2, w, h, R, R, 'F');
+  pdf.setTextColor('#ffffff');
   pdf.text('PAID', cx - textW / 2, cy + (FS * 0.72) / 2, { charSpace: LS * PT });
-  pdf.restoreGraphicsState();
 }
 
 export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
@@ -278,11 +274,12 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
     const at = (du, dv) => [cx + du * cA + dv * sA, cy - du * sA + dv * cA];
     pdf.setDrawColor('#16a34a');
     pdf.setLineWidth(10);
+    pdf.setLineJoin(1); // round joins: one continuous border, no corner hotspots
     const corners = [[-W / 2, -H / 2], [W / 2, -H / 2], [W / 2, H / 2], [-W / 2, H / 2]].map(([du, dv]) => at(du, dv));
-    corners.forEach((p, i) => {
-      const q = corners[(i + 1) % 4];
-      pdf.line(p[0], p[1], q[0], q[1]);
-    });
+    pdf.lines(
+      [1, 2, 3].map((i) => [corners[i][0] - corners[i - 1][0], corners[i][1] - corners[i - 1][1]]),
+      corners[0][0], corners[0][1], [1, 1], 'S', true
+    );
     const capH = 150 * 0.72;
     const [sx, sy] = at(-textW / 2, capH / 2);
     pdf.text('PAID', sx, sy, { angle: DEG, charSpace: CS * PT });

@@ -59,21 +59,21 @@ const label = { fontSize: 11, letterSpacing: '1.8px', textTransform: 'uppercase'
 const num = { textAlign: 'right' };
 const itemGrid = { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 64px 104px 112px', gap: 16 };
 
-// The small green PAID badge that sits above the INVOICE label.
+// The small solid-green PAID badge that sits above the INVOICE label.
 function PaidBadge({ scale = 1 }) {
   return (
     <span style={{
       display: 'inline-block',
+      background: '#16a34a',
       border: `${Math.max(4 * scale, 3.5)}px solid #16a34a`,
       borderRadius: 8 * scale,
-      color: '#16a34a',
+      color: '#ffffff',
       padding: `${5 * scale}px ${18 * scale}px`,
       fontFamily: OSWALD,
       fontWeight: 700,
       fontSize: 34 * scale,
       lineHeight: 1,
       letterSpacing: 4 * scale,
-      opacity: 0.7,
     }}>
       PAID
     </span>
