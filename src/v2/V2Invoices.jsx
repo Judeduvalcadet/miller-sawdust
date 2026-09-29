@@ -415,9 +415,11 @@ function CreateView() {
   const [day, setDay] = useState(today);
   const [checked, setChecked] = useState(new Set());
   const [expandedId, setExpandedId] = useState(null); // job id whose row is open
+  const [editingId, setEditingId] = useState(null); // job id whose invoice is being edited
   const [batch, setBatch] = useState(null);
   const [previewInv, setPreviewInv] = useState(null);
   const [printQueue, setPrintQueue] = useState(null);
+  const [deleteInv, setDeleteInv] = useState(null); // invoice pending delete confirmation
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
   const weekEnd = addDays(weekStart, 6);
@@ -502,12 +504,17 @@ function CreateView() {
     mutationFn: ({ id, ...patch }) => base44.entities.Invoice.update(id, patch),
     onSuccess: refresh,
   });
+  const del = useMutation({
+    mutationFn: (id) => base44.entities.Invoice.delete(id),
+    onSuccess: refresh,
+  });
   const markSent = (list) => {
     const now = new Date().toISOString();
     list.forEach((inv) => update.mutate({ id: inv.id, sent_at: now }));
   };
 
   const uninvoicedChecked = [...checked].filter((id) => !invByJob.has(id));
+  const invoicedChecked = dayJobs.filter((j) => checked.has(j.id) && invByJob.has(j.id)).map((j) => invByJob.get(j.id));
   const startBatch = () => {
     const ids = dayJobs.filter((j) => checked.has(j.id) && !invByJob.has(j.id)).map((j) => j.id);
     if (!ids.length) return;
@@ -592,9 +599,16 @@ function CreateView() {
         </label>
         {checked.size > 0 && !batch && (
           <span className="inline-flex items-center gap-1 bg-gray-950 rounded-xl p-1.5 ml-1">
-            <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={startBatch} disabled={uninvoicedChecked.length === 0}>
-              Create {uninvoicedChecked.length} invoice{uninvoicedChecked.length !== 1 ? 's' : ''}
-            </Button>
+            {uninvoicedChecked.length > 0 && (
+              <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={startBatch}>
+                Create {uninvoicedChecked.length} invoice{uninvoicedChecked.length !== 1 ? 's' : ''}
+              </Button>
+            )}
+            {invoicedChecked.length > 0 && (
+              <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => setPrintQueue(invoicedChecked)}>
+                <Printer className="w-3.5 h-3.5 mr-1.5" /> Send {invoicedChecked.length}
+              </Button>
+            )}
             <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs px-2">Cancel</button>
           </span>
         )}
@@ -619,10 +633,10 @@ function CreateView() {
               <tr className="text-[11px] uppercase tracking-wide text-gray-400">
                 <th className="py-3 pl-4 pr-1 w-8">
                   <Checkbox
-                    checked={uninvoicedDay.length > 0 && uninvoicedDay.every((j) => checked.has(j.id))}
-                    onCheckedChange={(v) => setChecked(v ? new Set(uninvoicedDay.map((j) => j.id)) : new Set())}
-                    disabled={!!batch || uninvoicedDay.length === 0}
-                    title="Select all uninvoiced"
+                    checked={dayJobs.length > 0 && dayJobs.every((j) => checked.has(j.id))}
+                    onCheckedChange={(v) => setChecked(v ? new Set(dayJobs.map((j) => j.id)) : new Set())}
+                    disabled={!!batch || dayJobs.length === 0}
+                    title="Select all"
                   />
                 </th>
                 <th className="py-3 px-3 font-medium">Customer</th>
@@ -640,11 +654,12 @@ function CreateView() {
               {dayJobs.map((job) => {
                 const inv = invByJob.get(job.id);
                 const isBatchCurrent = batch && batch.ids[batch.index] === job.id;
+                const editing = !!inv && editingId === job.id;
                 const open = isBatchCurrent || expandedId === job.id;
                 return (
                   <JobRow
                     key={job.id}
-                    job={job} inv={inv} open={open}
+                    job={job} inv={inv} open={open} editing={editing}
                     creating={creating.get(job.id)}
                     label={jobLabel(job)} loadText={loadText(job)}
                     checkedSet={checked} batch={batch}
@@ -652,18 +667,40 @@ function CreateView() {
                     onToggleOpen={() => {
                       if (batch || creating.get(job.id) === 'creating') return;
                       if (creating.get(job.id) === 'error') setCreating((m) => { const n = new Map(m); n.delete(job.id); return n; });
+                      if (open) setEditingId(null);
                       setExpandedId(open ? null : job.id);
                     }}
                     onPreview={() => setPreviewInv(inv)}
-                    composer={open && customers && items ? (
+                    onSend={() => setPrintQueue([inv])}
+                    onEdit={() => { setEditingId(job.id); setExpandedId(job.id); }}
+                    onTogglePaid={() => update.mutate(
+                      inv.status === 'paid'
+                        ? { id: inv.id, status: 'open', balance: inv.total }
+                        : { id: inv.id, status: 'paid', balance: 0 }
+                    )}
+                    onDelete={() => setDeleteInv(inv)}
+                    composer={open && (!inv || editing) && customers && items ? (
                       <InvoiceComposer
-                        key={job.id}
+                        key={editing ? `edit-${inv.id}` : job.id}
                         job={job}
                         items={items}
+                        initial={editing ? inv : null}
                         isBatch={!!isBatchCurrent}
                         batchInfo={isBatchCurrent ? { index: batch.index, count: batch.ids.length } : null}
-                        onCancel={() => { setExpandedId(null); setBatch(null); }}
+                        onCancel={() => { setExpandedId(null); setEditingId(null); setBatch(null); }}
                         onCreated={(payload) => {
+                          if (editing) {
+                            update.mutate({
+                              id: inv.id,
+                              lines: payload.lines,
+                              total: payload.total,
+                              balance: inv.status === 'paid' ? 0 : payload.total,
+                              note: payload.note,
+                            });
+                            setEditingId(null);
+                            setExpandedId(null);
+                            return;
+                          }
                           enqueueCreate(job, payload);
                           if (isBatchCurrent) {
                             if (batch.index + 1 >= batch.ids.length) { setBatch(null); setChecked(new Set()); }
@@ -696,14 +733,41 @@ function CreateView() {
           invoices={printQueue}
           custById={custById}
           company={settings?.company_profile}
-          onDone={(printed) => { if (printed) markSent(printQueue); setPrintQueue(null); }}
+          onDone={(printed) => { if (printed) markSent(printQueue); setPrintQueue(null); setChecked(new Set()); }}
         />
       )}
+
+      <Dialog open={!!deleteInv} onOpenChange={(o) => { if (!o) setDeleteInv(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Delete invoice {deleteInv?.doc_number ? `#${deleteInv.doc_number}` : ''}?</DialogTitle></DialogHeader>
+          <p className="text-sm text-gray-600">
+            This removes the invoice and its number for good — the job stays on the board and goes
+            back to <span className="font-medium">Not invoiced</span>. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteInv(null)}>Cancel</Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={del.isPending}
+              onClick={() => {
+                const inv = deleteInv;
+                setDeleteInv(null);
+                setExpandedId(null);
+                setEditingId(null);
+                setChecked((p) => { const n = new Set(p); n.delete(inv.job_id); return n; });
+                del.mutate(inv.id);
+              }}
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" /> Delete invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, composer }) {
+function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, onSend, onEdit, onTogglePaid, onDelete, composer }) {
   const [showNote, setShowNote] = useState(false);
   const notes = [job.dispatcher_notes, job.driver_notes].map((n) => (n || '').trim()).filter(Boolean);
   const yards = job.delivery_yards
@@ -715,7 +779,7 @@ function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, 
         onClick={onToggleOpen}
       >
         <td className="py-3.5 pl-4 pr-1" onClick={(e) => e.stopPropagation()}>
-          {!inv && <Checkbox checked={checkedSet.has(job.id)} onCheckedChange={onToggleCheck} disabled={!!batch} />}
+          <Checkbox checked={checkedSet.has(job.id)} onCheckedChange={onToggleCheck} disabled={!!batch} />
         </td>
         <td className="py-3.5 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">
           <span className="inline-flex items-center gap-1.5">
@@ -774,6 +838,25 @@ function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, 
                 <Eye className="w-4 h-4" />
               </button>
             )}
+            {inv && (
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <button className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="Invoice actions">
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={onEdit}><Receipt className="w-4 h-4 mr-2" /> Edit invoice</DropdownMenuItem>
+                  <DropdownMenuItem onClick={onSend}><Printer className="w-4 h-4 mr-2" /> Send (print)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={onTogglePaid}>
+                    <CircleDollarSign className="w-4 h-4 mr-2" /> Mark as {inv.status === 'paid' ? 'open' : 'paid'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-600">
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete invoice
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <button onClick={onToggleOpen} className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title={open ? 'Collapse' : 'Expand'}>
               <ChevronDown className={cn('w-4 h-4 transition-transform', open && 'rotate-180')} />
             </button>
@@ -783,7 +866,7 @@ function JobRow({ job, inv, open, label, loadText, checkedSet, batch, creating, 
       {open && (
         <tr className="bg-gray-50/60">
           <td colSpan={10} className="p-0">
-            {inv ? <InvoiceDetail inv={inv} /> : composer}
+            {inv && !editing ? <InvoiceDetail inv={inv} /> : composer}
           </td>
         </tr>
       )}
@@ -825,7 +908,7 @@ function InvoiceDetail({ inv }) {
 
 /* ---------------------------- Composer ---------------------------------- */
 
-function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }) {
+function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCancel, onCreated }) {
   const { data: prices } = useQuery({
     queryKey: ['customer-prices', job.customer_id],
     queryFn: () => base44.entities.CustomerItemPrice.filter({ customer_id: job.customer_id }),
@@ -841,8 +924,15 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
     return it?.unit_price != null ? Number(it.unit_price) : 0;
   };
 
-  const [lines, setLines] = useState(null);
-  const [note, setNote] = useState('');
+  // Editing an existing invoice starts from ITS lines, not the job's loads.
+  const [lines, setLines] = useState(initial
+    ? (initial.lines || []).map((l) => ({
+        item_id: l.item_id || null, item_qb_id: l.item_qb_id || null,
+        name: l.name, description: l.description || null,
+        qty: l.qty ?? 1, unit_price: l.unit_price ?? 0,
+      }))
+    : null);
+  const [note, setNote] = useState(initial?.note || '');
   const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [picking, setPicking] = useState(null); // { idx, query } — inline item search
@@ -1044,9 +1134,10 @@ function InvoiceComposer({ job, items, isBatch, batchInfo, onCancel, onCreated }
 
       <div className="flex items-center gap-2 mt-3">
         <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={create} disabled={total <= 0}>
-          {isBatch ? (batchInfo.index + 1 >= batchInfo.count ? 'Done' : 'Next') : 'Create invoice'}
+          {initial ? 'Save changes' : isBatch ? (batchInfo.index + 1 >= batchInfo.count ? 'Done' : 'Next') : 'Create invoice'}
         </Button>
         <Button size="sm" variant="outline" className="h-8" onClick={onCancel}>Cancel</Button>
+        {initial && <span className="text-[11px] text-gray-400">Editing invoice #{initial.doc_number}</span>}
         {isBatch && <span className="text-[11px] text-gray-400">Saves this invoice and {batchInfo.index + 1 >= batchInfo.count ? 'finishes the batch' : 'opens the next job'}.</span>}
       </div>
     </div>
