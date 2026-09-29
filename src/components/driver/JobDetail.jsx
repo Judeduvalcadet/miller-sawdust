@@ -221,11 +221,12 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
                       onChange({ ...load, yards_collected: String(o.yards), item_id: o.itemId });
                     }}
                     className={cn(
-                      "h-9 px-5 rounded-lg bg-white text-sm font-semibold transition-colors",
-                      selected
-                        ? "border-[3px] border-gray-700 text-gray-900"
-                        : "border border-gray-300 text-gray-700",
-                      (disabled || load.completed) && !selected && "opacity-50"
+                      "h-9 px-5 rounded-lg text-sm font-semibold transition-colors",
+                      // Completed loads gray out like the rest of the card; the
+                      // thick border still marks which size was chosen.
+                      (disabled || load.completed)
+                        ? cn('bg-gray-50 text-gray-400', selected ? 'border-[3px] border-gray-300' : 'border border-gray-200')
+                        : cn('bg-white', selected ? 'border-[3px] border-gray-700 text-gray-900' : 'border border-gray-300 text-gray-700')
                     )}
                   >
                     {o.yards} yds
