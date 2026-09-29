@@ -220,7 +220,12 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
       item_id: it.id,
       // Item truck wins; 'any' items leave the choice open.
       truck_type: it.truck_type || loads[i].truck_type || '',
-      yards_collected: it.yards != null ? String(it.yards) : loads[i].yards_collected,
+      // Spreader loads: the driver logs the yards actually collected at their
+      // own pickup, so leave the field for them — prefilled yards plus a
+      // prefilled pickup would make the driver app treat the load as done.
+      yards_collected: it.truck_type === 'spreader'
+        ? loads[i].yards_collected
+        : (it.yards != null ? String(it.yards) : loads[i].yards_collected),
       // The job card shows this label; the item link is what prices the invoice.
       load_configuration: it.display_label || it.name || '',
     });

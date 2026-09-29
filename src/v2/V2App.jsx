@@ -8,6 +8,7 @@ import V2Settings from './V2Settings';
 import V2Customers from './V2Customers';
 import { V2Pickups, V2Dropoffs } from './V2Directory';
 import V2Invoices from './V2Invoices';
+import V2Driver from './V2Driver';
 import { V2Dispatch, V2Wallboard } from './V2Boards';
 import { installV2LiveGuard } from './guard';
 import { base44 } from '@/api/entities';
@@ -162,6 +163,8 @@ export default function V2App() {
   return (
     <Routes>
       <Route path="login" element={<V2Login />} />
+      {/* Driver app: PIN sessions welcome — no office (email+password) gate */}
+      <Route path="driver" element={<V2Driver />} />
       <Route path="" element={<RequireOffice><V2Dispatch /></RequireOffice>} />
       <Route path="invoices" element={<RequireOffice><V2Invoices /></RequireOffice>} />
       <Route path="customers" element={<RequireOffice><V2Customers /></RequireOffice>} />
