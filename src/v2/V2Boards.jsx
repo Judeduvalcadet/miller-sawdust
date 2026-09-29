@@ -18,7 +18,7 @@ import {
 import { base44 } from '@/api/entities';
 import { supabase } from '@/api/supabaseClient';
 import { cn } from '@/lib/utils';
-import JobForm from '@/components/admin/JobForm';
+import JobForm from './V2JobForm';
 import SortJobsModal from '@/components/admin/SortJobsModal';
 import GlobalSearch from '@/components/admin/GlobalSearch';
 import MiniWallboard from '@/components/admin/MiniWallboard';

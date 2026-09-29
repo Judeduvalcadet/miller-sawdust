@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Loader2, Link2, Unlink, CheckCircle2, AlertTriangle, Building2, SlidersHorizontal,
   Package, Users, Plus, X, Check, Truck, CalendarDays, Pencil,
@@ -174,7 +175,7 @@ const PRESET_SUBTABS = [
 function PresetsTab() {
   const [subTab, setSubTab] = useState('delivery');
   return (
-    <div className="p-6 max-w-3xl">
+    <div className={cn('p-6', subTab === 'configs' ? 'max-w-5xl' : 'max-w-3xl')}>
       <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1 w-fit">
         {PRESET_SUBTABS.map(({ key, label }) => (
           <button
@@ -242,11 +243,14 @@ function LoadConfigsPanel() {
     queryKey: ['items'],
     queryFn: () => base44.entities.Item.list('sort_order'),
   });
-  const [edit, setEdit] = useState({}); // item id -> label being typed
+  // One row edits at a time: hover shows the pencil, edit opens truck /
+  // yards / label fields with explicit Save and Cancel.
+  const [editingId, setEditingId] = useState(null);
+  const [draft, setDraft] = useState({ truck_type: '', yards: '', display_label: '' });
   const [savedId, setSavedId] = useState(null);
 
   const save = useMutation({
-    mutationFn: ({ id, display_label }) => base44.entities.Item.update(id, { display_label }),
+    mutationFn: ({ id, ...patch }) => base44.entities.Item.update(id, patch),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['items'] });
       setSavedId(vars.id);
@@ -254,13 +258,22 @@ function LoadConfigsPanel() {
     },
   });
 
+  const startEdit = (i) => {
+    setEditingId(i.id);
+    setDraft({
+      truck_type: i.truck_type || 'any',
+      yards: i.yards != null ? String(i.yards) : '',
+      display_label: i.display_label || '',
+    });
+  };
   const commit = (i) => {
-    const raw = edit[i.id];
-    if (raw === undefined) return;
-    setEdit((p) => { const n = { ...p }; delete n[i.id]; return n; });
-    const v = raw.trim();
-    if (!v || v === (i.display_label || '')) return;
-    save.mutate({ id: i.id, display_label: v });
+    setEditingId(null);
+    save.mutate({
+      id: i.id,
+      truck_type: draft.truck_type === 'any' ? null : draft.truck_type,
+      yards: draft.yards !== '' ? Number(draft.yards) : null,
+      display_label: draft.display_label.trim() || null,
+    });
   };
 
   if (isLoading) return <TabLoading />;
@@ -274,44 +287,94 @@ function LoadConfigsPanel() {
           <span className="text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1.5 py-0.5">from QuickBooks items</span>
         </h3>
         <p className="text-xs text-gray-500 mt-0.5">
-          The front-end label is what shows on job cards when dispatch picks this
-          configuration. Invoicing always uses the QuickBooks item and its pricing;
-          the label is display only.
+          Picking an item on a job fills the truck, yardage and job-card label from
+          these fields. Invoicing always bills the QuickBooks item and its pricing.
         </p>
       </div>
       <table className="w-full text-left">
         <thead>
           <tr className="text-[11px] uppercase tracking-wide text-gray-400">
             <th className="py-2.5 pl-5 pr-2 font-medium">QuickBooks item</th>
-            <th className="py-2.5 px-2 font-medium">Truck / yards</th>
-            <th className="py-2.5 px-2 pr-5 font-medium">Front-end label (job cards)</th>
+            <th className="py-2.5 px-2 font-medium w-40">Truck</th>
+            <th className="py-2.5 px-2 font-medium w-24">Yards</th>
+            <th className="py-2.5 px-2 font-medium">Config label (job cards)</th>
+            <th className="py-2.5 px-2 pr-5 w-24"></th>
           </tr>
         </thead>
         <tbody>
-          {loads.map((i) => (
-            <tr key={i.id} className="border-t border-gray-100">
-              <td className="py-2.5 pl-5 pr-2">
-                <p className="text-sm font-medium text-gray-900">{i.name}</p>
-                {i.qb_id && <span className="text-[10px] text-gray-400">QB #{i.qb_id}</span>}
-              </td>
-              <td className="py-2.5 px-2 text-xs text-gray-500 whitespace-nowrap">
-                {(TRUCK_TYPES.find((t) => t.value === i.truck_type)?.label || 'Any')}{i.yards != null ? ` · ${i.yards} yds` : ''}
-              </td>
-              <td className="py-2.5 px-2 pr-5">
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    value={edit[i.id] !== undefined ? edit[i.id] : (i.display_label || '')}
-                    placeholder={i.name}
-                    onChange={(e) => setEdit((p) => ({ ...p, [i.id]: e.target.value }))}
-                    onBlur={() => commit(i)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    className="h-8 text-sm max-w-[220px]"
-                  />
-                  {savedId === i.id && <Check className="w-4 h-4 text-green-600 shrink-0" />}
-                </div>
-              </td>
-            </tr>
-          ))}
+          {loads.map((i) => {
+            const editing = editingId === i.id;
+            return (
+              <tr key={i.id} className="border-t border-gray-100 group hover:bg-gray-50/60">
+                <td className="py-2.5 pl-5 pr-2">
+                  <p className="text-sm font-medium text-gray-900">{i.name}</p>
+                  {i.qb_id && <span className="text-[10px] text-gray-400">QB #{i.qb_id}</span>}
+                </td>
+                {editing ? (
+                  <>
+                    <td className="py-2 px-2">
+                      <Select value={draft.truck_type} onValueChange={(v) => setDraft((p) => ({ ...p, truck_type: v }))}>
+                        <SelectTrigger className="h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Any</SelectItem>
+                          {TRUCK_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="py-2 px-2">
+                      <Input
+                        type="number" min="0" max="999" step="0.5"
+                        value={draft.yards}
+                        onChange={(e) => setDraft((p) => ({ ...p, yards: e.target.value }))}
+                        className="no-spin h-8 text-xs text-right bg-white"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <Input
+                        value={draft.display_label}
+                        placeholder={i.name}
+                        onChange={(e) => setDraft((p) => ({ ...p, display_label: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(i); } if (e.key === 'Escape') setEditingId(null); }}
+                        className="h-8 text-xs bg-white"
+                      />
+                    </td>
+                    <td className="py-2 px-2 pr-5">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button size="sm" className="h-7 text-xs bg-gray-950 hover:bg-gray-800" onClick={() => commit(i)}>Save</Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingId(null)}>Cancel</Button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="py-2.5 px-2 text-xs text-gray-600 whitespace-nowrap">
+                      {TRUCK_TYPES.find((t) => t.value === i.truck_type)?.label || 'Any'}
+                    </td>
+                    <td className="py-2.5 px-2 text-xs text-gray-600 whitespace-nowrap">
+                      {i.yards != null ? `${i.yards} yds` : '—'}
+                    </td>
+                    <td className="py-2.5 px-2 text-sm text-gray-800">
+                      {i.display_label || <span className="text-gray-400 italic">{i.name}</span>}
+                    </td>
+                    <td className="py-2.5 px-2 pr-5">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {savedId === i.id && <Check className="w-4 h-4 text-green-600" />}
+                        <button
+                          onClick={() => startEdit(i)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-800 p-1 rounded hover:bg-gray-100 transition-opacity"
+                          title="Edit"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
