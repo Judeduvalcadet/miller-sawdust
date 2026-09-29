@@ -31,8 +31,18 @@ export function ensureInvertedLogo() {
           c.width = img.naturalWidth;
           c.height = img.naturalHeight;
           const ctx = c.getContext('2d');
-          ctx.filter = 'invert(1)';
           ctx.drawImage(img, 0, 0);
+          // Invert pixel by pixel: ctx.filter = 'invert(1)' is silently
+          // ignored by some browsers (Safari), which left the raw
+          // white-on-black logo showing.
+          const d = ctx.getImageData(0, 0, c.width, c.height);
+          const px = d.data;
+          for (let i = 0; i < px.length; i += 4) {
+            px[i] = 255 - px[i];
+            px[i + 1] = 255 - px[i + 1];
+            px[i + 2] = 255 - px[i + 2];
+          }
+          ctx.putImageData(d, 0, 0);
           invertedLogoUrl = c.toDataURL('image/png');
         } catch {
           invertedLogoUrl = '/logo.jpg';
@@ -150,7 +160,7 @@ export function InvoiceTemplate({ invoice, customer, company }) {
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 36 }}>
           {logo
-            ? <img src={logo} alt="" style={{ width: 132, height: 132, display: 'block' }} />
+            ? <img src={logo} alt="" style={{ width: 132, height: 132, display: 'block', filter: logo === '/logo.jpg' ? 'invert(1)' : undefined }} />
             : <div style={{ width: 132, height: 132 }} />}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <h1 style={{ fontFamily: OSWALD, fontWeight: 700, fontSize: 40, lineHeight: 1, letterSpacing: '0.4px', margin: 0 }}>
