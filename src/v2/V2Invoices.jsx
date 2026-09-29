@@ -452,26 +452,23 @@ function UpdateStatusDialog({ inv, onClose, onSave }) {
   const [sel, setSel] = useState(invStatusKey(inv));
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Update status for invoice #{inv.doc_number}</DialogTitle></DialogHeader>
+      <DialogContent className="max-w-[300px]">
+        <DialogHeader><DialogTitle className="text-base">Invoice #{inv.doc_number} status</DialogTitle></DialogHeader>
         <div className="space-y-1.5">
           {STATUS_OPTIONS.map((o) => (
             <button
               key={o.key}
               onClick={() => setSel(o.key)}
               className={cn(
-                'w-full flex items-start gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors',
+                'w-full flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors',
                 sel === o.key ? 'border-gray-950 bg-gray-50' : 'border-gray-200 hover:border-gray-400'
               )}
             >
               <span className={cn(
-                'mt-1 w-3.5 h-3.5 rounded-full border-2 shrink-0',
+                'w-3.5 h-3.5 rounded-full border-2 shrink-0',
                 sel === o.key ? 'border-gray-950 bg-gray-950' : 'border-gray-300'
               )} />
-              <span>
-                <p className="text-sm font-medium text-gray-900">{o.label}</p>
-                <p className="text-xs text-gray-500">{o.hint}</p>
-              </span>
+              <span className="text-sm font-medium text-gray-900">{o.label}</span>
             </button>
           ))}
         </div>
