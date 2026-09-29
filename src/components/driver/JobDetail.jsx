@@ -221,10 +221,10 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
                       onChange({ ...load, yards_collected: String(o.yards), item_id: o.itemId });
                     }}
                     className={cn(
-                      "flex-1 h-11 rounded-lg border text-sm font-semibold transition-colors",
+                      "flex-1 h-11 rounded-lg bg-white text-sm font-semibold transition-colors",
                       selected
-                        ? "bg-gray-950 border-gray-950 text-white"
-                        : "bg-white border-gray-300 text-gray-700",
+                        ? "border-[3px] border-green-500 text-gray-900"
+                        : "border border-gray-300 text-gray-700",
                       (disabled || load.completed) && !selected && "opacity-50"
                     )}
                   >
@@ -342,7 +342,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
     const label = it.display_label || it.name;
     return items
       .filter(x => x.active && x.is_load_item && x.truck_type === 'spreader' && (x.display_label || x.name) === label && x.yards != null)
-      .sort((a, b) => a.yards - b.yards)
+      .sort((a, b) => b.yards - a.yards)
       .map(x => ({ yards: Number(x.yards), itemId: x.id }));
   };
 
@@ -575,7 +575,9 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
               <div>
                 <p className="text-sm text-gray-500">Quantity</p>
                 <p className="font-medium text-lg">
-                  {job.load_configuration || `${job.quantity} truckload${job.quantity !== 1 ? 's' : ''}`}
+                  {deYellow
+                    ? `${job.quantity || 1} load${(job.quantity || 1) !== 1 ? 's' : ''}`
+                    : (job.load_configuration || `${job.quantity} truckload${job.quantity !== 1 ? 's' : ''}`)}
                 </p>
               </div>
             </div>
@@ -584,11 +586,24 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
               <div className={cn("rounded-lg border p-3 flex items-start gap-3", deYellow ? "bg-gray-50 border-gray-200" : "bg-amber-50 border-amber-200")}>
                 <Package className={cn("w-5 h-5 mt-0.5 shrink-0", deYellow ? "text-gray-500" : "text-amber-600")} />
                 <div>
-                  {job.delivery_yards && (
-                    <p className={cn("font-bold text-lg leading-tight", deYellow ? "text-gray-900" : "text-amber-900")}>{job.delivery_yards} yds</p>
-                  )}
-                  {job.load_configuration && (
-                    <p className={cn("font-medium text-sm mt-0.5", deYellow ? "text-gray-600" : "text-amber-800")}>{job.load_configuration}</p>
+                  {deYellow && loads.length > 0 ? (
+                    <>
+                      <p className="font-bold text-base leading-tight text-gray-900">
+                        {loads.map((l, i) => `L${l.load_number || i + 1}: ${l.yards_collected || '—'}`).join(' · ')} yds
+                      </p>
+                      <p className="font-medium text-sm mt-0.5 text-gray-600">
+                        {loads.map((l, i) => `L${l.load_number || i + 1}: ${l.load_configuration || '—'}`).join(' · ')}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      {job.delivery_yards && (
+                        <p className={cn("font-bold text-lg leading-tight", deYellow ? "text-gray-900" : "text-amber-900")}>{job.delivery_yards} yds</p>
+                      )}
+                      {job.load_configuration && (
+                        <p className={cn("font-medium text-sm mt-0.5", deYellow ? "text-gray-600" : "text-amber-800")}>{job.load_configuration}</p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
