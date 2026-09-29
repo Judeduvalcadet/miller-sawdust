@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote, History } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote, History, Receipt } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import CalendarPicker from "@/components/driver/CalendarPicker";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -248,7 +248,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
 }
 
 // Individual job card in the weekly grid
-function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, onAssigned, editMode = false, isSelected = false, onToggleSelect }) {
+function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, onAssigned, editMode = false, isSelected = false, onToggleSelect, deYellow = false, invoiced = false }) {
   const [showAssign, setShowAssign] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -338,6 +338,11 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
             )}>
               {job.job_type}
             </span>
+            {deYellow && hasNotes && (
+              <span className="inline-flex items-center gap-0.5 bg-black text-white text-[8px] px-1 py-0.5 rounded font-semibold">
+                <StickyNote className="w-2 h-2" /> NOTE
+              </span>
+            )}
             {job.truck_type &&
             <span className="text-gray-400 text-[9px] ml-auto">{TRUCK_LABELS[job.truck_type]}</span>
             }
@@ -379,8 +384,9 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 
 
-          {/* Notes pill + Invoice toggle row */}
-          {isAdmin && !editMode && (hasNotes || job.job_type === 'delivery') &&
+          {/* Notes pill + Invoice toggle row (V1 only — V2 moves NOTE to the
+              type row and shows the INVOICED badge instead of Yes/No) */}
+          {!deYellow && isAdmin && !editMode && (hasNotes || job.job_type === 'delivery') &&
           <div
             className="mt-1.5 flex items-center justify-between border-t pt-1.5"
             onClick={(e) => e.stopPropagation()}>
@@ -427,21 +433,45 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
             </div>
           }
 
-          {/* Assign button */}
-          {isAdmin && !editMode && job.status !== 'cancelled' && job.status !== 'completed' &&
-          <button
-            onClick={(e) => {e.stopPropagation();setAnchorEl(e.currentTarget);setShowAssign((v) => !v);}}
-            className={cn(
-              "mt-1.5 w-full flex items-center justify-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold transition-colors",
-              driver ?
-              "bg-gray-100 hover:bg-gray-200 text-gray-600" :
-              "bg-amber-100 hover:bg-amber-200 text-amber-800"
-            )}>
-
-              <UserPlus className="w-2.5 h-2.5" />
-              {driver ? 'Reassign' : 'Assign'}
-            </button>
-          }
+          {/* Bottom row. V1: the full-width Assign button. V2 (deYellow):
+              Assign/Reassign on the left, INVOICED badge on the right. */}
+          {deYellow ? (
+            (((isAdmin && !editMode && job.status !== 'cancelled' && job.status !== 'completed')) || invoiced) && (
+              <div className="mt-1.5 flex items-center justify-between gap-1" onClick={(e) => e.stopPropagation()}>
+                {isAdmin && !editMode && job.status !== 'cancelled' && job.status !== 'completed' ? (
+                  <button
+                    onClick={(e) => {e.stopPropagation();setAnchorEl(e.currentTarget);setShowAssign((v) => !v);}}
+                    className={cn(
+                      "flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold transition-colors",
+                      driver ?
+                      "bg-gray-100 hover:bg-gray-200 text-gray-600" :
+                      "bg-blue-100 hover:bg-blue-200 text-blue-700"
+                    )}>
+                    <UserPlus className="w-2.5 h-2.5" />
+                    {driver ? 'Reassign' : 'Assign'}
+                  </button>
+                ) : <span />}
+                {invoiced && (
+                  <span className="inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
+                    <Receipt className="w-2.5 h-2.5" /> INVOICED
+                  </span>
+                )}
+              </div>
+            )
+          ) : (
+            isAdmin && !editMode && job.status !== 'cancelled' && job.status !== 'completed' &&
+            <button
+              onClick={(e) => {e.stopPropagation();setAnchorEl(e.currentTarget);setShowAssign((v) => !v);}}
+              className={cn(
+                "mt-1.5 w-full flex items-center justify-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold transition-colors",
+                driver ?
+                "bg-gray-100 hover:bg-gray-200 text-gray-600" :
+                "bg-amber-100 hover:bg-amber-200 text-amber-800"
+              )}>
+                <UserPlus className="w-2.5 h-2.5" />
+                {driver ? 'Reassign' : 'Assign'}
+              </button>
+          )}
         </div>
 
         {/* Assign popup — rendered via portal */}
@@ -473,7 +503,9 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 // `weekAnchor` (optional, 'yyyy-MM-dd'): a parent-controlled week — the board
 // follows it while its own internal nav keeps working. Absent = V1 behavior.
-export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin, weekAnchor = null }) {
+// `deYellow` (optional): V2 boards pass it to swap the amber accents for
+// gray/blue; V1 renders exactly as before without it.
+export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin, weekAnchor = null, deYellow = false, invoicedIds = null }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [filterDriver, setFilterDriver] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -923,6 +955,8 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                   drivers={drivers}
                   pickupLocations={pickupLocations}
                   isAdmin={isAdmin}
+                                  deYellow={deYellow}
+                                  invoiced={!!(invoicedIds && invoicedIds.has(job.id))}
                   onEditJob={onEditJob}
                   editMode={false}
                   isSelected={false}
@@ -977,13 +1011,13 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                 {/* Day Header */}
                 <div className={cn(
                   "flex items-center justify-between px-2 py-2 border-b shrink-0",
-                  isCurrentDay ? "bg-amber-50" : "bg-gray-50"
+                  isCurrentDay ? (deYellow ? "bg-gray-200" : "bg-amber-50") : "bg-gray-50"
                 )}>
                   <div className="flex items-baseline gap-2 min-w-0">
-                    <p className="text-amber-700 text-base font-semibold">
+                    <p className={cn("text-base font-semibold", deYellow ? "text-gray-700" : "text-amber-700")}>
                       {DAYS[i]}
                     </p>
-                    <p className={cn("text-sm font-bold", isCurrentDay ? "text-amber-800" : "text-gray-800")}>
+                    <p className={cn("text-sm font-bold", isCurrentDay ? (deYellow ? "text-gray-900" : "text-amber-800") : "text-gray-800")}>
                       {format(day, 'd')}
                     </p>
                     {dayJobs.length > 0 && (() => {
@@ -1005,7 +1039,12 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                       </button>
                     <button
                       onClick={() => onAddJob(dateStr)}
-                      className="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center transition-colors"
+                      className={cn(
+                        "w-6 h-6 rounded-full flex items-center justify-center transition-colors",
+                        deYellow
+                          ? "bg-white border border-gray-300 hover:bg-gray-50 text-black"
+                          : "bg-amber-500 hover:bg-amber-600 text-white"
+                      )}
                       title={`Add job on ${format(day, 'MMM d')}`}>
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -1052,6 +1091,8 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                                   drivers={drivers}
                                   pickupLocations={pickupLocations}
                                   isAdmin={isAdmin}
+                                  deYellow={deYellow}
+                                  invoiced={!!(invoicedIds && invoicedIds.has(job.id))}
                                   onEditJob={onEditJob}
                                   editMode={editMode}
                                   isSelected={selectedJobIds.has(job.id)}

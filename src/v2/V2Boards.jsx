@@ -438,9 +438,29 @@ function useWeekJobs(day, opts = {}) {
 
 /* ----------------------------- DISPATCH ---------------------------------- */
 
+// Job ids whose invoice has been sent — one light query that powers the
+// week cards' INVOICED badge.
+function useSentInvoiceJobIds() {
+  const { data } = useQuery({
+    queryKey: ['sent-invoice-job-ids'],
+    staleTime: 60000,
+    queryFn: async () => {
+      const { data: rows, error } = await supabase.from('invoices')
+        .select('job_id')
+        .not('job_id', 'is', null)
+        .not('sent_at', 'is', null)
+        .limit(10000);
+      if (error) throw error;
+      return rows.map((r) => r.job_id);
+    },
+  });
+  return useMemo(() => new Set(data || []), [data]);
+}
+
 export function V2Dispatch() {
   const queryClient = useQueryClient();
   const [day, setDay] = useState(iso(new Date()));
+  const sentJobIds = useSentInvoiceJobIds();
   const [view, setView] = useState('day');
   const [filter, setFilter] = useState('');
   const [showJobForm, setShowJobForm] = useState(false);
@@ -535,6 +555,8 @@ export function V2Dispatch() {
             drivers={drivers}
             pickupLocations={pickupLocations}
             isAdmin={true}
+            deYellow
+            invoicedIds={sentJobIds}
             weekAnchor={mondayOf(day)}
             onAddJob={(date) => { setEditingJob(null); setDefaultJobDate(date); setShowJobForm(true); }}
             onEditJob={onEdit}
@@ -607,6 +629,7 @@ export function V2Dispatch() {
 
 export function V2Wallboard() {
   const [day, setDay] = useState(iso(new Date()));
+  const sentJobIds = useSentInvoiceJobIds();
   const [view, setView] = useState('day');
   const [manualUntil, setManualUntil] = useState(null);
 
@@ -671,6 +694,8 @@ export function V2Wallboard() {
             drivers={drivers}
             pickupLocations={pickupLocations}
             isAdmin={false}
+            deYellow
+            invoicedIds={sentJobIds}
             onAddJob={() => {}}
             onEditJob={() => {}}
             onSortJobs={() => {}}
