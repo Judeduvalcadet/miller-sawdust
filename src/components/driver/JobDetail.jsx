@@ -221,7 +221,7 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
                       onChange({ ...load, yards_collected: String(o.yards), item_id: o.itemId });
                     }}
                     className={cn(
-                      "h-11 px-5 rounded-lg bg-white text-sm font-semibold transition-colors",
+                      "h-9 px-5 rounded-lg bg-white text-sm font-semibold transition-colors",
                       selected
                         ? "border-[3px] border-gray-700 text-gray-900"
                         : "border border-gray-300 text-gray-700",
