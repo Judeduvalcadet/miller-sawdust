@@ -30,7 +30,7 @@ export default function V2Login() {
       navigate('/v2');
     } catch (err) {
       setError(err?.message === 'too_many_attempts'
-        ? 'Too many attempts — wait 15 minutes and try again.'
+        ? 'Too many attempts. Wait 15 minutes and try again.'
         : 'Email or password is incorrect.');
       setLoading(false);
     }

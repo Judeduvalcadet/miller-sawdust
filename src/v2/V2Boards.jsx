@@ -655,7 +655,7 @@ export function V2Wallboard() {
         </div>
         {isError && (
           <span className="ml-auto flex items-center gap-1.5 text-xs text-amber-400">
-            <WifiOff className="w-4 h-4" /> reconnecting — showing the last good schedule
+            <WifiOff className="w-4 h-4" /> reconnecting, showing the last good schedule
           </span>
         )}
       </div>

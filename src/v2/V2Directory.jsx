@@ -281,7 +281,7 @@ function LocationForm({ kind, entity, queryKey, record, onDone }) {
                   if (place.lat != null) setPendingPin({ lat: place.lat, lng: place.lng });
                 }}
               />
-              <p className="text-[11px] text-gray-400">Pick a suggestion and the pin drops on the map — the address is verified on save.</p>
+              <p className="text-[11px] text-gray-400">Pick a suggestion and the pin drops on the map. The address is verified on save.</p>
             </div>
             {kind === 'pickup' && (
               <div className="col-span-2 space-y-1.5">
@@ -299,7 +299,7 @@ function LocationForm({ kind, entity, queryKey, record, onDone }) {
 
           {kind === 'pickup' && (
             <div className="mt-5 pt-4 border-t border-gray-100 space-y-3">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Pickup schedule <span className="normal-case font-normal">(optional — the route planner and assistant use this)</span></p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Pickup schedule <span className="normal-case font-normal">(optional, used by the route planner and assistant)</span></p>
               <div className="flex flex-wrap gap-1.5">
                 {WEEKDAYS.map(({ value, label }) => (
                   <button
@@ -351,8 +351,8 @@ function LocationForm({ kind, entity, queryKey, record, onDone }) {
           <div className="h-[320px] lg:h-[54vh] lg:min-h-[400px]">
             <JobMapPanel
               pin={pendingPin || (record?.latitude != null ? { lat: record.latitude, lng: record.longitude } : null)}
-              title={[form.name, form.address].filter(Boolean).join(' — ')}
-              waitingText="Start typing the address and pick a suggestion — the pin drops here."
+              title={[form.name, form.address].filter(Boolean).join(", ")}
+              waitingText="Start typing the address and pick a suggestion. The pin drops here."
               canCapture={false}
             />
           </div>

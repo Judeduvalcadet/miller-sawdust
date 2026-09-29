@@ -395,8 +395,8 @@ function InfoEdit({ customer, onDone }) {
           <div className="h-[320px] lg:h-[58vh] lg:min-h-[420px]">
             <JobMapPanel
               pin={pendingPin || (customer?.latitude != null ? { lat: customer.latitude, lng: customer.longitude } : null)}
-              title={[form.company_name || form.name, form.street_address].filter(Boolean).join(' — ')}
-              waitingText="Start typing the street address and pick a suggestion — the pin drops here."
+              title={[form.company_name || form.name, form.street_address].filter(Boolean).join(", ")}
+              waitingText="Start typing the street address and pick a suggestion. The pin drops here."
               canCapture
               initialInstructions={form.delivery_instructions}
               onSaveImage={async (blob, instructions) => {
@@ -633,7 +633,7 @@ function PriceBook({ customer }) {
         <div>
           {rows.length === 0 && (
             <p className="px-5 py-5 text-sm text-gray-400 italic">
-              No custom pricing yet — invoices use standard item prices.
+              No custom pricing yet. Invoices use standard item prices.
             </p>
           )}
           {rows.map((row) => {
@@ -653,7 +653,7 @@ function PriceBook({ customer }) {
                   <p className="text-sm font-medium text-gray-900 truncate">{item?.name || 'Unknown item'}</p>
                   {std != null && (
                     <p className="text-[11px] text-gray-400">
-                      standard ${std.toLocaleString()}{differs ? ` — custom for this customer` : ''}
+                      standard ${std.toLocaleString()}{differs ? `, custom for this customer` : ''}
                     </p>
                   )}
                 </div>
@@ -720,7 +720,7 @@ function PriceBook({ customer }) {
                 >
                   <option value="">Choose an item…</option>
                   {addable.map((i) => (
-                    <option key={i.id} value={i.id}>{i.name}{i.unit_price != null ? ` — $${i.unit_price}` : ''}</option>
+                    <option key={i.id} value={i.id}>{i.name}{i.unit_price != null ? ` ($${i.unit_price})` : ''}</option>
                   ))}
                 </select>
                 <span className="text-gray-400 text-sm">$</span>
@@ -754,7 +754,7 @@ function PriceBook({ customer }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this price?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteRow && `${itemById.get(deleteRow.item_id)?.name || 'This item'} — $${Number(deleteRow.price).toLocaleString()}. `}
+              {deleteRow && `${itemById.get(deleteRow.item_id)?.name || 'This item'}, $${Number(deleteRow.price).toLocaleString()}. `}
               Invoices will fall back to the item's standard price.
             </AlertDialogDescription>
           </AlertDialogHeader>

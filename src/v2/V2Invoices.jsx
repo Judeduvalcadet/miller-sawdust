@@ -400,7 +400,7 @@ function InvoiceList() {
 const STATUS_OPTIONS = [
   { key: 'created', label: 'Created', hint: 'The invoice exists but hasn’t gone out yet.' },
   { key: 'sent', label: 'Sent', hint: 'Printed / delivered to the customer, awaiting payment.' },
-  { key: 'paid', label: 'Paid', hint: 'Payment received — balance goes to zero.' },
+  { key: 'paid', label: 'Paid', hint: 'Payment received. The balance goes to zero.' },
 ];
 const invStatusKey = (inv) => inv.status === 'paid' ? 'paid' : inv.sent_at ? 'sent' : 'created';
 const statusPatch = (inv, key) => {
@@ -431,7 +431,7 @@ function UpdateStatusDialog({ inv, onClose, onSave }) {
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Update status — invoice #{inv.doc_number}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Update status for invoice #{inv.doc_number}</DialogTitle></DialogHeader>
         <div className="space-y-1.5">
           {STATUS_OPTIONS.map((o) => (
             <button
@@ -483,6 +483,7 @@ function CreateView() {
   const [printQueue, setPrintQueue] = useState(null);
   const [deleteInv, setDeleteInv] = useState(null); // invoice pending delete confirmation
   const [statusInv, setStatusInv] = useState(null); // invoice whose status is being updated
+  const [jumpOpen, setJumpOpen] = useState(false); // jump-to-date calendar popover
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
   const weekEnd = addDays(weekStart, 6);
@@ -652,14 +653,36 @@ function CreateView() {
         <button onClick={() => { const w = addDays(weekStart, 7); setWeekStart(w); changeDay(w); }} className="p-1.5 rounded-lg hover:bg-gray-200" aria-label="Next week">
           <ChevronRight className="w-4 h-4 text-gray-500" />
         </button>
-        <label className="relative p-1.5 rounded-lg hover:bg-gray-200 cursor-pointer" title="Jump to a date">
-          <CalendarDays className="w-4 h-4 text-gray-500" />
-          <input
-            type="date" value={day}
-            onChange={(e) => { if (!e.target.value) return; setWeekStart(mondayOf(e.target.value)); changeDay(e.target.value); }}
-            className="absolute inset-0 opacity-0 cursor-pointer"
-          />
-        </label>
+        <Popover open={jumpOpen} onOpenChange={setJumpOpen}>
+          <PopoverTrigger asChild>
+            <button className="p-1.5 rounded-lg hover:bg-gray-200" title="Jump to a date">
+              <CalendarDays className="w-4 h-4 text-gray-500" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-3 rounded-2xl border-gray-200 shadow-lg">
+            <Calendar
+              mode="single"
+              selected={new Date(day + 'T00:00:00')}
+              defaultMonth={new Date(day + 'T00:00:00')}
+              onSelect={(d) => {
+                if (!d) return;
+                const v = iso(d);
+                setWeekStart(mondayOf(v));
+                changeDay(v);
+                setJumpOpen(false);
+              }}
+              classNames={{
+                caption_label: 'text-sm font-semibold text-gray-900',
+                head_cell: 'w-10 pb-1 font-medium text-[10px] uppercase tracking-wide text-gray-400',
+                cell: 'p-0.5 text-center',
+                day: 'inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-normal text-gray-700 transition-colors hover:bg-gray-100 aria-selected:opacity-100',
+                day_selected: 'bg-gray-950 text-white font-semibold hover:bg-gray-950 hover:text-white focus:bg-gray-950 focus:text-white',
+                day_today: 'font-bold text-gray-950 underline underline-offset-4 decoration-2',
+                day_outside: 'text-gray-300',
+              }}
+            />
+          </PopoverContent>
+        </Popover>
         {checked.size > 0 && !batch && (
           <span className="inline-flex items-center gap-1 bg-gray-950 rounded-xl p-1.5 ml-1">
             {uninvoicedChecked.length > 0 && (
@@ -807,10 +830,9 @@ function CreateView() {
 
       <Dialog open={!!deleteInv} onOpenChange={(o) => { if (!o) setDeleteInv(null); }}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Delete invoice {deleteInv?.doc_number ? `#${deleteInv.doc_number}` : ''}?</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Delete invoice {deleteInv?.doc_number ? `#${deleteInv.doc_number}` : ''}</DialogTitle></DialogHeader>
           <p className="text-sm text-gray-600">
-            This removes the invoice and its number for good — the job stays on the board and goes
-            back to <span className="font-medium">Not invoiced</span>. This cannot be undone.
+            Are you sure? The job will not be deleted. This cannot be undone.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteInv(null)}>Cancel</Button>
@@ -891,7 +913,7 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
               <Loader2 className="w-3 h-3 animate-spin" /> Creating invoice…
             </span>
           ) : creating === 'error' ? (
-            <span className="text-[11px] font-medium border border-red-200 bg-red-50 text-red-600 rounded-full px-2 py-0.5">Failed — open to retry</span>
+            <span className="text-[11px] font-medium border border-red-200 bg-red-50 text-red-600 rounded-full px-2 py-0.5">Failed. Open to retry</span>
           ) : (
             <span className="text-[11px] font-medium border border-gray-200 bg-gray-50 text-gray-500 rounded-full px-2 py-0.5">Not invoiced</span>
           )}
@@ -940,30 +962,38 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
 function InvoiceDetail({ inv }) {
   return (
     <div className="px-6 py-4 border-t border-gray-100">
-      <table className="w-full max-w-4xl text-left">
-        <thead>
-          <tr className="text-[10px] uppercase tracking-wide text-gray-400">
-            <th className="py-1.5 font-medium min-w-[320px]">Item</th>
-            <th className="py-1.5 px-2 font-medium text-right w-16">Qty</th>
-            <th className="py-1.5 px-2 font-medium text-right w-24">Price</th>
-            <th className="py-1.5 px-2 font-medium text-right w-28">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(inv.lines || []).map((l, i) => (
-            <tr key={i} className="border-t border-gray-100">
-              <td className="py-2 pr-3 text-sm text-gray-900">{l.name}</td>
-              <td className="py-2 px-2 text-sm text-gray-700 text-right">{l.qty ?? 1}</td>
-              <td className="py-2 px-2 text-sm text-gray-700 text-right">{money(l.unit_price)}</td>
-              <td className="py-2 px-2 text-sm font-medium text-gray-900 text-right">{money(l.amount)}</td>
+      <div className="max-w-4xl bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="py-2.5 pl-4 pr-3 font-medium min-w-[320px]">Item</th>
+              <th className="py-2.5 px-3 font-medium text-right w-20">Qty</th>
+              <th className="py-2.5 px-3 font-medium text-right w-28">Price</th>
+              <th className="py-2.5 px-3 font-medium text-right w-28">Amount</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="flex items-center gap-4 mt-2 max-w-2xl">
-        {inv.note && <p className="text-xs text-gray-500"><span className="text-gray-400">Note:</span> {inv.note}</p>}
-        <p className="ml-auto text-sm font-bold text-gray-900">Total {money(inv.total)}</p>
+          </thead>
+          <tbody>
+            {(inv.lines || []).map((l, i) => (
+              <tr key={i} className="border-b border-gray-100">
+                <td className="py-2.5 pl-4 pr-3 text-sm text-gray-900">{l.name}</td>
+                <td className="py-2.5 px-3 text-sm text-gray-700 text-right">{l.qty ?? 1}</td>
+                <td className="py-2.5 px-3 text-sm text-gray-700 text-right">{money(l.unit_price)}</td>
+                <td className="py-2.5 px-3 text-sm font-medium text-gray-900 text-right">{money(l.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-gray-200 bg-gray-50/60">
+              <td colSpan={2}></td>
+              <td className="py-2.5 px-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total:</td>
+              <td className="py-2.5 px-3 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{money(inv.total)}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
+      {inv.note && (
+        <p className="text-xs text-gray-500 mt-2 max-w-4xl"><span className="text-gray-400">Note:</span> {inv.note}</p>
+      )}
     </div>
   );
 }
@@ -1058,15 +1088,16 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
 
   return (
     <div className="border-t border-gray-100 px-6 py-4">
-      <table className="w-full max-w-4xl text-left">
+      <div className="max-w-4xl bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <table className="w-full text-left">
         <thead>
-          <tr className="text-[10px] uppercase tracking-wide text-gray-400">
-            <th className="py-1.5 font-medium min-w-[320px]">Item</th>
-            <th className="py-1.5 px-2 font-medium w-14 text-right">Yds</th>
-            <th className="py-1.5 px-2 font-medium w-16 text-right">Qty</th>
-            <th className="py-1.5 px-2 font-medium w-28 text-right">Price</th>
-            <th className="py-1.5 px-2 font-medium w-24 text-right">Amount</th>
-            <th className="py-1.5 w-8"></th>
+          <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
+            <th className="py-2.5 pl-4 pr-3 font-medium min-w-[320px]">Item</th>
+            <th className="py-2.5 px-3 font-medium w-14 text-right">Yds</th>
+            <th className="py-2.5 px-3 font-medium w-20 text-right">Qty</th>
+            <th className="py-2.5 px-3 font-medium w-28 text-right">Price</th>
+            <th className="py-2.5 px-3 font-medium w-28 text-right">Amount</th>
+            <th className="py-2.5 pr-3 w-8"></th>
           </tr>
         </thead>
         <tbody>
@@ -1074,8 +1105,8 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
             const std = l.item_id ? itemById.get(l.item_id)?.unit_price : null;
             const custom = std != null && Math.abs(Number(std) - Number(l.unit_price)) > 0.004;
             return (
-              <tr key={i} className="border-t border-gray-50">
-                <td className="py-1.5 pr-3">
+              <tr key={i} className="border-b border-gray-100">
+                <td className="py-2 pl-4 pr-3">
                   {picking?.idx === i ? (
                     <div className="relative">
                       <Input
@@ -1125,36 +1156,45 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
                     >
                       <p className="text-sm text-gray-900 group-hover:underline decoration-dotted underline-offset-2">{l.name}</p>
                       {std != null
-                        ? <p className="text-[10px] text-gray-400">standard ${Number(std).toLocaleString()}{custom ? ' — this invoice only' : ''}</p>
-                        : <p className="text-[10px] text-gray-400">no catalog item — click to pick one, or price it manually</p>}
+                        ? <p className="text-[10px] text-gray-400">standard ${Number(std).toLocaleString()}{custom ? ', this invoice only' : ''}</p>
+                        : <p className="text-[10px] text-gray-400">no catalog item. Click to pick one or price it manually</p>}
                     </button>
                   )}
                 </td>
-                <td className="py-1.5 px-2 text-xs text-gray-500 text-right whitespace-nowrap">
+                <td className="py-2 px-3 text-xs text-gray-500 text-right whitespace-nowrap">
                   {l.item_id && itemById.get(l.item_id)?.yards != null ? itemById.get(l.item_id).yards : '—'}
                 </td>
-                <td className="py-1.5 px-2">
-                  <Input type="number" min="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} className="h-8 text-sm text-right bg-white" />
+                <td className="py-2 px-3">
+                  <Input type="number" min="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} className="no-spin h-8 text-sm text-right bg-white" />
                 </td>
-                <td className="py-1.5 px-2">
+                <td className="py-2 px-3">
                   <div className="flex items-center gap-1">
                     <span className="text-gray-400 text-xs">$</span>
-                    <Input type="number" step="0.01" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} className={cn('h-8 text-sm text-right bg-white', custom && 'border-amber-300 bg-amber-50/50')} />
+                    <Input type="number" step="0.01" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} className={cn('no-spin h-8 text-sm text-right bg-white', custom && 'border-amber-300 bg-amber-50/50')} />
                   </div>
                 </td>
-                <td className="py-1.5 px-2 text-sm font-medium text-gray-900 text-right whitespace-nowrap">
+                <td className="py-2 px-3 text-sm font-medium text-gray-900 text-right whitespace-nowrap">
                   {money((Number(l.qty) || 0) * (Number(l.unit_price) || 0))}
                 </td>
-                <td className="py-1.5 text-right">
+                <td className="py-2 pr-3 text-right">
                   <button onClick={() => removeLine(i)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
                 </td>
               </tr>
             );
           })}
         </tbody>
+        <tfoot>
+          <tr className="border-t border-gray-200 bg-gray-50/60">
+            <td colSpan={3}></td>
+            <td className="py-2.5 px-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total:</td>
+            <td className="py-2.5 px-3 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{money(total)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
+      </div>
 
-      <div className="flex items-center gap-2 mt-2 max-w-4xl">
+      <div className="flex items-center gap-3 mt-2.5 max-w-4xl">
         {showAdd ? (
           <select
             autoFocus
@@ -1164,7 +1204,7 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
           >
             <option value="">Choose an item…</option>
             {(items || []).filter((i) => i.active).map((i) => (
-              <option key={i.id} value={i.id}>{i.name}{i.unit_price != null ? ` — $${i.unit_price}` : ''}</option>
+              <option key={i.id} value={i.id}>{i.name}{i.unit_price != null ? ` ($${i.unit_price})` : ''}</option>
             ))}
           </select>
         ) : (
@@ -1177,7 +1217,6 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
             ? <><StickyNote className="w-3.5 h-3.5" /> Invoice note ✓</>
             : <><Plus className="w-3.5 h-3.5" /> Invoice note</>}
         </button>
-        <span className="text-sm font-bold text-gray-900 whitespace-nowrap ml-auto">Total {money(total)}</span>
       </div>
 
       {showNote && (

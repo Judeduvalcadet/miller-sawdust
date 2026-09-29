@@ -108,11 +108,11 @@ function V2Shell({ children }) {
             <p className="text-[11px] text-gray-400">Version 2</p>
             {import.meta.env.MODE === 'sandbox' ? (
               <span className="inline-block mt-1 text-[10px] font-bold tracking-wide bg-amber-500 text-gray-950 rounded px-1.5 py-0.5">
-                SANDBOX — local data
+                SANDBOX: local data
               </span>
             ) : (
               <span className="inline-block mt-1 text-[10px] font-bold tracking-wide bg-red-600 text-white rounded px-1.5 py-0.5">
-                LIVE DATA — read-only
+                LIVE DATA: read-only
               </span>
             )}
           </div>

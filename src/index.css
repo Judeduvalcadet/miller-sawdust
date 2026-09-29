@@ -117,3 +117,8 @@
   .invoice-print-page { page-break-after: always; }
 }
 .invoice-print-root { display: none; }
+
+/* Numeric inputs that should read like plain text fields: no spin buttons. */
+.no-spin::-webkit-outer-spin-button,
+.no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.no-spin { -moz-appearance: textfield; appearance: textfield; }

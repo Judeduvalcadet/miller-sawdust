@@ -26,7 +26,7 @@ export default function QBCallback() {
       return;
     }
     if (getTokenClaim('amr') !== 'password') {
-      setState({ phase: 'error', message: 'Your office session expired — sign in at V2 and connect again.' });
+      setState({ phase: 'error', message: 'Your office session expired. Sign in at V2 and connect again.' });
       return;
     }
 
@@ -36,10 +36,10 @@ export default function QBCallback() {
           setState({ phase: 'done', company: data.companyName });
           setTimeout(() => navigate('/v2/settings'), 2500);
         } else {
-          setState({ phase: 'error', message: 'QuickBooks rejected the connection — try again from Settings.' });
+          setState({ phase: 'error', message: 'QuickBooks rejected the connection. Try again from Settings.' });
         }
       })
-      .catch(() => setState({ phase: 'error', message: 'The connection could not be completed — try again from Settings.' }));
+      .catch(() => setState({ phase: 'error', message: 'The connection could not be completed. Try again from Settings.' }));
   }, [navigate]);
 
   return (

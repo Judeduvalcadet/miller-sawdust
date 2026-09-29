@@ -128,7 +128,7 @@ function CompanyTab() {
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 text-sm">Invoice template</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            The layout every invoice uses — logo, these company details, the customer,
+            The layout every invoice uses: logo, these company details, the customer,
             and the line items. Only the variables change per invoice.
           </p>
         </div>
@@ -216,7 +216,7 @@ function DeliveryYardagesPanel() {
         <span className="text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1.5 py-0.5">from QuickBooks items</span>
       </h3>
       <p className="text-xs text-gray-500 mt-1">
-        These are what the job form offers per truck type — derived from the item catalog.
+        These are what the job form offers per truck type, derived from the item catalog.
         To change them, edit the items on the Items tab.
       </p>
       <div className="mt-3 space-y-2.5">
@@ -275,7 +275,7 @@ function LoadConfigsPanel() {
         </h3>
         <p className="text-xs text-gray-500 mt-0.5">
           The front-end label is what shows on job cards when dispatch picks this
-          configuration. Invoicing always uses the QuickBooks item and its pricing —
+          configuration. Invoicing always uses the QuickBooks item and its pricing;
           the label is display only.
         </p>
       </div>
@@ -345,7 +345,7 @@ function OldPresetsPanel() {
   return (
     <div className="max-w-2xl space-y-5">
       <p className="text-sm text-gray-500 -mb-1">
-        The old custom yardage presets — still used for pickup jobs and the "Custom"
+        The old custom yardage presets, still used for pickup jobs and the "Custom"
         option on loads. Kept here until they're retired.
       </p>
       {TRUCK_TYPES.map(({ value, label }) => {
@@ -560,7 +560,7 @@ function ItemsTab() {
     <div className="p-6 max-w-5xl space-y-6">
       <div className="flex items-start justify-between gap-4">
         <p className="text-sm text-gray-500 max-w-2xl">
-          Imported from QuickBooks — one source of truth for pricing across job creation,
+          Imported from QuickBooks: one source of truth for pricing across job creation,
           customer price books, and invoices. Edits apply here now and will push back to
           QuickBooks automatically once the write sync is turned on.
         </p>
@@ -569,11 +569,11 @@ function ItemsTab() {
         </label>
       </div>
       <div>
-        <h3 className="font-semibold text-gray-900 text-sm mb-2">Load presets <span className="text-gray-400 font-normal">— shown when creating a job</span></h3>
+        <h3 className="font-semibold text-gray-900 text-sm mb-2">Load presets <span className="text-gray-400 font-normal">(shown when creating a job)</span></h3>
         <Table rows={loads} />
       </div>
       <div>
-        <h3 className="font-semibold text-gray-900 text-sm mb-2">Other items <span className="text-gray-400 font-normal">— surcharges, hauling, services</span></h3>
+        <h3 className="font-semibold text-gray-900 text-sm mb-2">Other items <span className="text-gray-400 font-normal">(surcharges, hauling, services)</span></h3>
         <Table rows={others} />
       </div>
     </div>
@@ -608,9 +608,9 @@ function QuickBooksTab() {
         window.location.href = data.url;
         return;
       }
-      setError("Couldn't start the QuickBooks connection — try again.");
+      setError("Couldn't start the QuickBooks connection. Try again.");
     } catch {
-      setError("Couldn't start the QuickBooks connection — try again.");
+      setError("Couldn't start the QuickBooks connection. Try again.");
     }
     setWorking(false);
   };
@@ -621,7 +621,7 @@ function QuickBooksTab() {
       await base44.functions.invoke('qb-auth', { action: 'disconnect' });
       await loadStatus();
     } catch {
-      setError("Couldn't disconnect — try again.");
+      setError("Couldn't disconnect. Try again.");
     }
     setWorking(false);
   };
@@ -654,7 +654,7 @@ function QuickBooksTab() {
                 )}
                 <div className="text-sm">
                   <p className="font-medium text-gray-900">
-                    {qb.tokenExpired ? 'Connection expired' : 'Connected'} — {qb.companyName || 'QuickBooks company'}
+                    {qb.tokenExpired ? 'Connection expired' : 'Connected'}: {qb.companyName || 'QuickBooks company'}
                   </p>
                   <p className="text-gray-500">
                     {qb.tokenExpired
