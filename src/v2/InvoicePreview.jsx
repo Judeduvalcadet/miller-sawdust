@@ -100,10 +100,31 @@ export function InvoiceTemplate({ invoice, customer, company }) {
         fontVariantNumeric: 'tabular-nums lining-nums',
         display: 'flex',
         flexDirection: 'column',
+        position: 'relative',
         WebkitPrintColorAdjust: 'exact',
         printColorAdjust: 'exact',
       }}
     >
+      {/* Diagonal PAID stamp across the middle of a settled invoice */}
+      {paid && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div style={{
+            transform: 'rotate(-45deg)',
+            border: '10px solid #16a34a',
+            borderRadius: 16,
+            color: '#16a34a',
+            padding: '10px 56px',
+            fontFamily: OSWALD,
+            fontWeight: 700,
+            fontSize: 150,
+            lineHeight: 1,
+            letterSpacing: '12px',
+            opacity: 0.7,
+          }}>
+            PAID
+          </div>
+        </div>
+      )}
       {/* Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 36 }}>

@@ -237,6 +237,35 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
     fy += text(pdf, str, LEFT, fy, { size: sz, lineHeight: 1.6, color: color || '#000000' });
   }
   text(pdf, `Invoice ${invoice.doc_number || '—'} · Page 1 of 1`, RIGHT, contentBottom - 12.5 * 1.6, { size: 12.5, align: 'right', lineHeight: 1.6 });
+
+  /* ---- Diagonal PAID stamp over the middle of a settled invoice ----
+     Pure vector: a rotated bordered box plus rotated Oswald text, both
+     placed by hand (jsPDF's align/baseline options misplace angled text). */
+  if (paid) {
+    const cx = PAGE_W / 2, cy = PAGE_H / 2;
+    const c = Math.SQRT1_2;
+    const CS = 12; // letter-spacing, px
+    pdf.saveGraphicsState();
+    pdf.setGState(new pdf.GState({ opacity: 0.7, 'stroke-opacity': 0.7 }));
+    pdf.setFont('Oswald', 'normal');
+    pdf.setFontSize(150 * PT);
+    pdf.setTextColor('#16a34a');
+    const textW = pdf.getTextWidth('PAID') + 3 * CS;
+    const W = textW + 2 * 56, H = 150 + 2 * 10;
+    // u = reading direction (up-right), v = glyph-down; point = center + du*u + dv*v
+    const at = (du, dv) => [cx + du * c + dv * c, cy - du * c + dv * c];
+    pdf.setDrawColor('#16a34a');
+    pdf.setLineWidth(10);
+    const corners = [[-W / 2, -H / 2], [W / 2, -H / 2], [W / 2, H / 2], [-W / 2, H / 2]].map(([du, dv]) => at(du, dv));
+    corners.forEach((p, i) => {
+      const q = corners[(i + 1) % 4];
+      pdf.line(p[0], p[1], q[0], q[1]);
+    });
+    const capH = 150 * 0.72;
+    const [sx, sy] = at(-textW / 2, capH / 2);
+    pdf.text('PAID', sx, sy, { angle: 45, charSpace: CS * PT });
+    pdf.restoreGraphicsState();
+  }
 }
 
 /** Build the compiled PDF (one invoice per page) and save it under `filename`. */
