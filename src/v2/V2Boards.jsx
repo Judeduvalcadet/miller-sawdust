@@ -221,7 +221,7 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
                   'inline-flex items-center gap-1 rounded px-2.5 py-1 text-[10px] font-semibold transition-colors',
                   job.assigned_driver_id
                     ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                    : 'bg-gray-950 hover:bg-gray-800 text-white'
+                    : 'bg-blue-900 hover:bg-blue-800 text-white'
                 )}>
                   <UserPlus className="w-2.5 h-2.5" />
                   {job.assigned_driver_id ? 'Reassign' : 'Assign'}
@@ -509,23 +509,24 @@ export function V2Dispatch() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 p-5 gap-3">
-      {/* toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* toolbar — white bar across the top */}
+      <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-2 flex-wrap">
         <DayStrip day={day} onChangeDay={setDay} weekJobsByDate={byDate} disabled={view === 'week'} />
         <div className="flex gap-0.5 bg-gray-200/70 rounded-lg p-0.5 ml-1">
           {[['day', 'Day'], ['week', 'Week']].map(([v, l]) => (
-            <button key={v} onClick={() => setView(v)} className={cn('px-3 py-1.5 text-xs font-medium rounded-md', view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800')}>{l}</button>
+            <button key={v} onClick={() => setView(v)} className={cn('px-3 py-1.5 text-xs font-medium rounded-md', view === v ? 'bg-white text-gray-900 shadow-sm border border-gray-200' : 'text-gray-500 hover:text-gray-800')}>{l}</button>
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <GlobalSearch />
+          <div className="w-96 max-w-[40vw]"><GlobalSearch /></div>
           <Button size="sm" className="bg-gray-950 hover:bg-gray-800" onClick={() => { setEditingJob(null); setDefaultJobDate(day); setShowJobForm(true); }}>
             <Plus className="w-4 h-4 mr-1.5" /> New Job
           </Button>
         </div>
       </div>
 
+      <div className="flex-1 flex flex-col min-h-0 p-5">
       {view === 'week' ? (
         /* The V1 dispatch board, exactly as-is */
         <div className="flex-1 min-h-0 overflow-y-auto">
@@ -561,6 +562,7 @@ export function V2Dispatch() {
           }
         />
       )}
+      </div>
 
       {/* New/Edit job — same close-proof popup as V1 */}
       <Dialog open={showJobForm} onOpenChange={() => {}}>
