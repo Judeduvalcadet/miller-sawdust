@@ -147,6 +147,7 @@ export default function V2Driver() {
         pickupLocations={pickupLocations}
         driverName={driverName}
         customer={customers.find((c) => c.id === selectedJob.customer_id) || null}
+        deYellow
       />
     );
   }

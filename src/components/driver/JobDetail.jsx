@@ -146,7 +146,7 @@ function PickupLoadRow({ load, onChange, disabled, yardPresets, truckType }) {
 }
 
 // Per-load row for Josh (delivery jobs)
-function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocations }) {
+function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocations, deYellow = false }) {
   const [error, setError] = useState('');
   const locationPreFilled = !!initialLoad?.pickup_location_name;
   const yardsPreFilled = !!initialLoad?.yards_collected;
@@ -192,7 +192,7 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
 
       <div className="space-y-3">
         <div>
-          <Label className="text-xs text-amber-700 font-medium mb-1">
+          <Label className={cn("text-xs font-medium mb-1", deYellow ? "text-gray-500" : "text-amber-700")}>
             Pickup Location {locationPreFilled ? <span className="text-green-600 font-normal">(pre-filled)</span> : <span className="text-red-500">*</span>}
           </Label>
           <SearchableSelect
@@ -204,7 +204,7 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
           />
         </div>
         <div>
-          <Label className="text-xs text-amber-700 font-medium mb-1">
+          <Label className={cn("text-xs font-medium mb-1", deYellow ? "text-gray-500" : "text-amber-700")}>
             Yards Collected (yds) {yardsPreFilled ? <span className="text-green-600 font-normal">(pre-filled)</span> : <span className="text-red-500">*</span>}
           </Label>
           {yardsPreFilled && load.completed ? (
@@ -243,7 +243,7 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
   );
 }
 
-export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLocations = [], driverName = '', customer = null }) {
+export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLocations = [], driverName = '', customer = null, deYellow = false }) {
   const [driverNotes, setDriverNotes] = useState(job.driver_notes || '');
   const [paymentCollected, setPaymentCollected] = useState(job.payment_collected || false);
   const [loads, setLoads] = useState(() => initLoads(job));
@@ -491,7 +491,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
             </div>
             {isPickupJob && job.dropoff_location_name && (
               <div className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-amber-500 mt-0.5" />
+                <MapPin className={cn("w-5 h-5 mt-0.5", deYellow ? "text-gray-400" : "text-amber-500")} />
                 <div>
                   <p className="text-sm text-gray-500">Drop-Off Location</p>
                   <p className="font-medium">{job.dropoff_location_name}</p>
@@ -537,14 +537,14 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
             </div>
             {/* Yards + Load Configuration for regular delivery jobs */}
             {job.job_type === 'delivery' && (job.delivery_yards || job.load_configuration) && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 flex items-start gap-3">
-                <Package className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className={cn("rounded-lg border p-3 flex items-start gap-3", deYellow ? "bg-gray-50 border-gray-200" : "bg-amber-50 border-amber-200")}>
+                <Package className={cn("w-5 h-5 mt-0.5 shrink-0", deYellow ? "text-gray-500" : "text-amber-600")} />
                 <div>
                   {job.delivery_yards && (
-                    <p className="font-bold text-amber-900 text-lg leading-tight">{job.delivery_yards} yds</p>
+                    <p className={cn("font-bold text-lg leading-tight", deYellow ? "text-gray-900" : "text-amber-900")}>{job.delivery_yards} yds</p>
                   )}
                   {job.load_configuration && (
-                    <p className="text-amber-800 font-medium text-sm mt-0.5">{job.load_configuration}</p>
+                    <p className={cn("font-medium text-sm mt-0.5", deYellow ? "text-gray-600" : "text-amber-800")}>{job.load_configuration}</p>
                   )}
                 </div>
               </div>
@@ -606,7 +606,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <Package className="w-4 h-4 text-amber-600" />
+                <Package className={cn("w-4 h-4", deYellow ? "text-gray-500" : "text-amber-600")} />
                 Loads — Enter Yards Per Load
               </CardTitle>
             </CardHeader>
@@ -637,7 +637,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <Package className="w-4 h-4 text-amber-600" />
+                <Package className={cn("w-4 h-4", deYellow ? "text-gray-500" : "text-amber-600")} />
                 Loads — Pickup Info Per Load
               </CardTitle>
             </CardHeader>
@@ -646,6 +646,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
                 {loads.map((load, i) => (
                   <JoshLoadRow
                     key={load.load_number}
+                    deYellow={deYellow}
                     load={load}
                     initialLoad={initialLoads[i]}
                     onChange={(updated) => handleUpdateLoad(i, updated)}
@@ -736,16 +737,16 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
         {/* Invoice status info (delivery jobs) */}
         {isDelivery && (
           <Card className={cn(
-            invoiceSet ? (job.invoice_sent === 'yes' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200") : "bg-amber-50 border-amber-300"
+            invoiceSet ? (job.invoice_sent === 'yes' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200") : (deYellow ? "bg-gray-50 border-gray-300" : "bg-amber-50 border-amber-300")
           )}>
             <CardContent className="py-4">
               <div className="flex items-center gap-3">
-                <FileText className={cn("w-5 h-5", invoiceSet ? (job.invoice_sent === 'yes' ? "text-green-600" : "text-gray-500") : "text-amber-600")} />
+                <FileText className={cn("w-5 h-5", invoiceSet ? (job.invoice_sent === 'yes' ? "text-green-600" : "text-gray-500") : (deYellow ? "text-gray-500" : "text-amber-600"))} />
                 <div>
                   <p className="text-sm font-medium">Invoice Status</p>
                   {invoiceSet
                     ? <p className="text-xs text-gray-500">{job.invoice_sent === 'yes' ? 'Invoice sent to customer' : 'No invoice — not billed'}</p>
-                    : <p className="text-xs text-amber-700 font-medium">Invoice status must be set by dispatcher before completing</p>
+                    : <p className={cn("text-xs font-medium", deYellow ? "text-gray-500" : "text-amber-700")}>Invoice status must be set by dispatcher before completing</p>
                   }
                 </div>
               </div>
