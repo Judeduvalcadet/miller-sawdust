@@ -23,7 +23,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { base44 } from '@/api/entities';
 import { supabase } from '@/api/supabaseClient';
 import { cn } from '@/lib/utils';
-import InvoicePreview, { InvoiceTemplate, ensureInvertedLogo } from './InvoicePreview';
+import InvoicePreview, { ensureInvertedLogo } from './InvoicePreview';
+import { buildInvoicesPdf } from './invoicePdf';
 
 // V2 Invoices — "All invoices" (the whole system: QuickBooks import +
 // app-created, filterable) and "Create" (a week of delivery jobs as a flat
@@ -1286,33 +1287,22 @@ function pdfFilename(invoices) {
 
 function SaveInvoicesPdf({ invoices, custById, company, onDone }) {
   const [progress, setProgress] = useState(0);
-  const [ready, setReady] = useState(false);
-  const rootRef = useRef(null);
   const ranRef = useRef(false);
 
   useEffect(() => {
-    Promise.all([ensureInvertedLogo(), document.fonts?.ready].filter(Boolean))
-      .then(() => setReady(true));
-  }, []);
-
-  useEffect(() => {
-    if (!ready || ranRef.current) return;
+    if (ranRef.current) return;
     ranRef.current = true;
     (async () => {
       try {
-        // Let the off-screen pages paint with fonts and the inverted logo.
-        await new Promise((r) => setTimeout(r, 120));
-        const [{ jsPDF }, html2canvasMod] = await Promise.all([import('jspdf'), import('html2canvas')]);
-        const html2canvas = html2canvasMod.default;
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [816, 1056], hotfixes: ['px_scaling'] });
-        const pages = rootRef.current.querySelectorAll('.pdf-page');
-        for (let i = 0; i < pages.length; i++) {
-          const canvas = await html2canvas(pages[i], { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-          if (i > 0) pdf.addPage([816, 1056], 'portrait');
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 816, 1056);
-          setProgress(i + 1);
-        }
-        pdf.save(pdfFilename(invoices));
+        const logo = await ensureInvertedLogo();
+        await buildInvoicesPdf({
+          invoices,
+          custById,
+          company,
+          logo,
+          filename: pdfFilename(invoices),
+          onProgress: setProgress,
+        });
         onDone(true);
       } catch (e) {
         console.error('PDF save failed', e);
@@ -1320,19 +1310,10 @@ function SaveInvoicesPdf({ invoices, custById, company, onDone }) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
+  }, []);
 
   return createPortal(
     <>
-      {ready && (
-        <div ref={rootRef} style={{ position: 'absolute', left: -10000, top: 0, width: 816 }} aria-hidden="true">
-          {invoices.map((inv) => (
-            <div key={inv.id} className="pdf-page">
-              <InvoiceTemplate invoice={inv} customer={custById.get(inv.customer_id)} company={company} />
-            </div>
-          ))}
-        </div>
-      )}
       <div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center">
         <div className="bg-white rounded-xl shadow-xl px-6 py-4 text-sm text-gray-700 flex items-center gap-3">
           <Loader2 className="w-4 h-4 animate-spin text-gray-400" />

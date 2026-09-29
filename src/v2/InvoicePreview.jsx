@@ -164,7 +164,7 @@ export function InvoiceTemplate({ invoice, customer, company }) {
             {paid ? 'Paid in full' : invoice.due_date ? `Payable by ${fmtDate(invoice.due_date)}` : 'Due on receipt'}
           </div>
         </div>
-        <div style={{ fontSize: 32, fontWeight: 300, letterSpacing: '0.3px' }}>{money(balance)}</div>
+        <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: '0.3px', lineHeight: 1, alignSelf: 'center' }}>{money(balance)}</div>
       </section>
 
       {/* Line items */}
