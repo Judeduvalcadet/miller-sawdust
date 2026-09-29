@@ -112,6 +112,7 @@
 /* Invoice printing: when the print portal is active, the app disappears and
    only the invoice pages print — one invoice per page. */
 @media print {
+  @page { size: letter; margin: 0; }
   body.printing-invoices #root { display: none !important; }
   .invoice-print-root { display: block !important; }
   .invoice-print-page { page-break-after: always; }

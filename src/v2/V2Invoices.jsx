@@ -962,7 +962,7 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
 function InvoiceDetail({ inv }) {
   return (
     <div className="px-6 py-4 border-t border-gray-100">
-      <div className="max-w-4xl bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white border border-gray-200 overflow-hidden">
         <table className="w-full text-left">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
@@ -992,7 +992,7 @@ function InvoiceDetail({ inv }) {
         </table>
       </div>
       {inv.note && (
-        <p className="text-xs text-gray-500 mt-2 max-w-4xl"><span className="text-gray-400">Note:</span> {inv.note}</p>
+        <p className="text-xs text-gray-500 mt-2"><span className="text-gray-400">Note:</span> {inv.note}</p>
       )}
     </div>
   );
@@ -1025,7 +1025,6 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
       }))
     : null);
   const [note, setNote] = useState(initial?.note || '');
-  const [showAdd, setShowAdd] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [picking, setPicking] = useState(null); // { idx, query } — inline item search
 
@@ -1060,10 +1059,15 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
   const total = (lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0);
   const setLine = (i, patch) => setLines((p) => p.map((l, idx) => idx === i ? { ...l, ...patch } : l));
   const removeLine = (i) => setLines((p) => p.filter((_, idx) => idx !== i));
-  const addLine = (itemId) => {
-    const it = itemById.get(itemId);
-    if (!it) return;
-    setLines((p) => [...p, { item_id: it.id, item_qb_id: it.qb_id, name: it.name, description: it.description, qty: 1, unit_price: priceFor(it.id) }]);
+  // "+ Add item": a blank row appears in the table with its search already open.
+  // Abandoning the search (blur/Escape without picking) drops the blank row.
+  const addBlankLine = () => {
+    setPicking({ idx: (lines || []).length, query: '' });
+    setLines((p) => [...(p || []), { item_id: null, item_qb_id: null, name: '', description: null, qty: 1, unit_price: 0 }]);
+  };
+  const closePicking = () => {
+    setPicking(null);
+    setLines((p) => (p || []).filter((l) => l.item_id || (l.name || '').trim()));
   };
 
   // Hand the finished lines up — the parent queues the actual creation so
@@ -1088,7 +1092,7 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
 
   return (
     <div className="border-t border-gray-100 px-6 py-4">
-      <div className="max-w-4xl bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white border border-gray-200 overflow-hidden">
       <table className="w-full text-left">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
@@ -1114,8 +1118,8 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
                         value={picking.query}
                         placeholder="Type to search items…"
                         onChange={(e) => setPicking({ idx: i, query: e.target.value })}
-                        onBlur={() => setTimeout(() => setPicking(null), 150)}
-                        onKeyDown={(e) => { if (e.key === 'Escape') setPicking(null); }}
+                        onBlur={() => setTimeout(closePicking, 150)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') closePicking(); }}
                         className="h-8 text-sm bg-white"
                       />
                       <div className="absolute z-20 mt-1 w-[460px] max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
@@ -1185,7 +1189,18 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
         </tbody>
         <tfoot>
           <tr className="border-t border-gray-200 bg-gray-50/60">
-            <td colSpan={3}></td>
+            <td colSpan={3} className="py-2.5 pl-4 pr-3">
+              <div className="flex items-center gap-4">
+                <button onClick={addBlankLine} className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> Add item
+                </button>
+                <button onClick={() => setShowNote((v) => !v)} className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1">
+                  {note.trim()
+                    ? <><StickyNote className="w-3.5 h-3.5" /> Invoice note ✓</>
+                    : <><Plus className="w-3.5 h-3.5" /> Invoice note</>}
+                </button>
+              </div>
+            </td>
             <td className="py-2.5 px-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total:</td>
             <td className="py-2.5 px-3 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{money(total)}</td>
             <td></td>
@@ -1194,33 +1209,8 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
       </table>
       </div>
 
-      <div className="flex items-center gap-3 mt-2.5 max-w-4xl">
-        {showAdd ? (
-          <select
-            autoFocus
-            onChange={(e) => { if (e.target.value) addLine(e.target.value); setShowAdd(false); }}
-            onBlur={() => setShowAdd(false)}
-            className="h-8 text-xs border border-gray-200 rounded-md px-2 bg-white text-gray-600"
-          >
-            <option value="">Choose an item…</option>
-            {(items || []).filter((i) => i.active).map((i) => (
-              <option key={i.id} value={i.id}>{i.name}{i.unit_price != null ? ` ($${i.unit_price})` : ''}</option>
-            ))}
-          </select>
-        ) : (
-          <button onClick={() => setShowAdd(true)} className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1">
-            <Plus className="w-3.5 h-3.5" /> Add item
-          </button>
-        )}
-        <button onClick={() => setShowNote((v) => !v)} className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1">
-          {note.trim()
-            ? <><StickyNote className="w-3.5 h-3.5" /> Invoice note ✓</>
-            : <><Plus className="w-3.5 h-3.5" /> Invoice note</>}
-        </button>
-      </div>
-
       {showNote && (
-        <div className="mt-2 max-w-4xl">
+        <div className="mt-2.5">
           <Textarea
             rows={2}
             autoFocus
