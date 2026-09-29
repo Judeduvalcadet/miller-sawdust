@@ -72,6 +72,26 @@ function hline(pdf, y, color = RULE, x1 = LEFT, x2 = RIGHT, width = 1) {
   pdf.line(x1, y, x2, y);
 }
 
+// The green PAID badge (horizontal), centered at (cx, cy). scale 1 fits the
+// Amount band; smaller scales sit above the INVOICE label. Mirrors the
+// screen template's PaidBadge. Returns nothing; height is 52 * scale.
+function drawPaidBadge(pdf, cx, cy, scale = 1) {
+  const FS = 34 * scale, PADX = 18 * scale, PADY = 5 * scale, B = 4 * scale, R = 8 * scale, LS = 4 * scale;
+  pdf.saveGraphicsState();
+  pdf.setGState(new pdf.GState({ opacity: 0.7, 'stroke-opacity': 0.7 }));
+  pdf.setFont('Oswald', 'normal');
+  pdf.setFontSize(FS * PT);
+  pdf.setTextColor('#16a34a');
+  const textW = pdf.getTextWidth('PAID') + 3 * LS;
+  const w = textW + 2 * PADX + B;
+  const h = FS + 2 * PADY + B;
+  pdf.setDrawColor('#16a34a');
+  pdf.setLineWidth(B);
+  pdf.roundedRect(cx - w / 2, cy - h / 2, w, h, R, R, 'S');
+  pdf.text('PAID', cx - textW / 2, cy + (FS * 0.72) / 2, { charSpace: LS * PT });
+  pdf.restoreGraphicsState();
+}
+
 export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   const lines = invoice.lines || [];
   const paid = invoice.status === 'paid';
@@ -114,7 +134,9 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   const cx = RIGHT - numW / 2;
   const numTop = headerBottom - 2 - 28 * 1.2;
   text(pdf, numStr, cx, numTop, { font: 'LatoLight', size: 28, align: 'center', charSpace: 0.5, lineHeight: 1.2 });
-  label(pdf, 'Invoice', cx, numTop - 4 - 12 * 1.2, { size: 12, charSpace: 3, align: 'center' });
+  const idLabelTop = numTop - 4 - 12 * 1.2;
+  label(pdf, 'Invoice', cx, idLabelTop, { size: 12, charSpace: 3, align: 'center' });
+  if (paid) drawPaidBadge(pdf, cx, idLabelTop - 6 - (52 * 0.45) / 2, 0.45);
 
   /* ---- Divider ---- */
   hline(pdf, headerBottom + 24);
@@ -156,14 +178,16 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   const bandH = 18 + (11 * 1.2 + 4 + 13.5 * 1.2) + 18;
   pdf.setFillColor(BAND);
   pdf.roundedRect(LEFT, bandTop, CONTENT_W, bandH, 4, 4, 'F');
-  label(pdf, 'Amount due', LEFT + 24, bandTop + 18);
+  label(pdf, paid ? 'Amount paid' : 'Amount due', LEFT + 24, bandTop + 18);
   text(pdf, paid ? 'Paid in full' : invoice.due_date ? `Payable by ${fmtDate(invoice.due_date)}` : 'Due on receipt',
     LEFT + 24, bandTop + 18 + 11 * 1.2 + 4, { size: 13.5, lineHeight: 1.2 });
-  // The amount: light weight like the template, vertically centered.
+  if (paid) drawPaidBadge(pdf, PAGE_W / 2, bandTop + bandH / 2, 1);
+  // The amount, light weight, vertically centered: what is owed, or, once
+  // paid, what was paid.
   pdf.setFont('LatoLight', 'normal');
   pdf.setFontSize(32 * PT);
   pdf.setTextColor('#000000');
-  pdf.text(money(balance), RIGHT - 24, bandTop + bandH / 2, { baseline: 'middle', align: 'right', charSpace: 0.3 * PT });
+  pdf.text(money(paid ? invoice.total : balance), RIGHT - 24, bandTop + bandH / 2, { baseline: 'middle', align: 'right', charSpace: 0.3 * PT });
 
   /* ---- Line items ---- */
   const DESC_W = CONTENT_W - (64 + 104 + 112 + 3 * 16);
@@ -237,35 +261,6 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
     fy += text(pdf, str, LEFT, fy, { size: sz, lineHeight: 1.6, color: color || '#000000' });
   }
   text(pdf, `Invoice ${invoice.doc_number || '—'} · Page 1 of 1`, RIGHT, contentBottom - 12.5 * 1.6, { size: 12.5, align: 'right', lineHeight: 1.6 });
-
-  /* ---- Diagonal PAID stamp over the middle of a settled invoice ----
-     Pure vector: a rotated bordered box plus rotated Oswald text, both
-     placed by hand (jsPDF's align/baseline options misplace angled text). */
-  if (paid) {
-    const cx = PAGE_W / 2, cy = PAGE_H / 2;
-    const c = Math.SQRT1_2;
-    const CS = 12; // letter-spacing, px
-    pdf.saveGraphicsState();
-    pdf.setGState(new pdf.GState({ opacity: 0.7, 'stroke-opacity': 0.7 }));
-    pdf.setFont('Oswald', 'normal');
-    pdf.setFontSize(150 * PT);
-    pdf.setTextColor('#16a34a');
-    const textW = pdf.getTextWidth('PAID') + 3 * CS;
-    const W = textW + 2 * 56, H = 150 + 2 * 10;
-    // u = reading direction (up-right), v = glyph-down; point = center + du*u + dv*v
-    const at = (du, dv) => [cx + du * c + dv * c, cy - du * c + dv * c];
-    pdf.setDrawColor('#16a34a');
-    pdf.setLineWidth(10);
-    const corners = [[-W / 2, -H / 2], [W / 2, -H / 2], [W / 2, H / 2], [-W / 2, H / 2]].map(([du, dv]) => at(du, dv));
-    corners.forEach((p, i) => {
-      const q = corners[(i + 1) % 4];
-      pdf.line(p[0], p[1], q[0], q[1]);
-    });
-    const capH = 150 * 0.72;
-    const [sx, sy] = at(-textW / 2, capH / 2);
-    pdf.text('PAID', sx, sy, { angle: 45, charSpace: CS * PT });
-    pdf.restoreGraphicsState();
-  }
 }
 
 /** Build the compiled PDF (one invoice per page) and save it under `filename`. */

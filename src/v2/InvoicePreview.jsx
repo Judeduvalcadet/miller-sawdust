@@ -59,6 +59,28 @@ const label = { fontSize: 11, letterSpacing: '1.8px', textTransform: 'uppercase'
 const num = { textAlign: 'right' };
 const itemGrid = { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 64px 104px 112px', gap: 16 };
 
+// The green PAID badge, horizontal; size 1 fits the Amount band, smaller
+// scales sit above the INVOICE label.
+function PaidBadge({ scale = 1 }) {
+  return (
+    <span style={{
+      display: 'inline-block',
+      border: `${4 * scale}px solid #16a34a`,
+      borderRadius: 8 * scale,
+      color: '#16a34a',
+      padding: `${5 * scale}px ${18 * scale}px`,
+      fontFamily: OSWALD,
+      fontWeight: 700,
+      fontSize: 34 * scale,
+      lineHeight: 1,
+      letterSpacing: 4 * scale,
+      opacity: 0.7,
+    }}>
+      PAID
+    </span>
+  );
+}
+
 export function InvoiceTemplate({ invoice, customer, company }) {
   const logo = useInvertedLogo();
   const lines = invoice.lines || [];
@@ -105,26 +127,6 @@ export function InvoiceTemplate({ invoice, customer, company }) {
         printColorAdjust: 'exact',
       }}
     >
-      {/* Diagonal PAID stamp across the middle of a settled invoice */}
-      {paid && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <div style={{
-            transform: 'rotate(-45deg)',
-            border: '10px solid #16a34a',
-            borderRadius: 16,
-            color: '#16a34a',
-            padding: '10px 56px',
-            fontFamily: OSWALD,
-            fontWeight: 700,
-            fontSize: 150,
-            lineHeight: 1,
-            letterSpacing: '12px',
-            opacity: 0.7,
-          }}>
-            PAID
-          </div>
-        </div>
-      )}
       {/* Header */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 36 }}>
@@ -146,6 +148,7 @@ export function InvoiceTemplate({ invoice, customer, company }) {
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, textAlign: 'center', paddingBottom: 2 }}>
+          {paid && <div style={{ marginBottom: 4 }}><PaidBadge scale={0.45} /></div>}
           <div style={{ fontSize: 12, letterSpacing: '3px', textTransform: 'uppercase' }}>Invoice</div>
           <div style={{ fontSize: 28, fontWeight: 300, letterSpacing: '0.5px' }}>No. {invoice.doc_number || '—'}</div>
         </div>
@@ -177,15 +180,23 @@ export function InvoiceTemplate({ invoice, customer, company }) {
         </div>
       </section>
 
-      {/* Amount due band */}
-      <section style={{ marginTop: 26, padding: '18px 24px', background: BAND, borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* Amount band: due amount normally; when paid, the amount paid with a
+          centered PAID badge */}
+      <section style={{ marginTop: 26, padding: '18px 24px', background: BAND, borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={label}>Amount due</div>
+          <div style={label}>{paid ? 'Amount paid' : 'Amount due'}</div>
           <div style={{ fontSize: 13.5 }}>
             {paid ? 'Paid in full' : invoice.due_date ? `Payable by ${fmtDate(invoice.due_date)}` : 'Due on receipt'}
           </div>
         </div>
-        <div style={{ fontSize: 32, fontWeight: 300, letterSpacing: '0.3px', lineHeight: 1, alignSelf: 'center' }}>{money(balance)}</div>
+        {paid && (
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}>
+            <PaidBadge />
+          </div>
+        )}
+        <div style={{ fontSize: 32, fontWeight: 300, letterSpacing: '0.3px', lineHeight: 1, alignSelf: 'center' }}>
+          {money(paid ? invoice.total : balance)}
+        </div>
       </section>
 
       {/* Line items */}
