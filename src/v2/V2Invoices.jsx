@@ -962,7 +962,7 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
 function InvoiceDetail({ inv }) {
   return (
     <div className="px-6 py-4 border-t border-gray-100">
-      <div className="bg-white border border-gray-200 overflow-hidden">
+      <div className="max-w-[1075px] bg-white border border-gray-200">
         <table className="w-full text-left">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
@@ -1092,7 +1092,7 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
 
   return (
     <div className="border-t border-gray-100 px-6 py-4">
-      <div className="bg-white border border-gray-200 overflow-hidden">
+      <div className="max-w-[1075px] bg-white border border-gray-200">
       <table className="w-full text-left">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
@@ -1122,7 +1122,7 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
                         onKeyDown={(e) => { if (e.key === 'Escape') closePicking(); }}
                         className="h-8 text-sm bg-white"
                       />
-                      <div className="absolute z-20 mt-1 w-[460px] max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                      <div className="absolute z-50 mt-1 w-[460px] max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
                         {(items || [])
                           .filter((it) => it.active)
                           .filter((it) => {
@@ -1210,7 +1210,7 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
       </div>
 
       {showNote && (
-        <div className="mt-2.5">
+        <div className="mt-2.5 max-w-[1075px]">
           <Textarea
             rows={2}
             autoFocus
