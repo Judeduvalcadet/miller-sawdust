@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Trash2, History, X, Search } from "lucide-react";
+import { Loader2, Trash2, History, X, Search, CalendarDays } from "lucide-react";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { useQueryClient } from "@tanstack/react-query";
 import JobActivityTimeline from "@/components/admin/JobActivityTimeline";
 import { addDays, getDay, format, lastDayOfMonth } from "date-fns";
@@ -35,6 +37,18 @@ const TRUCK_TYPES = [
   { value: 'spreader', label: 'Spreader' },
 ];
 const truckLabel = (v) => TRUCK_TYPES.find((t) => t.value === v)?.label || 'Any';
+const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// The same calendar styling the invoice pages use.
+const CALENDAR_CLASSES = {
+  caption_label: 'text-sm font-semibold text-gray-900',
+  head_cell: 'w-10 pb-1 font-medium text-[10px] uppercase tracking-wide text-gray-400',
+  cell: 'p-0.5 text-center',
+  day: 'inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-normal text-gray-700 transition-colors hover:bg-gray-100 aria-selected:opacity-100',
+  day_selected: 'bg-gray-950 text-white font-semibold hover:bg-gray-950 hover:text-white focus:bg-gray-950 focus:text-white',
+  day_today: 'font-bold text-gray-950 underline underline-offset-4 decoration-2',
+  day_outside: 'text-gray-300',
+};
 
 /* Inline QuickBooks item picker: closed it shows the pick; clicked it opens
    a search box listing every active load item, filtering as you type. */
@@ -119,6 +133,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
   const [newCustomerDirty, setNewCustomerDirty] = useState(false);
   const [customerMapNote, setCustomerMapNote] = useState('');
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
   const queryClient = useQueryClient();
   const [showActivity, setShowActivity] = useState(false);
   const [scheduleType, setScheduleType] = useState('one_time');
@@ -444,13 +459,37 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                   </div>
                 )}
               </div>
-              <Input
-                type="date"
-                value={formData.scheduled_date}
-                onChange={(e) => { set('scheduled_date', e.target.value); setErrors((p) => ({ ...p, scheduled_date: '' })); }}
-                className={errors.scheduled_date ? 'border-red-500' : ''}
-                required
-              />
+              <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex h-10 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm',
+                      errors.scheduled_date ? 'border-red-500' : 'border-input',
+                      formData.scheduled_date ? 'text-gray-900' : 'text-gray-400'
+                    )}
+                  >
+                    {formData.scheduled_date
+                      ? new Date(formData.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Pick a date…'}
+                    <CalendarDays className="w-4 h-4 text-gray-400" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto p-3 rounded-2xl border-gray-200 shadow-lg">
+                  <Calendar
+                    mode="single"
+                    selected={formData.scheduled_date ? new Date(formData.scheduled_date + 'T00:00:00') : undefined}
+                    defaultMonth={formData.scheduled_date ? new Date(formData.scheduled_date + 'T00:00:00') : new Date()}
+                    onSelect={(d) => {
+                      if (!d) return;
+                      set('scheduled_date', isoDate(d));
+                      setErrors((p) => ({ ...p, scheduled_date: '' }));
+                      setDateOpen(false);
+                    }}
+                    classNames={CALENDAR_CLASSES}
+                  />
+                </PopoverContent>
+              </Popover>
               {errors.scheduled_date && <p className="text-xs text-red-500">{errors.scheduled_date}</p>}
             </div>
 
