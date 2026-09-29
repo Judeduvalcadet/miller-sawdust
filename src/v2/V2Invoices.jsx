@@ -577,9 +577,12 @@ function CreateView() {
 
   const custById = useMemo(() => new Map((customers || []).map((c) => [c.id, c])), [customers]);
   const invByJob = useMemo(() => new Map((weekInvoices || []).map((i) => [i.job_id, i])), [weekInvoices]);
-  const dayJobs = (weekJobs || []).filter((j) => j.scheduled_date === day);
+  // Only completed jobs are billable; a job that somehow already has an
+  // invoice stays visible so its invoice can still be managed.
+  const billable = (j) => j.status === 'completed' || invByJob.has(j.id);
+  const dayJobs = (weekJobs || []).filter((j) => j.scheduled_date === day && billable(j));
   const uninvoicedDay = dayJobs.filter((j) => !invByJob.has(j.id));
-  const countFor = (d) => (weekJobs || []).filter((j) => j.scheduled_date === d).length;
+  const countFor = (d) => (weekJobs || []).filter((j) => j.scheduled_date === d && billable(j)).length;
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['inv-week-invoices', weekStart] });

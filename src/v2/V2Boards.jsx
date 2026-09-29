@@ -210,39 +210,41 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
         )}
       </div>
 
-      {invoiced && (
-        <div className="mt-1.5 flex justify-end">
-          <span className="inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
-            <Receipt className="w-2.5 h-2.5" /> INVOICED
-          </span>
+      {/* Bottom row: Assign / Reassign (V1 behavior) on the left, INVOICED on
+          the right — one shared row so the card stays short. */}
+      {((!readOnly && !isCancelled && !isCompleted && onAssign) || invoiced) && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {!readOnly && !isCancelled && !isCompleted && onAssign ? (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button className={cn(
+                  'inline-flex items-center gap-1 rounded px-2.5 py-1 text-[10px] font-semibold transition-colors',
+                  job.assigned_driver_id
+                    ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                    : 'bg-gray-950 hover:bg-gray-800 text-white'
+                )}>
+                  <UserPlus className="w-2.5 h-2.5" />
+                  {job.assigned_driver_id ? 'Reassign' : 'Assign'}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+                {assignable.map((d) => (
+                  <DropdownMenuItem key={d.id} onClick={() => onAssign(job, d.id)} className={cn(job.assigned_driver_id === d.id && 'font-semibold')}>
+                    <DriverAvatar driver={d} size={20} /> <span className="ml-2">{d.name}</span>
+                  </DropdownMenuItem>
+                ))}
+                {job.assigned_driver_id && (
+                  <DropdownMenuItem onClick={() => onAssign(job, null)} className="text-red-600 focus:text-red-600">Unassign</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : <span />}
+          {invoiced && (
+            <span className="inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
+              <Receipt className="w-2.5 h-2.5" /> INVOICED
+            </span>
+          )}
         </div>
-      )}
-
-      {/* Assign / Reassign — same behavior and look as V1 */}
-      {!readOnly && !isCancelled && !isCompleted && onAssign && (
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <button className={cn(
-              'mt-2 self-start inline-flex items-center gap-1 rounded px-2.5 py-1 text-[10px] font-semibold transition-colors',
-              job.assigned_driver_id
-                ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                : 'bg-gray-950 hover:bg-gray-800 text-white'
-            )}>
-              <UserPlus className="w-2.5 h-2.5" />
-              {job.assigned_driver_id ? 'Reassign' : 'Assign'}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
-            {assignable.map((d) => (
-              <DropdownMenuItem key={d.id} onClick={() => onAssign(job, d.id)} className={cn(job.assigned_driver_id === d.id && 'font-semibold')}>
-                <DriverAvatar driver={d} size={20} /> <span className="ml-2">{d.name}</span>
-              </DropdownMenuItem>
-            ))}
-            {job.assigned_driver_id && (
-              <DropdownMenuItem onClick={() => onAssign(job, null)} className="text-red-600 focus:text-red-600">Unassign</DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
       )}
     </Card>
   );
