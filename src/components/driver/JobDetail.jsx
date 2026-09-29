@@ -146,7 +146,7 @@ function PickupLoadRow({ load, onChange, disabled, yardPresets, truckType }) {
 }
 
 // Per-load row for Josh (delivery jobs)
-function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocations, deYellow = false }) {
+function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocations, deYellow = false, yardOptions = [] }) {
   const [error, setError] = useState('');
   const locationPreFilled = !!initialLoad?.pickup_location_name;
   const yardsPreFilled = !!initialLoad?.yards_collected;
@@ -207,7 +207,33 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
           <Label className={cn("text-xs font-medium mb-1", deYellow ? "text-gray-500" : "text-amber-700")}>
             Yards Collected (yds) {yardsPreFilled ? <span className="text-green-600 font-normal">(pre-filled)</span> : <span className="text-red-500">*</span>}
           </Label>
-          {yardsPreFilled && load.completed ? (
+          {yardOptions.length > 0 ? (
+            <div className="flex gap-2">
+              {yardOptions.map((o) => {
+                const selected = String(load.yards_collected) === String(o.yards);
+                return (
+                  <button
+                    key={o.itemId}
+                    type="button"
+                    disabled={disabled || load.completed}
+                    onClick={() => {
+                      setError('');
+                      onChange({ ...load, yards_collected: String(o.yards), item_id: o.itemId });
+                    }}
+                    className={cn(
+                      "flex-1 h-11 rounded-lg border text-sm font-semibold transition-colors",
+                      selected
+                        ? "bg-gray-950 border-gray-950 text-white"
+                        : "bg-white border-gray-300 text-gray-700",
+                      (disabled || load.completed) && !selected && "opacity-50"
+                    )}
+                  >
+                    {o.yards} yds
+                  </button>
+                );
+              })}
+            </div>
+          ) : yardsPreFilled && load.completed ? (
             <div className="h-9 flex items-center px-3 rounded-md border border-green-200 bg-green-50 text-sm text-green-800 font-medium">
               {load.yards_collected} yds
             </div>
@@ -243,7 +269,7 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
   );
 }
 
-export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLocations = [], driverName = '', customer = null, deYellow = false }) {
+export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLocations = [], driverName = '', customer = null, deYellow = false, items = [] }) {
   const [driverNotes, setDriverNotes] = useState(job.driver_notes || '');
   const [paymentCollected, setPaymentCollected] = useState(job.payment_collected || false);
   const [loads, setLoads] = useState(() => initLoads(job));
@@ -305,6 +331,20 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
   // Spreader-truck delivery jobs: driver picks any pickup location per load
   // (previously filtered to the legacy 'josh' assigned_drivers subset).
   const joshPickupLocations = [...pickupLocations].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+  // Spreader yardage selectors: an item-linked load offers every catalog
+  // item in the same family (spreader + same config label); choosing one
+  // swaps the load's invoice item so billing always matches QuickBooks.
+  const yardOptionsFor = (load) => {
+    if (!items.length || !load.item_id) return [];
+    const it = items.find(x => x.id === load.item_id);
+    if (!it || it.truck_type !== 'spreader') return [];
+    const label = it.display_label || it.name;
+    return items
+      .filter(x => x.active && x.is_load_item && x.truck_type === 'spreader' && (x.display_label || x.name) === label && x.yards != null)
+      .sort((a, b) => a.yards - b.yards)
+      .map(x => ({ yards: Number(x.yards), itemId: x.id }));
+  };
 
   const completedLoadsCount = loads.filter(l => l.completed).length;
   const allLoadsCompleted = completedLoadsCount === loads.length && loads.length > 0;
@@ -372,6 +412,10 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
     if (isLoadBased) {
       updates.loads = normalizedLoads;
       if (isPickupJob) updates.yards_collected = totalYards;
+      if (isJoshDelivery && items.length) {
+        updates.delivery_yards = totalYards || null;
+        updates.item_id = normalizedLoads.find(l => l.item_id)?.item_id || job.item_id || null;
+      }
     }
 
     onUpdate(updates).then(() => onBack());
@@ -647,6 +691,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
                   <JoshLoadRow
                     key={load.load_number}
                     deYellow={deYellow}
+                    yardOptions={yardOptionsFor(load)}
                     load={load}
                     initialLoad={initialLoads[i]}
                     onChange={(updated) => handleUpdateLoad(i, updated)}

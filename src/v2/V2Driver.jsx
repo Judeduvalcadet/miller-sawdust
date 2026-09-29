@@ -108,6 +108,11 @@ export default function V2Driver() {
     queryFn: () => base44.entities.Customer.list(undefined, 5000),
     staleTime: 300000,
   });
+  const { data: items = [] } = useQuery({
+    queryKey: ['driver-load-items'],
+    queryFn: () => base44.entities.Item.filter({ is_load_item: true, active: true }, 'sort_order'),
+    staleTime: 300000,
+  });
 
   const buckets = useMemo(() => {
     const today = new Date();
@@ -148,6 +153,7 @@ export default function V2Driver() {
         driverName={driverName}
         customer={customers.find((c) => c.id === selectedJob.customer_id) || null}
         deYellow
+        items={items}
       />
     );
   }
