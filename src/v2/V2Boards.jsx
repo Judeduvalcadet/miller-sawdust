@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import JobForm from './V2JobForm';
 import SortJobsModal from '@/components/admin/SortJobsModal';
 import GlobalSearch from '@/components/admin/GlobalSearch';
+import SendInvoiceFromJob from './SendInvoiceFromJob';
 import MiniWallboard from '@/components/admin/MiniWallboard';
 
 // V2 boards. Day view: drivers rail + the day's jobs per driver, unassigned
@@ -136,7 +137,7 @@ function DayStrip({ day, onChangeDay, weekJobsByDate, dark, disabled }) {
 // Badges follow V1: black NOTE pill; green INVOICED pill (admin dispatch
 // only) when the job's linked invoice was sent; V1-style Assign/Reassign.
 
-function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, onEdit, onCancel, onAssign }) {
+function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, onEdit, onCancel, onAssign, onSendInvoice }) {
   const isCompleted = job.status === 'completed';
   const isCancelled = job.status === 'cancelled';
   const isPending = job.status === 'pending';
@@ -210,9 +211,10 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
         )}
       </div>
 
-      {/* Bottom row: Assign / Reassign (V1 behavior) on the left, INVOICED on
-          the right — one shared row so the card stays short. */}
-      {((!readOnly && !isCancelled && !isCompleted && onAssign) || invoiced) && (
+      {/* Bottom row: Assign / Reassign (V1 behavior) on the left; on the
+          right, INVOICED once the invoice went out, else the Send Invoice
+          button for any delivery job with a customer. */}
+      {((!readOnly && !isCancelled && !isCompleted && onAssign) || invoiced || (!readOnly && onSendInvoice && job.job_type === 'delivery' && job.customer_id && !isCancelled)) && (
         <div className="mt-2 flex items-center justify-between gap-2">
           {!readOnly && !isCancelled && !isCompleted && onAssign ? (
             <DropdownMenu modal={false}>
@@ -239,11 +241,18 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
               </DropdownMenuContent>
             </DropdownMenu>
           ) : <span />}
-          {invoiced && (
+          {invoiced ? (
             <span className="inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
               <Receipt className="w-2.5 h-2.5" /> INVOICED
             </span>
-          )}
+          ) : (!readOnly && onSendInvoice && job.job_type === 'delivery' && job.customer_id && !isCancelled) ? (
+            <button
+              onClick={() => onSendInvoice(job)}
+              className="inline-flex items-center gap-1 rounded border border-gray-900 bg-transparent text-gray-900 px-2 py-[3px] text-[10px] font-semibold hover:bg-gray-900 hover:text-white transition-colors"
+            >
+              <Receipt className="w-2.5 h-2.5" /> Send Invoice
+            </button>
+          ) : null}
         </div>
       )}
     </Card>
@@ -288,7 +297,7 @@ function UnassignedCards({ jobs, expanded, onToggle, renderCard }) {
 /* ----------------------------- board grid -------------------------------- */
 // Day-view grid: unassigned pinned first, then drivers with jobs that day.
 
-function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filter, invoicedMap, onEdit, onCancel, onAssign, onSortDay, headerExtra }) {
+function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filter, invoicedMap, onEdit, onCancel, onAssign, onSendInvoice, onSortDay, headerExtra }) {
   const [unassignedOpen, setUnassignedOpen] = useState(false);
 
   const match = (job) => {
@@ -330,6 +339,7 @@ function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filt
         onEdit={onEdit}
         onCancel={onCancel}
         onAssign={onAssign}
+        onSendInvoice={onSendInvoice}
       />
     </div>
   );
@@ -483,24 +493,10 @@ export function V2Dispatch() {
     queryFn: async () => (await base44.entities.Job.list('-scheduled_date', 6000)).filter((j) => !j.deleted_at),
   });
 
-  // Green INVOICED badge: the job has a linked invoice (open or sent).
-  // Queried by the week's job ids so invoices dated after the job still count.
-  const weekJobIds = useMemo(() => weekJobs.map((j) => j.id), [weekJobs]);
-  const { data: linkedInvoices = [] } = useQuery({
-    queryKey: ['board-week-linked-invoices', weekStart, weekJobIds.length],
-    enabled: weekJobIds.length > 0,
-    queryFn: async () => {
-      const out = [];
-      for (let i = 0; i < weekJobIds.length; i += 100) {
-        const { data, error } = await supabase.from('invoices').select('job_id, sent_at, status')
-          .in('job_id', weekJobIds.slice(i, i + 100));
-        if (error) throw error;
-        out.push(...(data || []));
-      }
-      return out;
-    },
-  });
-  const invoicedMap = useMemo(() => new Map(linkedInvoices.map((i) => [i.job_id, true])), [linkedInvoices]);
+  // Green INVOICED badge: the job's invoice has been sent; until then the
+  // card offers the Send Invoice button.
+  const invoicedMap = useMemo(() => new Map([...sentJobIds].map((id) => [id, true])), [sentJobIds]);
+  const [sendJob, setSendJob] = useState(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['board-week-jobs'] });
@@ -575,6 +571,7 @@ export function V2Dispatch() {
           onEdit={onEdit}
           onCancel={onCancel}
           onAssign={onAssign}
+          onSendInvoice={setSendJob}
           onSortDay={(d, driverId) => setSortTarget({ date: d, driverId })}
           headerExtra={
             <div className="relative flex-1 max-w-xs">
@@ -585,6 +582,14 @@ export function V2Dispatch() {
         />
       )}
       </div>
+
+      {sendJob && (
+        <SendInvoiceFromJob
+          job={sendJob}
+          customer={customers.find((c) => c.id === sendJob.customer_id) || null}
+          onClose={() => setSendJob(null)}
+        />
+      )}
 
       {/* New/Edit job — same close-proof popup as V1 */}
       <Dialog open={showJobForm} onOpenChange={() => {}}>
@@ -704,7 +709,7 @@ export function V2Wallboard() {
       ) : isLoading && byDate.size === 0 ? (
         <div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-500" /></div>
       ) : (
-        <BoardGrid drivers={drivers} weekJobsByDate={byDate} day={day} dark neutral readOnly />
+        <BoardGrid drivers={drivers} weekJobsByDate={byDate} day={day} dark neutral readOnly invoicedMap={new Map([...sentJobIds].map((id) => [id, true]))} />
       )}
     </div>
   );

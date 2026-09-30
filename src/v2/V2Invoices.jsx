@@ -1195,7 +1195,7 @@ function InvoiceDetail({ inv }) {
 
 /* ---------------------------- Composer ---------------------------------- */
 
-function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCancel, onCreated }) {
+export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCancel, onCreated, hideFooter = false, exposeApi = null }) {
   const { data: prices } = useQuery({
     queryKey: ['customer-prices', job.customer_id],
     queryFn: () => base44.entities.CustomerItemPrice.filter({ customer_id: job.customer_id }),
@@ -1267,19 +1267,26 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
 
   // Hand the finished lines up — the parent queues the actual creation so
   // batch Next can move on instantly.
-  const create = () => {
+  const buildPayload = () => {
     const finalLines = (lines || []).map((l) => ({
       ...l,
       qty: Number(l.qty) || 0,
       unit_price: Number(l.unit_price) || 0,
       amount: Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * 100) / 100,
     })).filter((l) => l.qty > 0);
-    onCreated({
+    return {
       lines: finalLines,
       total: Math.round(total * 100) / 100,
       note: note.trim() || null,
-    });
+    };
   };
+  const create = () => onCreated(buildPayload());
+
+  // Hosts that embed the composer (the job-card send popup) read the current
+  // lines through this instead of the footer buttons.
+  useEffect(() => {
+    if (exposeApi) exposeApi({ getPayload: buildPayload, ready: lines !== null, total });
+  });
 
   if (lines === null) {
     return <div className="border-t border-gray-100 px-6 py-6 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-gray-400" /></div>;
@@ -1418,6 +1425,7 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
         </div>
       )}
 
+      {!hideFooter && (
       <div className="flex items-center gap-2 mt-3">
         <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={create} disabled={total <= 0}>
           {initial ? 'Save changes' : isBatch ? (batchInfo.index + 1 >= batchInfo.count ? 'Done' : 'Next') : 'Create invoice'}
@@ -1426,6 +1434,7 @@ function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCan
         {initial && <span className="text-[11px] text-gray-400">Editing invoice #{initial.doc_number}</span>}
         {isBatch && <span className="text-[11px] text-gray-400">Saves this invoice and {batchInfo.index + 1 >= batchInfo.count ? 'finishes the batch' : 'opens the next job'}.</span>}
       </div>
+      )}
     </div>
   );
 }
