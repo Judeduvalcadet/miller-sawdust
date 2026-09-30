@@ -90,201 +90,159 @@ function PaidBadge({ scale = 1 }) {
   );
 }
 
+// The QuickBooks-style template supplied by the office: slate bars, one
+// BILL TO block placed for a window envelope (do not move it), dated line
+// items, floating TOTAL DUE bar. Mirrors invoicePdf.js pixel-for-pixel on an
+// 816 x 1056 canvas.
+const SLATE = '#7889a1';
+const HELV = "Arial, Helvetica, sans-serif";
+
+const fmt2 = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const slashDate = (d) => {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${m}/${day}/${y}`;
+};
+
 export function InvoiceTemplate({ invoice, customer, company }) {
   const logo = useInvertedLogo();
   const lines = invoice.lines || [];
   const paid = invoice.status === 'paid';
-  const subtotal = lines.length
-    ? lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
-    : Number(invoice.total) || 0;
   const balance = paid ? 0 : (invoice.balance ?? invoice.total);
   const termsDays = invoice.txn_date && invoice.due_date
     ? Math.round((new Date(invoice.due_date) - new Date(invoice.txn_date)) / 86400000)
     : null;
-
   const coName = company?.company_name || 'Miller Sawdust';
   const custName = (customer?.company_name || customer?.name || 'Customer').trim();
-  const custPerson = customer?.name && customer?.company_name && customer.name.trim() !== customer.company_name.trim()
-    ? customer.name.trim() : null;
   const custCityLine = [[customer?.city, customer?.state].filter(Boolean).join(', '), customer?.zip_code]
-    .filter(Boolean).join(' ');
+    .filter(Boolean).join('\u2002');
+  const rows = lines.length ? lines : [{ name: 'No line detail on this invoice', qty: null, unit_price: null, amount: null }];
 
-  const addressBlock = (
-    <div>
-      <div style={{ fontSize: 15, marginBottom: 2 }}>{custName}</div>
-      {custPerson && <div>{custPerson}</div>}
-      {customer?.street_address && <div>{customer.street_address}</div>}
-      {custCityLine && <div>{custCityLine}</div>}
-    </div>
-  );
+  const barStyle = (top, height) => ({
+    position: 'absolute', left: 494, width: 297, top, height,
+    background: SLATE, color: '#fff', display: 'flex', alignItems: 'center', paddingLeft: 9, boxSizing: 'border-box',
+  });
 
   return (
     <div
       style={{
-        width: 816,
-        height: 1056,
-        padding: '44px 52px 40px',
-        background: '#ffffff',
-        color: INK,
-        fontFamily: LATO,
-        fontWeight: 400,
-        fontVariantNumeric: 'tabular-nums lining-nums',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        WebkitPrintColorAdjust: 'exact',
-        printColorAdjust: 'exact',
+        width: 816, height: 1056, background: '#fff', color: '#000',
+        fontFamily: HELV, fontSize: 13.5, position: 'relative',
+        WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact',
       }}
     >
-      {/* Big diagonal PAID stamp across the middle of a settled invoice */}
+      {/* Big diagonal PAID stamp */}
       {paid && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
           <div style={{
-            transform: 'rotate(-30deg)',
-            border: '10px solid #16a34a',
-            borderRadius: 16,
-            color: '#16a34a',
-            padding: '10px 56px',
-            fontFamily: OSWALD,
-            fontWeight: 700,
-            fontSize: 150,
-            lineHeight: 1,
-            letterSpacing: '12px',
-            opacity: 0.35,
+            transform: 'rotate(-30deg)', border: '10px solid #16a34a', borderRadius: 16,
+            color: '#16a34a', padding: '10px 56px', fontFamily: OSWALD, fontWeight: 700,
+            fontSize: 150, lineHeight: 1, letterSpacing: 12, opacity: 0.35,
           }}>
             PAID
           </div>
         </div>
       )}
-      {/* Header */}
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 36 }}>
-          {logo
-            ? <img src={logo} alt="" style={{ width: 132, height: 132, display: 'block', filter: logo === '/logo.jpg' ? 'invert(1)' : undefined }} />
-            : <div style={{ width: 132, height: 132 }} />}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <h1 style={{ fontFamily: OSWALD, fontWeight: 700, fontSize: 40, lineHeight: 1, letterSpacing: '0.4px', margin: 0 }}>
-              {coName}
-            </h1>
-            <div style={{ fontSize: 13.5, lineHeight: 1.55 }}>
-              {company?.street_address && <div>{company.street_address}</div>}
-              {(company?.city || company?.zip) && (
-                <div>{[company?.city, company?.state].filter(Boolean).join(', ')} {company?.zip}</div>
-              )}
-              {company?.phone && <div>{company.phone}</div>}
-              {company?.email && <div>{company.email}</div>}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, textAlign: 'center', paddingBottom: 2 }}>
-          {paid && <div style={{ marginBottom: 4 }}><PaidBadge scale={0.58} /></div>}
-          <div style={{ fontSize: 12, letterSpacing: '3px', textTransform: 'uppercase' }}>Invoice</div>
-          <div style={{ fontSize: 28, fontWeight: 300, letterSpacing: '0.5px' }}>No. {invoice.doc_number || '—'}</div>
-        </div>
-      </header>
 
-      <div style={{ height: 1, background: RULE, margin: '24px 0 22px' }} />
+      {/* Company block */}
+      <div style={{ position: 'absolute', left: 65, top: 48, lineHeight: '18px' }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>{coName}</div>
+        {company?.street_address && <div>{company.street_address}</div>}
+        {(company?.city || company?.zip) && (
+          <div>{[company?.city, company?.state].filter(Boolean).join(', ')}{'\u2002'}{company?.zip}</div>
+        )}
+        {company?.phone && <div>{company.phone}</div>}
+        {company?.email && <div>{company.email}</div>}
+      </div>
 
-      {/* Bill to / Ship to / Details */}
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 28, fontSize: 13.5, lineHeight: 1.55 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={label}>Bill to</div>
-          {addressBlock}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={label}>Ship to</div>
-          {addressBlock}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={label}>Details</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Issued</span><span>{fmtDate(invoice.txn_date)}</span></div>
-            {invoice.due_date && (
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Due</span><span>{fmtDate(invoice.due_date)}</span></div>
-            )}
-            {termsDays > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Terms</span><span>Net {termsDays}</span></div>
-            )}
-          </div>
-        </div>
-      </section>
+      {/* Logo + wordmark */}
+      {logo && <img src={logo} alt="" style={{ position: 'absolute', left: 562, top: 50, width: 101, height: 101 }} />}
+      <div style={{ position: 'absolute', left: 612, top: 156, transform: 'translateX(-50%)', fontFamily: OSWALD, fontWeight: 700, fontSize: 17, letterSpacing: 1, whiteSpace: 'nowrap' }}>
+        MILLER SAWDUST
+      </div>
 
-      {/* Amount band: due amount normally; when paid, the amount paid with a
-          centered PAID badge */}
-      <section style={{ marginTop: 26, padding: '18px 24px', background: BAND, borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={label}>{paid ? 'Amount paid' : 'Amount due'}</div>
-          <div style={{ fontSize: 13.5 }}>
-            {paid ? 'Paid in full' : invoice.due_date ? `Payable by ${fmtDate(invoice.due_date)}` : 'Due on receipt'}
-          </div>
-        </div>
-        <div style={{ fontSize: 32, fontWeight: 300, letterSpacing: '0.3px', lineHeight: 1, alignSelf: 'center' }}>
-          {money(paid ? invoice.total : balance)}
-        </div>
-      </section>
+      {/* BILL TO — window-envelope position */}
+      <div style={{ position: 'absolute', left: 65, top: 218, lineHeight: '18.5px' }}>
+        <div style={{ fontWeight: 700 }}>BILL TO</div>
+        <div>{custName}</div>
+        {customer?.street_address && <div>{customer.street_address}</div>}
+        {custCityLine && <div>{custCityLine}</div>}
+      </div>
 
-      {/* Line items */}
-      <section style={{ marginTop: 28, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ ...itemGrid, paddingBottom: 10, borderBottom: `1px solid ${INK}`, ...label }}>
-          <div>Description</div>
-          <div style={num}>Qty</div>
-          <div style={num}>Rate</div>
-          <div style={num}>Amount</div>
+      {/* Right info bars */}
+      <div style={barStyle(208, 38)}>
+        <span style={{ fontWeight: 700, fontSize: 17 }}>INVOICE {invoice.doc_number || ''}</span>
+      </div>
+      <div style={{ ...barStyle(260, 36), fontSize: 12.5 }}>
+        <span style={{ fontWeight: 700 }}>DATE</span>
+        <span style={{ marginLeft: 5 }}>{slashDate(invoice.txn_date)}</span>
+        {termsDays > 0 && (
+          <span style={{ position: 'absolute', left: 124 }}>
+            <span style={{ fontWeight: 700 }}>TERMS</span>
+            <span style={{ marginLeft: 5 }}>Net {termsDays}</span>
+          </span>
+        )}
+      </div>
+      <div style={{ ...barStyle(309, 35), fontSize: 12.5 }}>
+        <span style={{ fontWeight: 700 }}>DUE DATE</span>
+        <span style={{ marginLeft: 5 }}>{slashDate(invoice.due_date)}</span>
+      </div>
+
+      {/* Left divider bar */}
+      <div style={{ position: 'absolute', left: 24, top: 336, width: 460, height: 8, background: SLATE }} />
+
+      {paid && (
+        <div style={{ position: 'absolute', left: 742, top: 174, transform: 'translateX(-50%)' }}>
+          <PaidBadge scale={0.45} />
         </div>
-        {lines.map((l, i) => (
-          <div key={i} style={{ ...itemGrid, padding: '14px 0', borderBottom: `1px solid ${RULE}`, fontSize: 14, alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <div>{l.name || '—'}</div>
-              {l.description && l.description !== l.name && <div style={{ fontSize: 12.5 }}>{l.description}</div>}
-            </div>
-            <div style={num}>{l.qty ?? 1}</div>
-            <div style={num}>{money(l.unit_price)}</div>
-            <div style={num}>{money(l.amount)}</div>
+      )}
+
+      {/* Items + totals flow */}
+      <div style={{ position: 'absolute', left: 24, top: 409, width: 767 }}>
+        {/* table header */}
+        <div style={{ background: SLATE, height: 29, display: 'grid', gridTemplateColumns: '41px 216px 145px 114px 129px 89px 1fr', alignItems: 'center', color: '#fff', fontWeight: 700, fontSize: 12 }}>
+          <span />
+          <span>DATE</span>
+          <span>DESCRIPTION</span>
+          <span style={{ textAlign: 'right' }}>QTY</span>
+          <span style={{ textAlign: 'right' }}>RATE</span>
+          <span style={{ textAlign: 'right' }}>AMOUNT</span>
+          <span />
+        </div>
+        {rows.map((l, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'grid', gridTemplateColumns: '41px 216px 145px 114px 129px 89px 1fr',
+              padding: '9px 0', lineHeight: '16.3px',
+              borderBottom: i < rows.length - 1 ? '1px solid #d9dce1' : 'none',
+            }}
+          >
+            <span />
+            <span>{!/surcharge/i.test(l.name || '') ? slashDate(invoice.txn_date) : ''}</span>
+            <span style={{ maxWidth: 112 }}>{l.description && l.description !== l.name ? l.description : (l.name || '\u2014')}</span>
+            <span style={{ textAlign: 'right' }}>{l.qty ?? ''}</span>
+            <span style={{ textAlign: 'right' }}>{l.unit_price != null ? fmt2(l.unit_price) : ''}</span>
+            <span style={{ textAlign: 'right' }}>{l.amount != null ? fmt2(l.amount) : ''}</span>
+            <span />
           </div>
         ))}
-        {lines.length === 0 && (
-          <div style={{ padding: '14px 0', borderBottom: `1px solid ${RULE}`, fontSize: 14 }}>
-            No line detail on this invoice
+        {/* total area */}
+        <div style={{ position: 'relative', marginTop: 23, height: 40 }}>
+          <div style={{ position: 'absolute', left: 7, top: 2, width: 400, lineHeight: '17px' }}>
+            We appreciate your business and look forward to serving you again soon.
           </div>
-        )}
-      </section>
-
-      {/* Note + totals */}
-      <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 28 }}>
-        <div style={{ fontSize: 12.5, lineHeight: 1.6, maxWidth: 380 }}>
-          {invoice.note && (
-            <>
-              <div style={{ ...label, marginBottom: 4 }}>Note</div>
-              <div>{invoice.note}</div>
-            </>
-          )}
-        </div>
-        <div style={{ width: 296, display: 'flex', flexDirection: 'column', fontSize: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
-            <span>Subtotal</span><span>{money(subtotal)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
-            <span>Total</span><span>{money(invoice.total)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 0 0', marginTop: 6, borderTop: `1px solid ${INK}` }}>
-            <span>Balance due</span><span style={{ fontSize: 20 }}>{money(balance)}</span>
+          <div style={{ position: 'absolute', left: 420, right: 0, top: 0, height: 38, background: SLATE, color: '#fff', display: 'flex', alignItems: 'center', paddingLeft: 13, boxSizing: 'border-box' }}>
+            <span>TOTAL DUE</span>
+            <span style={{ position: 'absolute', right: 23, fontWeight: 700, fontSize: 19 }}>${fmt2(balance)}</span>
           </div>
         </div>
       </div>
 
-      <div style={{ flexGrow: 1 }} />
-
       {/* Footer */}
-      <footer style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: 20, borderTop: `1px solid ${RULE}`, fontSize: 12.5, lineHeight: 1.6 }}>
-        <div>
-          <div style={{ fontSize: 13.5 }}>Thank you for your business.</div>
-          {company?.phone && <div>Questions about this invoice? Call {company.phone}.</div>}
-          {invoice.source === 'quickbooks' && (
-            <div style={{ fontSize: 10.5, color: '#666' }}>Imported from QuickBooks{invoice.qb_id ? ` (QB #${invoice.qb_id})` : ''}</div>
-          )}
-        </div>
-        <div style={{ textAlign: 'right' }}>Invoice {invoice.doc_number || '—'} · Page 1 of 1</div>
-      </footer>
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 994, textAlign: 'center', fontSize: 11.5 }}>
+        Please add the invoice number on the check, Thank You.
+      </div>
     </div>
   );
 }

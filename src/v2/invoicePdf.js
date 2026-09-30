@@ -1,20 +1,29 @@
-// Vector PDF generation for invoices. Draws the letterhead template with
-// real embedded fonts (Lato + Oswald from /public/fonts) via jsPDF, so the
-// saved file is sharp at any print size — no rasterized pages. Layout
-// coordinates mirror InvoiceTemplate.jsx one-for-one (816 x 1056 px page).
+// Vector PDF generation for invoices — the QuickBooks-style template the
+// office supplied (slate bars, single BILL TO block placed for a window
+// envelope). Geometry was measured off that sample at 100dpi and converted
+// to this 816 x 1056 px canvas (x0.96). Body text is the built-in
+// Helvetica; Oswald (embedded) is used for the wordmark and PAID stamp.
 
-const money = (v) => v == null ? '—' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+const fmt2 = (v) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const usd = (v) => '$' + fmt2(v);
+const slashDate = (d) => {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${m}/${day}/${y}`;
+};
 
 const PAGE_W = 816, PAGE_H = 1056;
-const PAD_X = 52, PAD_TOP = 44, PAD_BOTTOM = 40;
-const LEFT = PAD_X, RIGHT = PAGE_W - PAD_X, CONTENT_W = RIGHT - LEFT;
-const RULE = '#cccccc', BAND = '#dedede';
+const SLATE = '#7889a1';
+const SEP = '#d9dce1';
+
+// Right-side bars
+const BX = 494, BR = 791, BW = BR - BX;
+// Items table
+const TX = 24, TR = 791;
+const DATE_X = 65, DESC_X = 305, DESC_W = 110;
+const QTY_R = 540, RATE_R = 669, AMT_R = 758;
 
 const FONTS = [
-  ['Lato-Light.ttf', 'LatoLight'],
-  ['Lato-Regular.ttf', 'Lato'],
-  ['Lato-Bold.ttf', 'LatoBold'],
   ['Oswald-Bold.ttf', 'Oswald'],
 ];
 const fontCache = new Map(); // filename -> base64
@@ -40,40 +49,36 @@ async function installFonts(pdf) {
   }
 }
 
-/* Small drawing helpers — everything positions by the text box's TOP edge,
-   like CSS, and advances a y cursor. */
-
-// jsPDF font sizes are in POINTS while this layout is in CSS px; PT converts
-// so a "13.5px" label renders at exactly the template's visual size.
+// jsPDF font sizes are in POINTS while this layout is in CSS px.
 const PT = 0.75;
 
-function text(pdf, str, x, y, { font = 'Lato', size = 13.5, align = 'left', charSpace = 0, color = '#000000', maxWidth = null, lineHeight = 1.55 } = {}) {
-  pdf.setFont(font, 'normal');
+function setF(pdf, { font = 'helvetica', bold = false, size = 13.5, color = '#000000' } = {}) {
+  if (font === 'helvetica') pdf.setFont('helvetica', bold ? 'bold' : 'normal');
+  else pdf.setFont(font, 'normal');
   pdf.setFontSize(size * PT);
   pdf.setTextColor(color);
-  const opts = { baseline: 'top', align };
-  if (charSpace) opts.charSpace = charSpace * PT;
+}
+
+function text(pdf, str, x, y, opts = {}) {
+  const { align = 'left', charSpace = 0, maxWidth = null, lineHeight = 1.3, size = 13.5 } = opts;
+  setF(pdf, opts);
+  const o = { baseline: 'top', align };
+  if (charSpace) o.charSpace = charSpace * PT;
   if (maxWidth) {
     const lines = pdf.splitTextToSize(String(str), maxWidth);
-    lines.forEach((ln, i) => pdf.text(ln, x, y + i * size * lineHeight, opts));
+    lines.forEach((ln, i) => pdf.text(ln, x, y + i * size * lineHeight, o));
     return lines.length * size * lineHeight;
   }
-  pdf.text(String(str), x, y, opts);
+  pdf.text(String(str), x, y, o);
   return size * lineHeight;
 }
 
-function label(pdf, str, x, y, { charSpace = 1.8, size = 11, align = 'left' } = {}) {
-  return text(pdf, String(str).toUpperCase(), x, y, { font: 'Lato', size, align, charSpace, lineHeight: 1.2 });
+function bar(pdf, x, y, w, h) {
+  pdf.setFillColor(SLATE);
+  pdf.rect(x, y, w, h, 'F');
 }
 
-function hline(pdf, y, color = RULE, x1 = LEFT, x2 = RIGHT, width = 1) {
-  pdf.setDrawColor(color);
-  pdf.setLineWidth(width);
-  pdf.line(x1, y, x2, y);
-}
-
-// The small solid-green PAID badge (horizontal), centered at (cx, cy),
-// mirroring the screen template's PaidBadge. Height is 52 * scale.
+// The small solid-green PAID badge, centered at (cx, cy).
 function drawPaidBadge(pdf, cx, cy, scale = 1) {
   const FS = 34 * scale, PADX = 18 * scale, PADY = 5 * scale, B = Math.max(4 * scale, 3.5), R = 8 * scale, LS = 4 * scale;
   pdf.setFont('Oswald', 'normal');
@@ -90,179 +95,112 @@ function drawPaidBadge(pdf, cx, cy, scale = 1) {
 export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   const lines = invoice.lines || [];
   const paid = invoice.status === 'paid';
-  const subtotal = lines.length
-    ? lines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
-    : Number(invoice.total) || 0;
   const balance = paid ? 0 : (invoice.balance ?? invoice.total);
   const termsDays = invoice.txn_date && invoice.due_date
     ? Math.round((new Date(invoice.due_date) - new Date(invoice.txn_date)) / 86400000)
     : null;
   const coName = company?.company_name || 'Miller Sawdust';
-  const custName = (customer?.company_name || customer?.name || 'Customer').trim();
-  const custPerson = customer?.name && customer?.company_name && customer.name.trim() !== customer.company_name.trim()
-    ? customer.name.trim() : null;
-  const custCityLine = [[customer?.city, customer?.state].filter(Boolean).join(', '), customer?.zip_code]
-    .filter(Boolean).join(' ');
 
-  /* ---- Header (bottom-aligned like the CSS flex-end) ---- */
-  const coLines = [
+  /* ---- Top-left company block ---- */
+  let y = 53;
+  y += text(pdf, coName, 65, y, { bold: true, size: 14, lineHeight: 1.33 });
+  for (const ln of [
     company?.street_address,
-    (company?.city || company?.zip) ? `${[company?.city, company?.state].filter(Boolean).join(', ')} ${company?.zip || ''}`.trim() : null,
+    (company?.city || company?.zip) ? `${[company?.city, company?.state].filter(Boolean).join(', ')}  ${company?.zip || ''}`.trim() : null,
     company?.phone,
     company?.email,
-  ].filter(Boolean);
-  const brandH = 40 + 10 + coLines.length * 13.5 * 1.55;
-  const headerBottom = PAD_TOP + Math.max(132, brandH);
-
-  if (logo) pdf.addImage(logo, 'PNG', LEFT, headerBottom - 132, 132, 132);
-  const brandX = LEFT + 132 + 36;
-  let y = headerBottom - brandH;
-  text(pdf, coName, brandX, y, { font: 'Oswald', size: 40, charSpace: 0.4, lineHeight: 1 });
-  y += 40 + 10;
-  for (const ln of coLines) y += text(pdf, ln, brandX, y, { size: 13.5 });
-
-  // Doc id, centered on its own column at the right edge
-  pdf.setFont('LatoLight', 'normal');
-  pdf.setFontSize(28 * PT);
-  const numStr = `No. ${invoice.doc_number || '—'}`;
-  const numW = pdf.getTextWidth(numStr);
-  const cx = RIGHT - numW / 2;
-  const numTop = headerBottom - 2 - 28 * 1.2;
-  text(pdf, numStr, cx, numTop, { font: 'LatoLight', size: 28, align: 'center', charSpace: 0.5, lineHeight: 1.2 });
-  const idLabelTop = numTop - 4 - 12 * 1.2;
-  label(pdf, 'Invoice', cx, idLabelTop, { size: 12, charSpace: 3, align: 'center' });
-  if (paid) drawPaidBadge(pdf, cx, idLabelTop - 6 - (52 * 0.58) / 2, 0.58);
-
-  /* ---- Divider ---- */
-  hline(pdf, headerBottom + 24);
-  y = headerBottom + 24 + 22;
-
-  /* ---- Bill to / Ship to / Details ---- */
-  const colW = (CONTENT_W - 2 * 28) / 3;
-  const colX = [LEFT, LEFT + colW + 28, LEFT + 2 * (colW + 28)];
-  const drawAddress = (x, top) => {
-    let yy = top;
-    yy += text(pdf, custName, x, yy, { size: 15 }) + 2;
-    for (const ln of [custPerson, customer?.street_address, custCityLine].filter(Boolean)) {
-      yy += text(pdf, ln, x, yy, { size: 13.5, maxWidth: colW });
-    }
-    return yy - top;
-  };
-  const partiesTop = y;
-  const blockTop = partiesTop + 11 * 1.2 + 8;
-  label(pdf, 'Bill to', colX[0], partiesTop);
-  const h1 = drawAddress(colX[0], blockTop);
-  label(pdf, 'Ship to', colX[1], partiesTop);
-  const h2 = drawAddress(colX[1], blockTop);
-  label(pdf, 'Details', colX[2], partiesTop);
-  const kv = [
-    ['Issued', fmtDate(invoice.txn_date)],
-    invoice.due_date ? ['Due', fmtDate(invoice.due_date)] : null,
-    termsDays > 0 ? ['Terms', `Net ${termsDays}`] : null,
-  ].filter(Boolean);
-  let ky = blockTop;
-  for (const [k, v] of kv) {
-    text(pdf, k, colX[2], ky, { size: 13.5 });
-    text(pdf, v, colX[2] + colW, ky, { size: 13.5, align: 'right' });
-    ky += 13.5 * 1.55;
+  ].filter(Boolean)) {
+    y += text(pdf, ln, 65, y, { size: 13.5, lineHeight: 1.33 });
   }
-  y = blockTop + Math.max(h1, h2, ky - blockTop);
 
-  /* ---- Amount due band ---- */
-  const bandTop = y + 26;
-  const bandH = 18 + (11 * 1.2 + 4 + 13.5 * 1.2) + 18;
-  pdf.setFillColor(BAND);
-  pdf.roundedRect(LEFT, bandTop, CONTENT_W, bandH, 4, 4, 'F');
-  label(pdf, paid ? 'Amount paid' : 'Amount due', LEFT + 24, bandTop + 18);
-  text(pdf, paid ? 'Paid in full' : invoice.due_date ? `Payable by ${fmtDate(invoice.due_date)}` : 'Due on receipt',
-    LEFT + 24, bandTop + 18 + 11 * 1.2 + 4, { size: 13.5, lineHeight: 1.2 });
-  // The amount, light weight, vertically centered: what is owed, or, once
-  // paid, what was paid.
-  pdf.setFont('LatoLight', 'normal');
-  pdf.setFontSize(32 * PT);
-  pdf.setTextColor('#000000');
-  pdf.text(money(paid ? invoice.total : balance), RIGHT - 24, bandTop + bandH / 2, { baseline: 'middle', align: 'right', charSpace: 0.3 * PT });
+  /* ---- Top-right logo + wordmark ---- */
+  if (logo) pdf.addImage(logo, 'PNG', 562, 50, 101, 101);
+  text(pdf, 'MILLER SAWDUST', 612, 158, { font: 'Oswald', size: 17, align: 'center', charSpace: 1 });
 
-  /* ---- Line items ---- */
-  const DESC_W = CONTENT_W - (64 + 104 + 112 + 3 * 16);
-  const QTY_R = LEFT + DESC_W + 16 + 64;
-  const RATE_R = QTY_R + 16 + 104;
-  const AMT_R = RIGHT;
-  y = bandTop + bandH + 28;
-  label(pdf, 'Description', LEFT, y);
-  label(pdf, 'Qty', QTY_R, y, { align: 'right' });
-  label(pdf, 'Rate', RATE_R, y, { align: 'right' });
-  label(pdf, 'Amount', AMT_R, y, { align: 'right' });
-  y += 11 * 1.2 + 10;
-  hline(pdf, y, '#000000');
+  /* ---- BILL TO (window-envelope position: do not move) ---- */
+  const custName = (customer?.company_name || customer?.name || 'Customer').trim();
+  const custCityLine = [[customer?.city, customer?.state].filter(Boolean).join(', '), customer?.zip_code]
+    .filter(Boolean).join('  ');
+  let by = 220;
+  by += text(pdf, 'BILL TO', 65, by, { bold: true, size: 13.5, lineHeight: 1.35 });
+  for (const ln of [custName, customer?.street_address, custCityLine].filter(Boolean)) {
+    by += text(pdf, ln, 65, by, { size: 13.5, lineHeight: 1.35 });
+  }
 
+  /* ---- Right info bars ---- */
+  bar(pdf, BX, 208, BW, 38);
+  text(pdf, `INVOICE ${invoice.doc_number || ''}`.trim(), BX + 9, 208 + 10.5, { bold: true, size: 17, color: '#ffffff' });
+
+  bar(pdf, BX, 260, BW, 36);
+  setF(pdf, { bold: true, size: 12.5, color: '#ffffff' });
+  const dateLblW = pdf.getTextWidth('DATE ');
+  text(pdf, 'DATE', BX + 9, 260 + 11, { bold: true, size: 12.5, color: '#ffffff' });
+  text(pdf, slashDate(invoice.txn_date), BX + 9 + dateLblW + 4, 260 + 11, { size: 12.5, color: '#ffffff' });
+  if (termsDays > 0) {
+    setF(pdf, { bold: true, size: 12.5, color: '#ffffff' });
+    const termsLblW = pdf.getTextWidth('TERMS ');
+    text(pdf, 'TERMS', 618, 260 + 11, { bold: true, size: 12.5, color: '#ffffff' });
+    text(pdf, `Net ${termsDays}`, 618 + termsLblW + 4, 260 + 11, { size: 12.5, color: '#ffffff' });
+  }
+
+  bar(pdf, BX, 309, BW, 35);
+  setF(pdf, { bold: true, size: 12.5, color: '#ffffff' });
+  const dueLblW = pdf.getTextWidth('DUE DATE ');
+  text(pdf, 'DUE DATE', BX + 9, 309 + 10.5, { bold: true, size: 12.5, color: '#ffffff' });
+  text(pdf, slashDate(invoice.due_date), BX + 9 + dueLblW + 4, 309 + 10.5, { size: 12.5, color: '#ffffff' });
+
+  /* ---- Left divider bar (bottom-aligned with the DUE DATE bar) ---- */
+  bar(pdf, TX, 336, 484 - TX, 8);
+
+  if (paid) drawPaidBadge(pdf, 742, 190, 0.45);
+
+  /* ---- Items table ---- */
+  bar(pdf, TX, 409, TR - TX, 29);
+  const headY = 409 + 8.5;
+  text(pdf, 'DATE', DATE_X, headY, { bold: true, size: 12, color: '#ffffff' });
+  text(pdf, 'DESCRIPTION', DESC_X, headY, { bold: true, size: 12, color: '#ffffff' });
+  text(pdf, 'QTY', QTY_R, headY, { bold: true, size: 12, color: '#ffffff', align: 'right' });
+  text(pdf, 'RATE', RATE_R, headY, { bold: true, size: 12, color: '#ffffff', align: 'right' });
+  text(pdf, 'AMOUNT', AMT_R, headY, { bold: true, size: 12, color: '#ffffff', align: 'right' });
+
+  let iy = 438 + 9;
   const rows = lines.length ? lines : [{ name: 'No line detail on this invoice', qty: null, unit_price: null, amount: null }];
-  for (const l of rows) {
-    pdf.setFont('Lato', 'normal');
-    pdf.setFontSize(14 * PT);
-    const nameLines = pdf.splitTextToSize(l.name || '—', DESC_W);
-    const hasNote = l.description && l.description !== l.name;
-    const noteLines = hasNote ? (pdf.setFontSize(12.5 * PT), pdf.splitTextToSize(l.description, DESC_W)) : [];
-    const descH = nameLines.length * 14 * 1.2 + (hasNote ? 3 + noteLines.length * 12.5 * 1.2 : 0);
-    const rowH = 14 + descH + 14;
-    let dy = y + 14;
-    for (const ln of nameLines) dy += text(pdf, ln, LEFT, dy, { size: 14, lineHeight: 1.2 });
-    if (hasNote) {
-      dy += 3;
-      for (const ln of noteLines) dy += text(pdf, ln, LEFT, dy, { size: 12.5, lineHeight: 1.2 });
+  rows.forEach((l, idx) => {
+    const desc = l.description && l.description !== l.name ? l.description : (l.name || '—');
+    setF(pdf, { size: 13.5 });
+    const descLines = pdf.splitTextToSize(String(desc), DESC_W);
+    const showDate = !/surcharge/i.test(l.name || '');
+    if (showDate) text(pdf, slashDate(invoice.txn_date), DATE_X, iy, { size: 13.5 });
+    descLines.forEach((ln, i) => text(pdf, ln, DESC_X, iy + i * 16.3, { size: 13.5 }));
+    if (l.qty != null) text(pdf, String(l.qty), QTY_R, iy, { size: 13.5, align: 'right' });
+    if (l.unit_price != null) text(pdf, fmt2(l.unit_price), RATE_R, iy, { size: 13.5, align: 'right' });
+    if (l.amount != null) text(pdf, fmt2(l.amount), AMT_R, iy, { size: 13.5, align: 'right' });
+    iy += Math.max(descLines.length * 16.3, 16.3) + 9;
+    if (idx < rows.length - 1) {
+      pdf.setDrawColor(SEP);
+      pdf.setLineWidth(1);
+      pdf.line(TX, iy, TR, iy);
+      iy += 9;
     }
-    const mid = y + rowH / 2;
-    pdf.setFont('Lato', 'normal');
-    pdf.setFontSize(14 * PT);
-    pdf.setTextColor('#000000');
-    if (l.qty != null) pdf.text(String(l.qty), QTY_R, mid, { baseline: 'middle', align: 'right' });
-    if (l.unit_price != null) pdf.text(money(l.unit_price), RATE_R, mid, { baseline: 'middle', align: 'right' });
-    if (l.amount != null) pdf.text(money(l.amount), AMT_R, mid, { baseline: 'middle', align: 'right' });
-    y += rowH;
-    hline(pdf, y);
-  }
+  });
 
-  /* ---- Note (left) + totals (right) ---- */
-  y += 18;
-  if (invoice.note) {
-    label(pdf, 'Note', LEFT, y);
-    text(pdf, invoice.note, LEFT, y + 11 * 1.2 + 4, { size: 12.5, maxWidth: 380, lineHeight: 1.6 });
-  }
-  const TOT_X = RIGHT - 296;
-  let ty = y;
-  for (const [k, v] of [['Subtotal', money(subtotal)], ['Total', money(invoice.total)]]) {
-    text(pdf, k, TOT_X, ty + 6, { size: 14, lineHeight: 1.2 });
-    text(pdf, v, RIGHT, ty + 6, { size: 14, align: 'right', lineHeight: 1.2 });
-    ty += 6 + 14 * 1.2 + 6;
-  }
-  ty += 6;
-  hline(pdf, ty, '#000000', TOT_X, RIGHT);
-  ty += 12;
-  text(pdf, 'Balance due', TOT_X, ty + (20 - 14), { size: 14, lineHeight: 1.2 });
-  text(pdf, money(balance), RIGHT, ty, { size: 20, align: 'right', lineHeight: 1.2 });
+  /* ---- TOTAL DUE bar + thank-you line ---- */
+  const barTop = iy + 23;
+  bar(pdf, 444, barTop, BR - 444, 38);
+  text(pdf, 'TOTAL DUE', 444 + 13, barTop + 12, { size: 13.5, color: '#ffffff' });
+  text(pdf, usd(balance), 768, barTop + 8.5, { bold: true, size: 19, color: '#ffffff', align: 'right' });
+  text(pdf, 'We appreciate your business and look forward to serving you again soon.',
+    31, barTop + 2, { size: 13.5, maxWidth: 400, lineHeight: 1.25 });
 
-  /* ---- Footer (pinned to the bottom) ---- */
-  const footLines = [
-    ['Thank you for your business.', 13.5],
-    company?.phone ? [`Questions about this invoice? Call ${company.phone}.`, 12.5] : null,
-    invoice.source === 'quickbooks' ? [`Imported from QuickBooks${invoice.qb_id ? ` (QB #${invoice.qb_id})` : ''}`, 10.5, '#666666'] : null,
-  ].filter(Boolean);
-  const contentH = footLines.reduce((s, [, sz]) => s + sz * 1.6, 0);
-  const contentBottom = PAGE_H - PAD_BOTTOM;
-  hline(pdf, contentBottom - contentH - 20);
-  let fy = contentBottom - contentH;
-  for (const [str, sz, color] of footLines) {
-    fy += text(pdf, str, LEFT, fy, { size: sz, lineHeight: 1.6, color: color || '#000000' });
-  }
-  text(pdf, `Invoice ${invoice.doc_number || '—'} · Page 1 of 1`, RIGHT, contentBottom - 12.5 * 1.6, { size: 12.5, align: 'right', lineHeight: 1.6 });
+  /* ---- Footer ---- */
+  text(pdf, 'Please add the invoice number on the check, Thank You.',
+    PAGE_W / 2, 994, { size: 11.5, align: 'center' });
 
-  /* ---- Big diagonal PAID stamp across the middle of a settled invoice ----
-     30° tilt, 35% opacity. Pure vector, placed by hand (jsPDF's align and
-     baseline options misplace angled text). */
+  /* ---- Diagonal PAID stamp (30 degrees, 35% opacity) ---- */
   if (paid) {
     const cx = PAGE_W / 2, cy = PAGE_H / 2;
     const DEG = 30, cA = Math.cos(DEG * Math.PI / 180), sA = Math.sin(DEG * Math.PI / 180);
-    const CS = 12; // letter-spacing, px
+    const CS = 12;
     pdf.saveGraphicsState();
     pdf.setGState(new pdf.GState({ opacity: 0.35, 'stroke-opacity': 0.35 }));
     pdf.setFont('Oswald', 'normal');
@@ -270,11 +208,10 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
     pdf.setTextColor('#16a34a');
     const textW = pdf.getTextWidth('PAID') + 3 * CS;
     const W = textW + 2 * 56, H = 150 + 2 * 10;
-    // u = reading direction (up-right at 30°), v = glyph-down
     const at = (du, dv) => [cx + du * cA + dv * sA, cy - du * sA + dv * cA];
     pdf.setDrawColor('#16a34a');
     pdf.setLineWidth(10);
-    pdf.setLineJoin(1); // round joins: one continuous border, no corner hotspots
+    pdf.setLineJoin(1);
     const corners = [[-W / 2, -H / 2], [W / 2, -H / 2], [W / 2, H / 2], [-W / 2, H / 2]].map(([du, dv]) => at(du, dv));
     pdf.lines(
       [1, 2, 3].map((i) => [corners[i][0] - corners[i - 1][0], corners[i][1] - corners[i - 1][1]]),
@@ -287,10 +224,14 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   }
 }
 
+function pdfDoc(jsPDF) {
+  return new jsPDF({ orientation: 'portrait', unit: 'px', format: [PAGE_W, PAGE_H], hotfixes: ['px_scaling'] });
+}
+
 /** Render one invoice to a base64 PDF (no download) — used for email/SMS sending. */
 export async function buildInvoicePdfBase64({ invoice, customer, company, logo }) {
   const { jsPDF } = await import('jspdf');
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [PAGE_W, PAGE_H], hotfixes: ['px_scaling'] });
+  const pdf = pdfDoc(jsPDF);
   await installFonts(pdf);
   drawInvoicePage(pdf, { invoice, customer, company, logo });
   return pdf.output('datauristring').split(',')[1];
@@ -299,7 +240,7 @@ export async function buildInvoicePdfBase64({ invoice, customer, company, logo }
 /** Build the compiled PDF (one invoice per page) and save it under `filename`. */
 export async function buildInvoicesPdf({ invoices, custById, company, logo, filename, onProgress }) {
   const { jsPDF } = await import('jspdf');
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [PAGE_W, PAGE_H], hotfixes: ['px_scaling'] });
+  const pdf = pdfDoc(jsPDF);
   await installFonts(pdf);
   invoices.forEach((inv, i) => {
     if (i > 0) pdf.addPage([PAGE_W, PAGE_H], 'portrait');
