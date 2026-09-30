@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Loader2, Search, Plus, ChevronLeft, ChevronRight, MoreVertical, Download,
   Eye, X, CalendarDays, Receipt, StickyNote, CircleDollarSign, Trash2,
+  Mail, MessageSquareText, Check,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -24,7 +25,7 @@ import { base44 } from '@/api/entities';
 import { supabase } from '@/api/supabaseClient';
 import { cn } from '@/lib/utils';
 import InvoicePreview, { ensureInvertedLogo } from './InvoicePreview';
-import { buildInvoicesPdf } from './invoicePdf';
+import { buildInvoicesPdf, buildInvoicePdfBase64 } from './invoicePdf';
 
 // V2 Invoices — "All invoices" (the whole system: QuickBooks import +
 // app-created, filterable) and "Create" (a week of delivery jobs as a flat
@@ -167,6 +168,7 @@ function InvoiceList() {
   const [noteInv, setNoteInv] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [statusInv, setStatusInv] = useState(null);
+  const [sendReq, setSendReq] = useState(null); // { inv, mode: 'email' | 'sms' }
   const [checked, setChecked] = useState(new Set());
   const [printQueue, setPrintQueue] = useState(null);
 
@@ -322,6 +324,8 @@ function InvoiceList() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setPreviewInv(inv)}><Eye className="w-4 h-4 mr-2" /> Preview</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setPrintQueue([inv])}><Download className="w-4 h-4 mr-2" /> Send (PDF)</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSendReq({ inv, mode: 'email' })}><Mail className="w-4 h-4 mr-2" /> Email invoice…</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSendReq({ inv, mode: 'sms' })}><MessageSquareText className="w-4 h-4 mr-2" /> Text invoice…</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setStatusInv(inv)}>
                           <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
                         </DropdownMenuItem>
@@ -372,6 +376,18 @@ function InvoiceList() {
           inv={statusInv}
           onClose={() => setStatusInv(null)}
           onSave={(patch) => update.mutate({ id: statusInv.id, ...patch })}
+        />
+      )}
+
+      {sendReq && (
+        <SendInvoiceDialog
+          key={sendReq.inv.id + sendReq.mode}
+          inv={sendReq.inv}
+          mode={sendReq.mode}
+          customer={custById.get(sendReq.inv.customer_id) || null}
+          company={settings?.company_profile}
+          onClose={() => setSendReq(null)}
+          onSent={() => queryClient.invalidateQueries({ queryKey: ['v2-invoices'] })}
         />
       )}
 
@@ -448,6 +464,108 @@ function StatusChip({ inv }) {
   );
 }
 
+/* --------------------------- Send by email / SMS ------------------------
+   Renders the letterhead PDF, hands it to the send-invoice edge function
+   (Resend for email, Twilio for SMS), which stores the sent copy and stamps
+   the invoice. In the sandbox the function runs in dry-run mode.           */
+
+function SendInvoiceDialog({ inv, mode, customer, company, onClose, onSent }) {
+  const isEmail = mode === 'email';
+  const [to, setTo] = useState(isEmail ? (customer?.email || '') : (customer?.phone || ''));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(null); // { dry_run }
+
+  const send = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const logo = await ensureInvertedLogo();
+      const pdf_base64 = await buildInvoicePdfBase64({ invoice: inv, customer, company, logo });
+      const { data, error: fnErr } = await supabase.functions.invoke('send-invoice', {
+        body: {
+          invoice_id: inv.id,
+          mode,
+          to: to.trim(),
+          pdf_base64,
+          filename: `Invoice ${inv.doc_number || ''}.pdf`.replace('  ', ' '),
+        },
+      });
+      if (fnErr) {
+        let msg = fnErr.message || 'Send failed';
+        try {
+          const j = await fnErr.context.json();
+          if (j?.error === 'not_configured') msg = `Sending isn\u2019t configured yet (missing: ${(j.missing || []).join(', ')})`;
+          else if (j?.error) msg = j.detail ? `${j.error}: ${j.detail}` : j.error;
+        } catch { /* keep generic */ }
+        throw new Error(msg);
+      }
+      if (data?.error) throw new Error(data.error);
+      setDone({ dry_run: !!data?.dry_run });
+      onSent?.();
+    } catch (e) {
+      setError(e.message || 'Send failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{isEmail ? 'Email' : 'Text'} invoice #{inv.doc_number}</DialogTitle>
+        </DialogHeader>
+        {done ? (
+          <div className="py-2">
+            <p className="text-sm text-gray-800 flex items-center gap-2">
+              <span className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center shrink-0"><Check className="w-4 h-4 text-white" /></span>
+              {isEmail ? 'Email sent' : 'Text sent'} to {to.trim()}.
+            </p>
+            {done.dry_run && (
+              <p className="text-xs text-gray-500 mt-2">
+                Sandbox dry run — everything was prepared and stamped, but no real {isEmail ? 'email' : 'text'} left this machine.
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <p className="text-xs text-gray-500">{isEmail ? 'Email address' : 'Phone number'}</p>
+              <Input
+                autoFocus
+                type={isEmail ? 'email' : 'tel'}
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                placeholder={isEmail ? 'customer@example.com' : '(330) 555-0123'}
+              />
+              <p className="text-xs text-gray-400">
+                {isEmail
+                  ? 'The invoice PDF is attached, with a backup link that works for 30 days.'
+                  : 'They get a text with the amount and a secure link to the PDF (valid 30 days).'}
+              </p>
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+          </>
+        )}
+        <DialogFooter>
+          {done ? (
+            <Button className="bg-gray-950 hover:bg-gray-800" onClick={onClose}>Close</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+              <Button className="bg-gray-950 hover:bg-gray-800" onClick={send} disabled={busy || !to.trim()}>
+                {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Send
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function UpdateStatusDialog({ inv, onClose, onSave }) {
   const [sel, setSel] = useState(invStatusKey(inv));
   return (
@@ -502,6 +620,7 @@ function CreateView() {
   const [printQueue, setPrintQueue] = useState(null);
   const [deleteInv, setDeleteInv] = useState(null); // invoice pending delete confirmation
   const [statusInv, setStatusInv] = useState(null); // invoice whose status is being updated
+  const [sendReq, setSendReq] = useState(null); // { inv, mode: 'email' | 'sms' }
   const [jumpOpen, setJumpOpen] = useState(false); // jump-to-date calendar popover
 
   const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
@@ -782,6 +901,8 @@ function CreateView() {
                     onSend={() => setPrintQueue([inv])}
                     onEdit={() => { setEditingId(job.id); setExpandedId(job.id); }}
                     onUpdateStatus={() => setStatusInv(inv)}
+                    onEmail={() => setSendReq({ inv, mode: 'email' })}
+                    onText={() => setSendReq({ inv, mode: 'sms' })}
                     onDelete={() => setDeleteInv(inv)}
                     composer={open && (!inv || editing) && customers && items ? (
                       <InvoiceComposer
@@ -851,6 +972,18 @@ function CreateView() {
         />
       )}
 
+      {sendReq && (
+        <SendInvoiceDialog
+          key={sendReq.inv.id + sendReq.mode}
+          inv={sendReq.inv}
+          mode={sendReq.mode}
+          customer={custById.get(sendReq.inv.customer_id) || null}
+          company={settings?.company_profile}
+          onClose={() => setSendReq(null)}
+          onSent={refresh}
+        />
+      )}
+
       <Dialog open={!!deleteInv} onOpenChange={(o) => { if (!o) setDeleteInv(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Delete invoice {deleteInv?.doc_number ? `#${deleteInv.doc_number}` : ''}</DialogTitle></DialogHeader>
@@ -880,7 +1013,7 @@ function CreateView() {
   );
 }
 
-function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, onSend, onEdit, onUpdateStatus, onDelete, composer }) {
+function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, onSend, onEdit, onUpdateStatus, onEmail, onText, onDelete, composer }) {
   const [showNote, setShowNote] = useState(false);
   const notes = [job.dispatcher_notes, job.driver_notes].map((n) => (n || '').trim()).filter(Boolean);
   const yards = job.delivery_yards
@@ -960,6 +1093,8 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={onEdit}><Receipt className="w-4 h-4 mr-2" /> Edit invoice</DropdownMenuItem>
                     <DropdownMenuItem onClick={onSend}><Download className="w-4 h-4 mr-2" /> Send (PDF)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onEmail}><Mail className="w-4 h-4 mr-2" /> Email invoice…</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onText}><MessageSquareText className="w-4 h-4 mr-2" /> Text invoice…</DropdownMenuItem>
                     <DropdownMenuItem onClick={onUpdateStatus}>
                       <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
                     </DropdownMenuItem>

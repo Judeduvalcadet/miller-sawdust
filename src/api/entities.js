@@ -68,7 +68,7 @@ const TABLE_COLUMNS = {
   invoices: [
     'id','customer_id','qb_customer_id','qb_id','qb_sync_token','doc_number',
     'txn_date','due_date','total','balance','status','lines','source',
-    'job_id','note','sent_at','edited_at','created_date','updated_date',
+    'job_id','note','sent_at','edited_at','emailed_at','texted_at','created_date','updated_date',
   ],
   log_entries: [
     'id','timestamp','level','message','category','user_id','details','created_date','updated_date',

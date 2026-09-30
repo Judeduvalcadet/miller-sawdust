@@ -287,6 +287,15 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   }
 }
 
+/** Render one invoice to a base64 PDF (no download) — used for email/SMS sending. */
+export async function buildInvoicePdfBase64({ invoice, customer, company, logo }) {
+  const { jsPDF } = await import('jspdf');
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [PAGE_W, PAGE_H], hotfixes: ['px_scaling'] });
+  await installFonts(pdf);
+  drawInvoicePage(pdf, { invoice, customer, company, logo });
+  return pdf.output('datauristring').split(',')[1];
+}
+
 /** Build the compiled PDF (one invoice per page) and save it under `filename`. */
 export async function buildInvoicesPdf({ invoices, custById, company, logo, filename, onProgress }) {
   const { jsPDF } = await import('jspdf');

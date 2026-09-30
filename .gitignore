@@ -32,3 +32,4 @@ dist-ssr
 
 # Local data snapshots (never commit production data)
 backups/
+supabase/functions/.env
