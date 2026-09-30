@@ -112,6 +112,10 @@ Deno.serve(async (req) => {
     }
     const now = new Date().toISOString()
     await service.from('invoices').update({ emailed_at: now, sent_at: now }).eq('id', invoice.id)
+    await service.from('invoice_sends').insert({
+      invoice_id: invoice.id, mode: 'email', recipient: to,
+      storage_path: path, dry_run: dryRun, sent_by: String(claims.name ?? ''),
+    })
     return json(200, { ok: true, dry_run: dryRun, link })
   }
 
@@ -122,13 +126,9 @@ Deno.serve(async (req) => {
   if (!dryRun && (!sid || !token || !fromNumber)) {
     return json(501, { error: 'not_configured', missing: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER'].filter((k) => !Deno.env.get(k)) })
   }
-  const smsBody =
-    `${coName}: invoice ${docLabel} — ` +
-    (invoice.status === 'paid'
-      ? 'paid in full, thank you!'
-      : `amount due ${money(invoice.balance ?? invoice.total)}.`) +
-    ` View: ${link}` +
-    (coPhone ? ` Questions? ${coPhone}` : '')
+  // MMS: Twilio fetches the signed PDF URL and delivers the document itself;
+  // the body is just the short caption under it.
+  const caption = `${coName} invoice ${docLabel}`.trim()
   if (!dryRun) {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: 'POST',
@@ -136,7 +136,12 @@ Deno.serve(async (req) => {
         Authorization: 'Basic ' + btoa(`${sid}:${token}`),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({ From: fromNumber!, To: phone.startsWith('+') ? phone : `+1${phone}`, Body: smsBody }),
+      body: new URLSearchParams({
+        From: fromNumber!,
+        To: phone.startsWith('+') ? phone : `+1${phone}`,
+        Body: caption,
+        MediaUrl: link,
+      }),
     })
     if (!res.ok) {
       const detail = await res.text().catch(() => '')
@@ -145,5 +150,9 @@ Deno.serve(async (req) => {
   }
   const now = new Date().toISOString()
   await service.from('invoices').update({ texted_at: now, sent_at: now }).eq('id', invoice.id)
+  await service.from('invoice_sends').insert({
+    invoice_id: invoice.id, mode: 'mms', recipient: phone.startsWith('+') ? phone : `+1${phone}`,
+    storage_path: path, dry_run: dryRun, sent_by: String(claims.name ?? ''),
+  })
   return json(200, { ok: true, dry_run: dryRun, link })
 })

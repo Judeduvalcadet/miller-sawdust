@@ -542,7 +542,7 @@ function SendInvoiceDialog({ inv, mode, customer, company, onClose, onSent }) {
               <p className="text-xs text-gray-400">
                 {isEmail
                   ? 'The invoice PDF is attached, with a backup link that works for 30 days.'
-                  : 'They get a text with the amount and a secure link to the PDF (valid 30 days).'}
+                  : 'They receive the invoice PDF itself by MMS, with a short \u201cMiller Sawdust invoice\u201d caption.'}
               </p>
             </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
@@ -1121,6 +1121,15 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
 
 // Read-only expansion for an already-created invoice.
 function InvoiceDetail({ inv }) {
+  const { data: sends = [] } = useQuery({
+    queryKey: ['invoice-sends', inv.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('invoice_sends')
+        .select('*').eq('invoice_id', inv.id).order('created_date', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
   return (
     <div className="px-6 py-4 border-t border-gray-100">
       <div className="max-w-[1075px] bg-white border border-gray-200">
@@ -1154,6 +1163,31 @@ function InvoiceDetail({ inv }) {
       </div>
       {inv.note && (
         <p className="text-xs text-gray-500 mt-2"><span className="text-gray-400">Note:</span> {inv.note}</p>
+      )}
+      {sends.length > 0 && (
+        <div className="max-w-[1075px] mt-3 bg-white border border-gray-200">
+          <p className="px-4 pt-2.5 pb-1.5 text-[10px] uppercase tracking-wide text-gray-400 font-medium border-b border-gray-100">
+            Communication
+          </p>
+          <ul>
+            {sends.map((snd) => (
+              <li key={snd.id} className="px-4 py-2 flex items-center gap-2.5 border-b border-gray-100 last:border-b-0">
+                {snd.mode === 'email'
+                  ? <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  : <MessageSquareText className="w-3.5 h-3.5 text-gray-400 shrink-0" />}
+                <span className="text-sm text-gray-800">
+                  {snd.mode === 'email' ? 'Emailed to' : 'PDF texted to'} <span className="font-medium">{snd.recipient}</span>
+                </span>
+                {snd.dry_run && (
+                  <span className="text-[10px] font-medium border border-gray-300 text-gray-500 rounded-full px-1.5 py-0.5">dry run</span>
+                )}
+                <span className="ml-auto text-xs text-gray-400 whitespace-nowrap">
+                  {snd.sent_by ? `${snd.sent_by} · ` : ''}{new Date(snd.created_date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
