@@ -1,8 +1,10 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from '@/App.jsx'
-import '@/index.css'
+import { resetBrowserOnce } from '@/lib/browserReset'
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <App />
-)
+// Auth modules must not initialize until the one-time reset has completed.
+async function boot() {
+  if (await resetBrowserOnce()) return;
+  await import('./renderApp.jsx');
+}
+boot().catch(() => {
+  document.getElementById('root').textContent = 'Unable to open the app. Please allow site storage, then refresh this page.';
+});
