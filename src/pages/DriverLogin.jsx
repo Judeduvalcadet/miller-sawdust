@@ -139,6 +139,11 @@ export default function DriverLogin() {
           <CardDescription className="text-gray-600">User Login</CardDescription>
         </CardHeader>
         <CardContent className="pt-4">
+          {new URLSearchParams(window.location.search).has('siteReset') && (
+            <p role="status" className="mb-4 rounded-lg bg-gray-100 p-3 text-sm text-gray-700">
+              The site has been refreshed after our domain update. Please sign in again.
+            </p>
+          )}
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
               <Alert variant="destructive">
