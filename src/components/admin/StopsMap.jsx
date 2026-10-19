@@ -11,9 +11,9 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => (
 // view (for the snapshot feature).
 export default function StopsMap({
   stops = [],            // [{ label, lat, lng }] in driving order
-  home = null,           // { lat, lng } — start/end base
+  home = null,           // { lat, lng } - start/end base
   showRoute = true,
-  roadLegs = null,       // encoded Google polylines per leg — real road paths
+  roadLegs = null,       // encoded Google polylines per leg - real road paths
   height = 200,
   mapTypeId = 'roadmap',
   mapApiRef = null,

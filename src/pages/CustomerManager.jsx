@@ -146,7 +146,7 @@ export default function CustomerManager() {
         errors.push({ rowIndex: i, reason: 'Name is required', preview: Object.values(rec).filter(Boolean).join(', ').slice(0, 40) || 'empty row' });
       } else if (existingNames.has(rec.name.toLowerCase().trim())) {
         failed++;
-        errors.push({ rowIndex: i, reason: `Already exists — skipped`, preview: rec.name });
+        errors.push({ rowIndex: i, reason: `Already exists - skipped`, preview: rec.name });
       } else {
         newRecords.push({ rec, originalIndex: i });
       }
@@ -403,7 +403,7 @@ export default function CustomerManager() {
                         className={selectMode ? 'flex-1 min-w-0' : 'flex-1 min-w-0 cursor-pointer'}
                         onClick={() => { if (!selectMode) setViewingCustomer(customer); }}
                       >
-                        <h3 className="font-semibold">{customer.name || '—'}</h3>
+                        <h3 className="font-semibold">{customer.name || '-'}</h3>
                         {customer.company_name && (
                           <p className="text-sm text-gray-500">{customer.company_name}</p>
                         )}
@@ -453,7 +453,7 @@ export default function CustomerManager() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-6 pt-4 border-t">
             <p className="text-sm text-gray-500">
-              Showing <strong>{(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredCustomers.length)}</strong> of <strong>{filteredCustomers.length}</strong> customers
+              Showing <strong>{(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, filteredCustomers.length)}</strong> of <strong>{filteredCustomers.length}</strong> customers
               {searchQuery && <span className="text-gray-400"> (filtered)</span>}
             </p>
             <div className="flex items-center gap-1">
@@ -470,7 +470,7 @@ export default function CustomerManager() {
                 disabled={currentPage === 1}
               >‹ Prev</Button>
 
-              {/* Page number buttons — show up to 7 pages around current */}
+              {/* Page number buttons - show up to 7 pages around current */}
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
                 .reduce((acc, p, idx, arr) => {
@@ -518,7 +518,7 @@ export default function CustomerManager() {
         onImport={handleCsvImport}
       />
 
-      {/* Customer detail popup — read-only; Edit switches to the edit form */}
+      {/* Customer detail popup - read-only; Edit switches to the edit form */}
       <Dialog open={!!viewingCustomer} onOpenChange={(o) => { if (!o) setViewingCustomer(null); }}>
         <DialogContent className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto">
           {viewingCustomer && (
@@ -532,19 +532,19 @@ export default function CustomerManager() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                     <div>
                       <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Name</p>
-                      <p className="text-gray-900 mt-0.5">{viewingCustomer.name || '—'}</p>
+                      <p className="text-gray-900 mt-0.5">{viewingCustomer.name || '-'}</p>
                     </div>
                     <div>
                       <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Company</p>
-                      <p className="text-gray-900 mt-0.5">{viewingCustomer.company_name || '—'}</p>
+                      <p className="text-gray-900 mt-0.5">{viewingCustomer.company_name || '-'}</p>
                     </div>
                     <div className="sm:col-span-2">
                       <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Address</p>
-                      <p className="text-gray-900 mt-0.5">{buildAddress(viewingCustomer) || '—'}</p>
+                      <p className="text-gray-900 mt-0.5">{buildAddress(viewingCustomer) || '-'}</p>
                     </div>
                     <div>
                       <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Phone</p>
-                      <p className="text-gray-900 mt-0.5">{viewingCustomer.phone || '—'}</p>
+                      <p className="text-gray-900 mt-0.5">{viewingCustomer.phone || '-'}</p>
                     </div>
                   </div>
 
@@ -590,7 +590,7 @@ export default function CustomerManager() {
         </DialogContent>
       </Dialog>
 
-      {/* Add/Edit Customer Dialog — same format as the New Job popup:
+      {/* Add/Edit Customer Dialog - same format as the New Job popup:
           fields on the left, big always-open map on the right */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="w-[96vw] max-w-6xl max-h-[94vh] overflow-y-auto">
@@ -643,10 +643,10 @@ export default function CustomerManager() {
               </div>
               <div className="col-span-2 space-y-2">
                 <Label>Phone</Label>
-                <Input value={formData.phone} onChange={(e) => set('phone', e.target.value)} placeholder="555-123-4567" />
+                <Input type="tel" value={formData.phone} onChange={(e) => set('phone', e.target.value)} placeholder="555-123-4567" />
               </div>
               <div className="col-span-2 space-y-2">
-                <Label>Map / Location Screenshot <span className="text-gray-400 font-normal text-xs">(optional — tap the picture to enlarge)</span></Label>
+                <Label>Map / Location Screenshot <span className="text-gray-400 font-normal text-xs">(optional - tap the picture to enlarge)</span></Label>
                 {formData.map_image_url ? (
                   <div className="relative inline-block">
                     <MapThumb src={formData.map_image_url} className="h-28" />
@@ -699,10 +699,10 @@ export default function CustomerManager() {
                 return (
                   <JobMapPanel
                     pin={pin}
-                    title={[formData.name || formData.company_name, formData.street_address].filter(Boolean).join(' — ')}
+                    title={[formData.name || formData.company_name, formData.street_address].filter(Boolean).join(' - ')}
                     waitingText={editingCustomer
-                      ? "This customer's address isn't map-verified yet — pick an address suggestion and the pin appears."
-                      : 'Start typing the street address and pick a suggestion — the pin drops here.'}
+                      ? "This customer's address isn't map-verified yet - pick an address suggestion and the pin appears."
+                      : 'Start typing the street address and pick a suggestion - the pin drops here.'}
                     canCapture
                     initialInstructions={formData.delivery_instructions}
                     onSaveImage={async (blob, instructions) => {

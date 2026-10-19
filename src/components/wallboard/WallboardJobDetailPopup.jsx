@@ -136,9 +136,9 @@ export default function WallboardJobDetailPopup({ job, driver, pickupLocations =
                     {perLoadDetails.map((l, idx) => (
                       <tr key={l.load_number} className={idx % 2 === 0 ? 'bg-gray-800' : 'bg-gray-800/60'}>
                         <td className="px-3 py-2 font-medium text-gray-300">Load {l.load_number}</td>
-                        <td className="px-3 py-2 text-gray-300">{l.pickup_location_name || '—'}</td>
+                        <td className="px-3 py-2 text-gray-300">{l.pickup_location_name || '-'}</td>
                         <td className="px-3 py-2 text-right font-semibold text-amber-300">
-                          {l.yards_collected ? `${l.yards_collected} yds` : '—'}
+                          {l.yards_collected ? `${l.yards_collected} yds` : '-'}
                         </td>
                       </tr>
                     ))}

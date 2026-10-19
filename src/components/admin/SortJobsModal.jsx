@@ -35,7 +35,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
   const [orderedJobs, setOrderedJobs] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [driverDropdownOpen, setDriverDropdownOpen] = useState(false);
-  // Route check (admin/dispatcher only — the edge function enforces it too)
+  // Route check (admin/dispatcher only - the edge function enforces it too)
   const [routeCheck, setRouteCheck] = useState(null);
   const canCheckRoute = ['admin', 'dispatcher'].includes(
     typeof window !== 'undefined' ? window.localStorage.getItem('miller_driver_role') : ''
@@ -102,7 +102,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
     }
   };
 
-  // Map pins: the day's TRUE sequence — each job's load pickup (blue "P"
+  // Map pins: the day's TRUE sequence - each job's load pickup (blue "P"
   // square) followed by its delivery/drop-off (numbered circle), starting and
   // ending at home. Loads picked up at the home base draw no extra pin.
   const homeBase = pickupLocations.find(p => p.location_type === 'my_building' && /home hoop/i.test(p.name || ''));
@@ -364,7 +364,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
                 );
               })}
 
-              {/* Floating ghost card — stays inside container via overflow:hidden */}
+              {/* Floating ghost card - stays inside container via overflow:hidden */}
               {dragState && orderedJobs[dragState.index] && (
                 <div
                   className="absolute left-0 right-0 flex items-center gap-3 p-3 rounded-lg border border-amber-400 bg-white shadow-xl pointer-events-none z-50"
@@ -411,7 +411,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
             if (d.savings_seconds < 300) {
               return (
                 <div className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
-                  <span className="font-semibold">This order is already good</span> — the best
+                  <span className="font-semibold">This order is already good</span> - the best
                   order found would save less than 5 minutes.
                   {unpinnedNote}
                 </div>
@@ -434,7 +434,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
                 <div className="mt-3">
                   {routeCheck.applied ? (
                     <p className="text-xs font-medium text-amber-800">
-                      List reordered — press Save Order to make it the driver's order.
+                      List reordered - press Save Order to make it the driver's order.
                     </p>
                   ) : (
                     <Button size="sm" variant="outline" className="border-amber-400 text-amber-900 hover:bg-amber-100" onClick={handleUseSuggestedOrder}>
@@ -461,14 +461,14 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
           </div>
         </div>
 
-        {/* Right column: the route map, stretching to the popup's height —
+        {/* Right column: the route map, stretching to the popup's height -
             pins and route line follow the list order on the left */}
         <div className="w-full md:w-[45%] shrink-0 flex flex-col gap-1">
           <div className="relative flex-1 min-h-[300px]">
             <div className="absolute inset-0 z-0">
               <StopsMap stops={mapStops} home={home} roadLegs={roadLegs} height="100%" />
             </div>
-            {/* Check route — always visible at the top of the map */}
+            {/* Check route - always visible at the top of the map */}
             {canCheckRoute && orderedJobs.length >= 2 && (
               <button
                 type="button"

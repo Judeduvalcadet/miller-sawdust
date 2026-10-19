@@ -12,7 +12,8 @@
     {
       "source": "/((?!assets/).*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache" }
+        { "key": "Cache-Control", "value": "no-store, no-cache" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
       ]
     },
     {

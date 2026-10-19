@@ -7,7 +7,7 @@ import { logout } from '@/api/authClient';
 import { cn } from '@/lib/utils';
 import JobDetail from '@/components/driver/JobDetail';
 
-// V2 driver app — the V1 driver flows (job detail, per-load completion,
+// V2 driver app - the V1 driver flows (job detail, per-load completion,
 // spreader pickup logging) stay exactly as they are; this is the V2 design
 // language wrapped around them, starting with the job list.
 
@@ -160,7 +160,7 @@ export default function V2Driver() {
 
   return (
     <div className="min-h-screen bg-gray-100 pb-10">
-      {/* Header — the V2 dark bar */}
+      {/* Header - the V2 dark bar */}
       <div className="bg-gray-950 text-white px-4 pt-4 pb-4 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <img src="/logo.jpg" alt="" className="w-10 h-10 rounded-xl object-cover" />

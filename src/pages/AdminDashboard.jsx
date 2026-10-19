@@ -125,7 +125,7 @@ export default function AdminDashboard() {
       <div className="bg-white border-b shrink-0 z-20">
         <div className="px-4 py-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
-            {/* Title is redundant below lg — the mobile top bar already says it */}
+            {/* Title is redundant below lg - the mobile top bar already says it */}
             <div className="hidden lg:flex items-center gap-3">
               <div className="w-10 h-10 bg-amber-600 rounded-xl flex items-center justify-center">
                 <Truck className="w-5 h-5 text-white" />
@@ -219,7 +219,7 @@ export default function AdminDashboard() {
         dropOffLocations={dropOffLocations}
       />
 
-      {/* Job Form Dialog — closes ONLY through the form's own X (with its
+      {/* Job Form Dialog - closes ONLY through the form's own X (with its
           exit confirmation), never by clicking outside or pressing Escape */}
       <Dialog open={showJobForm} onOpenChange={() => {}}>
         <DialogContent

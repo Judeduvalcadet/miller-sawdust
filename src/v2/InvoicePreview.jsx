@@ -1,5 +1,6 @@
+import { invoiceBillTo } from '@/lib/invoiceBillTo';
 import { useEffect, useState } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { X, Download } from 'lucide-react';
 
@@ -8,15 +9,15 @@ import { X, Download } from 'lucide-react';
 // the Amount-due band and hairline rules. Used by the preview dialog and the
 // PDF saver (one page per invoice).
 
-const money = (v) => v == null ? '—' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+const money = (v) => v == null ? '-' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
 
 const INK = '#000000';
 const BAND = '#dedede';
 const RULE = '#cccccc';
 
 // The logo asset is white-on-black. The template needs it black-on-white, and
-// the PDF renderer (html2canvas) can't apply CSS filters, so it is inverted
+// the vector PDF renderer embeds the logo directly, so it is inverted
 // once through a canvas and served everywhere as a data URL.
 let invertedLogoUrl = null;
 let invertedLogoPromise = null;
@@ -105,6 +106,7 @@ const slashDate = (d) => {
 };
 
 export function InvoiceTemplate({ invoice, customer, company }) {
+  customer=invoiceBillTo(invoice,customer);
   const logo = useInvertedLogo();
   const lines = invoice.lines || [];
   const paid = invoice.status === 'paid';
@@ -158,15 +160,17 @@ export function InvoiceTemplate({ invoice, customer, company }) {
       {/* Logo + wordmark */}
       {logo && <img src={logo} alt="" style={{ position: 'absolute', left: 562, top: 50, width: 101, height: 101 }} />}
       <div style={{ position: 'absolute', left: 612, top: 156, transform: 'translateX(-50%)', fontFamily: OSWALD, fontWeight: 700, fontSize: 17, letterSpacing: 1, whiteSpace: 'nowrap' }}>
-        MILLER SAWDUST
+        {coName.toUpperCase()}
       </div>
 
-      {/* BILL TO — window-envelope position */}
+      {/* BILL TO - window-envelope position */}
       <div style={{ position: 'absolute', left: 65, top: 218, lineHeight: '18.5px' }}>
         <div style={{ fontWeight: 700 }}>BILL TO</div>
         <div>{custName}</div>
         {customer?.street_address && <div>{customer.street_address}</div>}
+        {(customer?.street_extra||[]).map((line,i)=><div key={i}>{line}</div>)}
         {custCityLine && <div>{custCityLine}</div>}
+        {customer?.country&&<div>{customer.country}</div>}
       </div>
 
       {/* Right info bars */}
@@ -200,7 +204,7 @@ export function InvoiceTemplate({ invoice, customer, company }) {
       {/* Items + totals flow */}
       <div style={{ position: 'absolute', left: 24, top: 409, width: 767 }}>
         {/* table header */}
-        <div style={{ background: SLATE, height: 29, display: 'grid', gridTemplateColumns: '41px 216px 145px 114px 129px 89px 1fr', alignItems: 'center', color: '#fff', fontWeight: 700, fontSize: 12 }}>
+        <div style={{ background: SLATE, height: 29, display: 'grid', gridTemplateColumns: '41px 100px 331px 44px 129px 89px 1fr', alignItems: 'center', color: '#fff', fontWeight: 700, fontSize: 12 }}>
           <span />
           <span>DATE</span>
           <span>DESCRIPTION</span>
@@ -213,14 +217,14 @@ export function InvoiceTemplate({ invoice, customer, company }) {
           <div
             key={i}
             style={{
-              display: 'grid', gridTemplateColumns: '41px 216px 145px 114px 129px 89px 1fr',
+              display: 'grid', gridTemplateColumns: '41px 100px 331px 44px 129px 89px 1fr',
               padding: '9px 0', lineHeight: '16.3px',
               borderBottom: i < rows.length - 1 ? '1px solid #d9dce1' : 'none',
             }}
           >
             <span />
             <span>{!/surcharge/i.test(l.name || '') ? slashDate(invoice.txn_date) : ''}</span>
-            <span style={{ maxWidth: 112 }}>{l.description && l.description !== l.name ? l.description : (l.name || '\u2014')}</span>
+            <span style={{ maxWidth: 307 }}>{l.description && l.description !== l.name ? l.description : (l.name || '-')}</span>
             <span style={{ textAlign: 'right' }}>{l.qty ?? ''}</span>
             <span style={{ textAlign: 'right' }}>{l.unit_price != null ? fmt2(l.unit_price) : ''}</span>
             <span style={{ textAlign: 'right' }}>{l.amount != null ? fmt2(l.amount) : ''}</span>
@@ -251,6 +255,7 @@ export default function InvoicePreview({ open, onClose, invoice, customer, compa
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-[864px] p-0 overflow-hidden max-h-[92vh] overflow-y-auto bg-gray-100">
+        <DialogTitle className="sr-only">Invoice {invoice?.doc_number}</DialogTitle>
         <button
           onClick={onClose}
           className="absolute top-3 right-3 z-10 bg-white/90 border border-gray-200 rounded-full p-1.5 hover:bg-gray-100"

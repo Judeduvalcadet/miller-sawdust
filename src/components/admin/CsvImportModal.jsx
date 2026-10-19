@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileText, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
-// Simple CSV parser — handles quoted fields
+// Simple CSV parser - handles quoted fields
 function parseCsv(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return { headers: [], rows: [] };
@@ -209,7 +209,7 @@ export default function CsvImportModal({ open, onClose, entityLabel, fields, onI
                         </Select>
                       </td>
                       <td className="px-4 py-2 text-gray-400 text-xs hidden sm:table-cell truncate max-w-[120px]">
-                        {csvData.rows[0]?.[csvData.headers.indexOf(h)] || '—'}
+                        {csvData.rows[0]?.[csvData.headers.indexOf(h)] || '-'}
                       </td>
                     </tr>
                   ))}

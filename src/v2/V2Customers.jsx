@@ -1,3 +1,4 @@
+import { contactError } from '@/lib/contactValidation';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -23,8 +24,10 @@ import { cn } from '@/lib/utils';
 import AddressAutocomplete from '@/components/admin/AddressAutocomplete';
 import { JobMapPanel, MapThumb, uploadMapImage } from '@/components/admin/CustomerMapSection';
 import InvoicePreview from './InvoicePreview';
+import QuickBooksBadge from './QuickBooksBadge';
+import { V2_READ_ONLY } from './guard';
 
-// V2 Customers — paginated list on the left; on the right the full customer
+// V2 Customers - paginated list on the left; on the right the full customer
 // file in tabs: Customer information (read-only until Edit), Job history,
 // and Invoicing (the imported QuickBooks history with template previews).
 
@@ -39,6 +42,7 @@ export default function V2Customers() {
 
   const { data: customers, isLoading } = useQuery({
     queryKey: ['v2-customers'],
+    refetchInterval: !V2_READ_ONLY?3000:false,
     queryFn: () => base44.entities.Customer.list('name', 5000),
   });
 
@@ -93,7 +97,7 @@ export default function V2Customers() {
                 selectedId === c.id && !creating && 'bg-gray-100 hover:bg-gray-100'
               )}
             >
-              <p className="text-sm font-medium text-gray-900 truncate">{(c.company_name || c.name || '').trim() || '—'}</p>
+              <p className="text-sm font-medium text-gray-900 truncate">{(c.company_name || c.name || '').trim() || '-'} {c.active===false?'(Archived)':''}</p>
               <p className="text-xs text-gray-400 truncate">{c.city || c.street_address || ''}</p>
             </button>
           ))}
@@ -165,6 +169,7 @@ function CustomerDetail({ customer }) {
   });
   const { data: invoices } = useQuery({
     queryKey: ['customer-invoices', customer.id],
+    refetchInterval:!V2_READ_ONLY?3000:false,
     queryFn: () => base44.entities.Invoice.filter({ customer_id: customer.id }, '-txn_date', 2000),
   });
 
@@ -211,14 +216,20 @@ function CustomerDetail({ customer }) {
 /* --------------------------- Info tab ----------------------------------- */
 
 function InfoTab({ customer }) {
+  const cache=useQueryClient();
+  const [archiveError,setArchiveError]=useState('');
   const [editing, setEditing] = useState(false);
   if (editing) return <InfoEdit customer={customer} onDone={() => setEditing(false)} />;
 
-  const address = [customer.street_address, customer.city, [customer.state, customer.zip_code].filter(Boolean).join(' ')]
+  const address = [customer.street_address, customer.city, [customer.state, customer.zip_code].filter(Boolean).join(' '),customer.country]
     .filter(Boolean).join(', ');
 
   return (
     <div className="p-6">
+      <div className="mb-3 flex items-center gap-3 text-xs"><QuickBooksBadge record={customer} entity="customers" />
+        <Button variant="outline" size="sm" onClick={async()=>{try{await base44.entities.Customer.update(customer.id,{active:customer.active===false});await cache.invalidateQueries({queryKey:['v2-customers']});}catch(e){setArchiveError(e.message);}}}>{customer.active===false?'Reactivate customer':'Archive customer'}</Button>
+        {archiveError&&<span role="alert" className="text-red-600">{archiveError}</span>}
+      </div>
       <div className="flex flex-col lg:flex-row gap-6 items-stretch max-w-5xl">
         <div className="flex-1 min-w-0 space-y-5">
           <div className="relative bg-white rounded-2xl border border-gray-200 p-5">
@@ -270,7 +281,7 @@ function Field({ label, value, pre }) {
       <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</p>
       {value
         ? <p className={cn('text-gray-900 mt-0.5', pre && 'whitespace-pre-wrap')}>{value}</p>
-        : <p className="text-gray-400 mt-0.5 italic">—</p>}
+        : <p className="text-gray-400 mt-0.5 italic">-</p>}
     </div>
   );
 }
@@ -288,6 +299,7 @@ function InfoEdit({ customer, onDone }) {
     city: customer?.city || '',
     state: customer?.state || '',
     zip_code: customer?.zip_code || '',
+    country: customer?.country || '',
     delivery_instructions: customer?.delivery_instructions || '',
     map_image_url: customer?.map_image_url || '',
   });
@@ -312,11 +324,11 @@ function InfoEdit({ customer, onDone }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => set('name', e.target.value)} />
+              <Input aria-label="Name" value={form.name} onChange={(e) => set('name', e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>Company</Label>
-              <Input value={form.company_name} onChange={(e) => set('company_name', e.target.value)} />
+              <Input aria-label="Company" value={form.company_name} onChange={(e) => set('company_name', e.target.value)} />
             </div>
             <div className="col-span-2 space-y-1.5">
               <Label>Street address</Label>
@@ -337,25 +349,29 @@ function InfoEdit({ customer, onDone }) {
             </div>
             <div className="space-y-1.5">
               <Label>City</Label>
-              <Input value={form.city} onChange={(e) => set('city', e.target.value)} />
+              <Input aria-label="City" value={form.city} onChange={(e) => set('city', e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>State</Label>
-                <Input value={form.state} onChange={(e) => set('state', e.target.value)} />
+                <Input aria-label="State" value={form.state} onChange={(e) => set('state', e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label>ZIP</Label>
-                <Input value={form.zip_code} onChange={(e) => set('zip_code', e.target.value)} />
+                <Input aria-label="ZIP" value={form.zip_code} onChange={(e) => set('zip_code', e.target.value)} />
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label>Country</Label>
+              <Input aria-label="Country" value={form.country} onChange={(e) => set('country', e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
               <Label>Phone</Label>
-              <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+              <Input type="tel" aria-label="Phone" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>Email</Label>
-              <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
+              <Input type="email" aria-label="Email" value={form.email} onChange={(e) => set('email', e.target.value)} />
             </div>
             <div className="col-span-2 space-y-1.5">
               <Label>Map / location screenshot</Label>
@@ -384,7 +400,7 @@ function InfoEdit({ customer, onDone }) {
             </div>
           </div>
           <div className="flex gap-2 mt-5">
-            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.name.trim()} className="bg-gray-950 hover:bg-gray-800">
+            <Button onClick={() => save.mutate()} disabled={save.isPending || !form.name.trim() || !!contactError('tel', form.phone) || !!contactError('email', form.email)} className="bg-gray-950 hover:bg-gray-800">
               {save.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} {isNew ? 'Create customer' : 'Save'}
             </Button>
             <Button variant="outline" onClick={onDone}>Cancel</Button>
@@ -426,7 +442,7 @@ function JobsTab({ jobs }) {
 
   const what = (j) => {
     const fromLoads = (j.loads || []).map((l) => l.load_configuration).filter(Boolean);
-    return fromLoads.length ? fromLoads.join(', ') : (j.load_configuration || '—');
+    return fromLoads.length ? fromLoads.join(', ') : (j.load_configuration || '-');
   };
 
   return (
@@ -447,14 +463,14 @@ function JobsTab({ jobs }) {
             {jobs.map((j) => (
               <tr key={j.id} className="border-t border-gray-100">
                 <td className="py-2.5 pl-5 pr-2 text-sm text-gray-900 whitespace-nowrap">
-                  {j.scheduled_date ? new Date(j.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                  {j.scheduled_date ? new Date(j.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}
                 </td>
                 <td className="py-2.5 px-2 text-sm text-gray-700">{what(j)}</td>
                 <td className="py-2.5 px-2 text-sm text-gray-700 whitespace-nowrap">
                   {j.quantity || 1}{j.delivery_yards ? ` · ${j.delivery_yards} yds` : ''}
                 </td>
-                <td className="py-2.5 px-2 text-sm text-gray-500 whitespace-nowrap capitalize">{(j.truck_type || '').replace('_', ' ') || '—'}</td>
-                <td className="py-2.5 px-2 text-sm text-gray-500 whitespace-nowrap">{j.assigned_driver_name || '—'}</td>
+                <td className="py-2.5 px-2 text-sm text-gray-500 whitespace-nowrap capitalize">{(j.truck_type || '').replace('_', ' ') || '-'}</td>
+                <td className="py-2.5 px-2 text-sm text-gray-500 whitespace-nowrap">{j.assigned_driver_name || '-'}</td>
                 <td className="py-2.5 px-2 pr-5">
                   <span className={cn('text-[11px] font-medium border rounded-full px-2 py-0.5 capitalize whitespace-nowrap', STATUS_STYLES[j.status] || STATUS_STYLES.pending)}>
                     {(j.status || 'pending').replace('_', ' ')}
@@ -481,7 +497,7 @@ function InvoicesTab({ invoices, customer }) {
   if (!invoices) return <TabSpinner />;
   if (invoices.length === 0) return <Empty text="No invoices for this customer yet." />;
 
-  const money = (v) => v == null ? '—' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  const money = (v) => v == null ? '-' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   const summary = (inv) => {
     const names = (inv.lines || []).map((l) => l.name).filter(Boolean);
     return names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
@@ -509,15 +525,15 @@ function InvoicesTab({ invoices, customer }) {
                 className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer"
               >
                 <td className="py-2.5 pl-5 pr-2 text-sm font-medium text-gray-900 whitespace-nowrap">
-                  {inv.doc_number || '—'}
+                  {inv.doc_number || '-'}
                   {inv.source === 'quickbooks' && (
-                    <span className="ml-2 text-[9px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1 py-0.5 align-middle">QB</span>
+                    <span className="ml-2 text-[9px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1 py-0.5 align-middle" title="Imported invoice">Imported</span>
                   )}
                 </td>
                 <td className="py-2.5 px-2 text-sm text-gray-700 whitespace-nowrap">
-                  {inv.txn_date ? new Date(inv.txn_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                  {inv.txn_date ? new Date(inv.txn_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}
                 </td>
-                <td className="py-2.5 px-2 text-sm text-gray-500">{summary(inv) || '—'}</td>
+                <td className="py-2.5 px-2 text-sm text-gray-500">{summary(inv) || '-'}</td>
                 <td className="py-2.5 px-2 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{money(inv.total)}</td>
                 <td className="py-2.5 px-2">
                   <span className={cn(
@@ -526,6 +542,7 @@ function InvoicesTab({ invoices, customer }) {
                   )}>
                     {inv.status === 'paid' ? 'Paid' : 'Open'}
                   </span>
+                  <span className="ml-1.5"><QuickBooksBadge record={inv} /></span>
                 </td>
                 <td className="py-2.5 px-2 pr-5 text-right"><ChevronRight className="w-4 h-4 text-gray-300 inline" /></td>
               </tr>

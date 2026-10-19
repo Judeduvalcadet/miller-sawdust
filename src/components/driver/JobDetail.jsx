@@ -590,10 +590,10 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
                   {deYellow && loads.length > 0 ? (
                     <>
                       <p className="font-bold text-base leading-tight text-gray-900">
-                        {loads.map((l, i) => `L${l.load_number || i + 1}: ${l.yards_collected || '—'}`).join(' · ')} yds
+                        {loads.map((l, i) => `L${l.load_number || i + 1}: ${l.yards_collected || '-'}`).join(' · ')} yds
                       </p>
                       <p className="font-medium text-sm mt-0.5 text-gray-600">
-                        {loads.map((l, i) => `L${l.load_number || i + 1}: ${l.load_configuration || '—'}`).join(' · ')}
+                        {loads.map((l, i) => `L${l.load_number || i + 1}: ${l.load_configuration || '-'}`).join(' · ')}
                       </p>
                     </>
                   ) : (
@@ -644,7 +644,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           </div>
         )}
 
-        {/* Dispatcher Notes — styled to match the yards / load configuration block */}
+        {/* Dispatcher Notes - styled to match the yards / load configuration block */}
         {job.dispatcher_notes && (
           <div
             ref={dispatcherNotesRef}
@@ -667,7 +667,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <Package className={cn("w-4 h-4", deYellow ? "text-gray-500" : "text-amber-600")} />
-                Loads — Enter Yards Per Load
+                Loads - Enter Yards Per Load
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -698,7 +698,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <Package className={cn("w-4 h-4", deYellow ? "text-gray-500" : "text-amber-600")} />
-                Loads — Pickup Info Per Load
+                Loads - Pickup Info Per Load
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -806,7 +806,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
                 <div>
                   <p className="text-sm font-medium">Invoice Status</p>
                   {invoiceSet
-                    ? <p className="text-xs text-gray-500">{job.invoice_sent === 'yes' ? 'Invoice sent to customer' : 'No invoice — not billed'}</p>
+                    ? <p className="text-xs text-gray-500">{job.invoice_sent === 'yes' ? 'Invoice sent to customer' : 'No invoice - not billed'}</p>
                     : <p className={cn("text-xs font-medium", deYellow ? "text-gray-500" : "text-amber-700")}>Invoice status must be set by dispatcher before completing</p>
                   }
                 </div>
@@ -815,7 +815,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           </Card>
         )}
 
-        {/* Payment Toggle — only for delivery jobs where invoice was sent */}
+        {/* Payment Toggle - only for delivery jobs where invoice was sent */}
         {isDelivery && job.invoice_sent === 'yes' && (
           <Card className={cn(paymentCollected && "bg-green-50 border-green-200")}>
             <CardContent className="py-4">

@@ -114,7 +114,7 @@ export default function JobActivityTimeline({ job }) {
                 ))}
               </div>
               <div className="shrink-0 text-right">
-                <div className="text-xs font-medium text-gray-700">{entry.actor || '—'}</div>
+                <div className="text-xs font-medium text-gray-700">{entry.actor || '-'}</div>
                 <div className="text-[11px] text-gray-400 whitespace-nowrap">{formatTimestamp(entry.ts)}</div>
               </div>
             </div>

@@ -1,4 +1,5 @@
-// Vector PDF generation for invoices — the QuickBooks-style template the
+import { invoiceBillTo } from '@/lib/invoiceBillTo';
+// Vector PDF generation for invoices - the QuickBooks-style template the
 // office supplied (slate bars, single BILL TO block placed for a window
 // envelope). Geometry was measured off that sample at 100dpi and converted
 // to this 816 x 1056 px canvas (x0.96). Body text is the built-in
@@ -20,7 +21,7 @@ const SEP = '#d9dce1';
 const BX = 494, BR = 791, BW = BR - BX;
 // Items table
 const TX = 24, TR = 791;
-const DATE_X = 65, DESC_X = 305, DESC_W = 110;
+const DATE_X = 65, DESC_X = 165, DESC_W = 307;
 const QTY_R = 540, RATE_R = 669, AMT_R = 758;
 
 const FONTS = [
@@ -93,6 +94,7 @@ function drawPaidBadge(pdf, cx, cy, scale = 1) {
 }
 
 export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
+  customer=invoiceBillTo(invoice,customer);
   const lines = invoice.lines || [];
   const paid = invoice.status === 'paid';
   const balance = paid ? 0 : (invoice.balance ?? invoice.total);
@@ -115,7 +117,7 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
 
   /* ---- Top-right logo + wordmark ---- */
   if (logo) pdf.addImage(logo, 'PNG', 562, 50, 101, 101);
-  text(pdf, 'MILLER SAWDUST', 612, 158, { font: 'Oswald', size: 17, align: 'center', charSpace: 1 });
+  text(pdf, coName.toUpperCase(), 612, 158, { font: 'Oswald', size: 17, align: 'center', charSpace: 1 });
 
   /* ---- BILL TO (window-envelope position: do not move) ---- */
   const custName = (customer?.company_name || customer?.name || 'Customer').trim();
@@ -123,7 +125,7 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
     .filter(Boolean).join('  ');
   let by = 220;
   by += text(pdf, 'BILL TO', 65, by, { bold: true, size: 13.5, lineHeight: 1.35 });
-  for (const ln of [custName, customer?.street_address, custCityLine].filter(Boolean)) {
+  for (const ln of [custName, customer?.street_address,...(customer?.street_extra||[]),custCityLine,customer?.country].filter(Boolean)) {
     by += text(pdf, ln, 65, by, { size: 13.5, lineHeight: 1.35 });
   }
 
@@ -166,7 +168,7 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
   let iy = 438 + 9;
   const rows = lines.length ? lines : [{ name: 'No line detail on this invoice', qty: null, unit_price: null, amount: null }];
   rows.forEach((l, idx) => {
-    const desc = l.description && l.description !== l.name ? l.description : (l.name || '—');
+    const desc = l.description && l.description !== l.name ? l.description : (l.name || '-');
     setF(pdf, { size: 13.5 });
     const descLines = pdf.splitTextToSize(String(desc), DESC_W);
     const showDate = !/surcharge/i.test(l.name || '');
@@ -225,10 +227,10 @@ export function drawInvoicePage(pdf, { invoice, customer, company, logo }) {
 }
 
 function pdfDoc(jsPDF) {
-  return new jsPDF({ orientation: 'portrait', unit: 'px', format: [PAGE_W, PAGE_H], hotfixes: ['px_scaling'] });
+  return new jsPDF({ orientation: 'portrait', unit: 'px', format: [PAGE_W, PAGE_H], hotfixes: ['px_scaling'], compress: true, putOnlyUsedFonts: true, floatPrecision: 6 });
 }
 
-/** Render one invoice to a base64 PDF (no download) — used for email/SMS sending. */
+/** Render one invoice to a base64 PDF (no download) - used for email/SMS sending. */
 export async function buildInvoicePdfBase64({ invoice, customer, company, logo }) {
   const { jsPDF } = await import('jspdf');
   const pdf = pdfDoc(jsPDF);

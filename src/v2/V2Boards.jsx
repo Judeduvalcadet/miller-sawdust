@@ -22,7 +22,8 @@ import JobForm from './V2JobForm';
 import SortJobsModal from '@/components/admin/SortJobsModal';
 import GlobalSearch from '@/components/admin/GlobalSearch';
 import SendInvoiceFromJob from './SendInvoiceFromJob';
-import MiniWallboard from '@/components/admin/MiniWallboard';
+import WallboardJobDetailPopup from '@/components/wallboard/WallboardJobDetailPopup';
+import MiniWallboard, { JobDetailPopup } from '@/components/admin/MiniWallboard';
 
 // V2 boards. Day view: drivers rail + the day's jobs per driver, unassigned
 // pinned on top. Week view on dispatch: the V1 board (MiniWallboard),
@@ -137,12 +138,12 @@ function DayStrip({ day, onChangeDay, weekJobsByDate, dark, disabled }) {
 // Badges follow V1: black NOTE pill; green INVOICED pill (admin dispatch
 // only) when the job's linked invoice was sent; V1-style Assign/Reassign.
 
-function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, onEdit, onCancel, onAssign, onSendInvoice }) {
+function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, onEdit, onCancel, onAssign, onSendInvoice, onOpen }) {
   const isCompleted = job.status === 'completed';
   const isCancelled = job.status === 'cancelled';
   const isPending = job.status === 'pending';
   const isPickup = job.job_type === 'pickup';
-  const name = (job.customer_company_name || job.location_name || '').trim() || '—';
+  const name = (job.customer_company_name || job.location_name || '').trim() || '-';
   const yards = isPickup ? job.pickup_yards : job.delivery_yards;
   const configs = ((job.loads || []).map((l) => l.load_configuration).filter(Boolean).join(', ')
     || job.load_configuration || '').trim();
@@ -151,45 +152,48 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
   const assignable = drivers.filter((d) => d.active && d.role !== 'dispatcher' && d.role !== 'assistant' && d.name !== 'Wallboard TV');
 
   return (
-    <Card className={cn(
+    <Card onClick={(event) => {
+      if (!event.target.closest('button, [role="menuitem"], [role="menu"]')) onOpen?.(job);
+    }} className={cn(
+      onOpen && 'cursor-pointer hover:shadow-md',
       'p-3 border-l-4 h-full flex flex-col',
       neutral
-        ? 'border-l-gray-300 bg-white'
+        ? cn('bg-transparent border-gray-600/50 text-white', isPending && 'bg-gray-800/60', isCompleted && 'bg-green-950/60 border-green-700/50', isCancelled && 'opacity-60')
         : cn(
-          isPending && 'border-l-gray-300 bg-gray-50/40',
+          isPending && 'border-l-gray-300 bg-gray-100',
           isCompleted && 'border-l-green-500 bg-green-50/30',
           isCancelled && 'border-l-gray-400 bg-gray-50 opacity-60',
-          !isPending && !isCompleted && !isCancelled && 'border-l-blue-400'
+          !isPending && !isCompleted && !isCancelled && 'border-l-blue-400 bg-gray-100'
         )
     )}>
       <div className="flex items-start justify-between gap-1 flex-1">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-            <TypeIcon className={cn('w-3.5 h-3.5 shrink-0', isPickup ? 'text-amber-600' : 'text-blue-600')} />
-            <span className={cn('text-[10px] font-semibold uppercase shrink-0', isPickup ? 'text-amber-700' : 'text-blue-700')}>
+            <TypeIcon className={cn('w-3.5 h-3.5 shrink-0', neutral ? (isPickup ? 'text-amber-400' : 'text-blue-400') : isPickup ? 'text-amber-600' : 'text-blue-600')} />
+            <span className={cn('text-[10px] font-semibold uppercase shrink-0', neutral ? (isPickup ? 'text-amber-400' : 'text-blue-400') : isPickup ? 'text-amber-700' : 'text-blue-700')}>
               {job.job_type}
             </span>
             <Badge className={cn(
               'text-[10px] px-1.5 py-0 shrink-0',
-              isCompleted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+              neutral ? (isCompleted ? 'bg-green-500/30 text-green-300' : job.status === 'in_progress' ? 'bg-yellow-500/30 text-yellow-300' : 'bg-gray-500/30 text-gray-300') : isCompleted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
             )}>
               {job.status}
             </Badge>
             {hasNotes && (
-              <span className="inline-flex items-center gap-0.5 bg-black text-white text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0">
+              <span className={cn("inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0", neutral ? "bg-white text-black" : "bg-black text-white")}>
                 <StickyNote className="w-2.5 h-2.5" /> NOTE
               </span>
             )}
           </div>
-          <p className="font-semibold text-sm text-gray-900 truncate mt-0.5">{name}</p>
-          <p className="text-xs text-gray-500 truncate">
+          <p className={cn("font-semibold text-sm truncate mt-0.5", neutral ? "text-white" : "text-gray-900")}>{onOpen ? <button className="text-left hover:underline" onClick={() => onOpen(job)}>{name}</button> : name}</p>
+          <p className={cn("text-xs truncate", neutral ? "text-gray-400" : "text-gray-500")}>
             {fmtDay(job.scheduled_date)}
             {(driver?.name || job.assigned_driver_name) ? ` · ${driver?.name || job.assigned_driver_name}` : ''}
             {` · ${job.quantity || 1} load${(job.quantity || 1) !== 1 ? 's' : ''}`}
             {yards ? ` · ${yards} yds` : ''}
           </p>
           {configs && (
-            <p className="text-xs font-medium text-gray-700 truncate mt-0.5">{configs}</p>
+            <p className={cn("text-xs font-medium truncate mt-0.5", neutral ? "text-gray-400" : "text-gray-700")}>{configs}</p>
           )}
         </div>
         {!readOnly && (
@@ -222,8 +226,8 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
                 <button className={cn(
                   'inline-flex items-center gap-1 rounded px-2.5 py-1 text-[10px] font-semibold transition-colors',
                   job.assigned_driver_id
-                    ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                    : 'bg-gray-950 hover:bg-gray-800 text-white'
+                    ? 'bg-gray-200 hover:bg-gray-300 text-gray-600'
+                    : 'bg-gray-800 hover:bg-gray-900 text-white'
                 )}>
                   <UserPlus className="w-2.5 h-2.5" />
                   {job.assigned_driver_id ? 'Reassign' : 'Assign'}
@@ -242,7 +246,7 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
             </DropdownMenu>
           ) : <span />}
           {invoiced ? (
-            <span className="inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
+            <span className={cn("inline-flex items-center gap-0.5 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold", neutral ? "bg-green-500/30 text-green-300" : "bg-green-600")}>
               <Receipt className="w-2.5 h-2.5" /> INVOICED
             </span>
           ) : (!readOnly && onSendInvoice && job.job_type === 'delivery' && job.customer_id && !isCancelled) ? (
@@ -297,7 +301,7 @@ function UnassignedCards({ jobs, expanded, onToggle, renderCard }) {
 /* ----------------------------- board grid -------------------------------- */
 // Day-view grid: unassigned pinned first, then drivers with jobs that day.
 
-function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filter, invoicedMap, onEdit, onCancel, onAssign, onSendInvoice, onSortDay, headerExtra }) {
+function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filter, invoicedMap, onEdit, onCancel, onAssign, onSendInvoice, onSortDay, headerExtra, onOpen }) {
   const [unassignedOpen, setUnassignedOpen] = useState(false);
 
   const match = (job) => {
@@ -325,7 +329,7 @@ function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filt
       className={cn(
         'transition-opacity',
         fixed ? 'w-[260px] shrink-0' : 'flex-1 min-w-[210px] max-w-[300px]',
-        dark && 'bg-white rounded-xl',
+        dark && 'rounded-xl',
         filter && !match(job) && 'opacity-25'
       )}
     >
@@ -339,6 +343,7 @@ function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filt
         onEdit={onEdit}
         onCancel={onCancel}
         onAssign={onAssign}
+        onOpen={onOpen}
         onSendInvoice={onSendInvoice}
       />
     </div>
@@ -348,7 +353,7 @@ function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filt
 
   return (
     <div className={cn('flex-1 min-h-0 overflow-y-auto rounded-2xl border', dark ? 'border-white/10' : 'border-gray-200 bg-white')}>
-      {/* header — taller, holds the count and the board search */}
+      {/* header - taller, holds the count and the board search */}
       <div className={cn('flex sticky top-0 z-10', dark ? 'bg-gray-950' : 'bg-white shadow-[0_1px_0_0_#f3f4f6]')}>
         <div className={cn(railCls, 'justify-center py-3')}>
           <span className={cn('text-[11px] uppercase tracking-wide font-medium', dark ? 'text-gray-500' : 'text-gray-400')}>Drivers</span>
@@ -361,7 +366,7 @@ function BoardGrid({ drivers, weekJobsByDate, day, dark, neutral, readOnly, filt
         </div>
       </div>
 
-      {/* unassigned — always first */}
+      {/* unassigned - always first */}
       {unassignedJobs.length > 0 && (
         <div className={cn('flex border-t', dark ? 'border-white/10' : 'border-gray-100')}>
           <div className={cn(railCls, 'py-4 gap-2')}>
@@ -448,7 +453,7 @@ function useWeekJobs(day, opts = {}) {
 
 /* ----------------------------- DISPATCH ---------------------------------- */
 
-// Job ids whose invoice has been sent — one light query that powers the
+// Job ids whose invoice has been sent - one light query that powers the
 // week cards' INVOICED badge.
 function useSentInvoiceJobIds() {
   const { data } = useQuery({
@@ -471,7 +476,7 @@ export function V2Dispatch() {
   const queryClient = useQueryClient();
   const [day, setDay] = useState(iso(new Date()));
   const sentJobIds = useSentInvoiceJobIds();
-  const [view, setView] = useState('day');
+  const [view, setView] = useState('week');
   const [filter, setFilter] = useState('');
   const [showJobForm, setShowJobForm] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
@@ -486,7 +491,7 @@ export function V2Dispatch() {
   const { data: dropOffLocations = [] } = useQuery({ queryKey: ['dropoff-locations'], queryFn: () => base44.entities.DropOffLocation.list('name') });
   const weekJobs = useMemo(() => [...byDate.values()].flat(), [byDate]);
 
-  // The V1 board (week view) manages its own weeks — give it the full list.
+  // The V1 board (week view) manages its own weeks - give it the full list.
   const { data: allJobs = [] } = useQuery({
     queryKey: ['v1-board-jobs'],
     enabled: view === 'week',
@@ -497,6 +502,7 @@ export function V2Dispatch() {
   // card offers the Send Invoice button.
   const invoicedMap = useMemo(() => new Map([...sentJobIds].map((id) => [id, true])), [sentJobIds]);
   const [sendJob, setSendJob] = useState(null);
+  const [detailJob, setDetailJob] = useState(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['board-week-jobs'] });
@@ -526,7 +532,7 @@ export function V2Dispatch() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* toolbar — white bar across the top */}
+      {/* toolbar - white bar across the top */}
       <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-2 flex-wrap">
         <DayStrip day={day} onChangeDay={setDay} weekJobsByDate={byDate} disabled={view === 'week'} />
         <div className="flex gap-0.5 bg-gray-200/70 rounded-lg p-0.5 ml-1">
@@ -535,7 +541,7 @@ export function V2Dispatch() {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <div className="w-96 max-w-[40vw]"><GlobalSearch /></div>
+          <div className="w-96 max-w-[40vw]"><GlobalSearch deYellow /></div>
           <Button size="sm" className="bg-gray-950 hover:bg-gray-800" onClick={() => { setEditingJob(null); setDefaultJobDate(day); setShowJobForm(true); }}>
             <Plus className="w-4 h-4 mr-1.5" /> New Job
           </Button>
@@ -571,6 +577,7 @@ export function V2Dispatch() {
           onEdit={onEdit}
           onCancel={onCancel}
           onAssign={onAssign}
+          onOpen={setDetailJob}
           onSendInvoice={setSendJob}
           onSortDay={(d, driverId) => setSortTarget({ date: d, driverId })}
           headerExtra={
@@ -583,6 +590,15 @@ export function V2Dispatch() {
       )}
       </div>
 
+      {detailJob && <JobDetailPopup
+        job={detailJob}
+        driver={drivers.find((d) => d.id === detailJob.assigned_driver_id)}
+        pickupLocations={pickupLocations}
+        deYellow
+        onClose={() => setDetailJob(null)}
+        onEdit={onEdit}
+        onDelete={() => { deleteJob.mutate(detailJob.id); setDetailJob(null); }}
+      />}
       {sendJob && (
         <SendInvoiceFromJob
           job={sendJob}
@@ -591,7 +607,7 @@ export function V2Dispatch() {
         />
       )}
 
-      {/* New/Edit job — same close-proof popup as V1 */}
+      {/* New/Edit job - same close-proof popup as V1 */}
       <Dialog open={showJobForm} onOpenChange={() => {}}>
         <DialogContent
           className="w-[97vw] max-w-[92rem] max-h-[94vh] overflow-y-auto"
@@ -636,6 +652,7 @@ export function V2Wallboard() {
   const [day, setDay] = useState(iso(new Date()));
   const sentJobIds = useSentInvoiceJobIds();
   const [view, setView] = useState('day');
+  const [selectedJob, setSelectedJob] = useState(null);
   const [manualUntil, setManualUntil] = useState(null);
 
   useEffect(() => {
@@ -663,14 +680,6 @@ export function V2Wallboard() {
     retry: true,
   });
   const { data: pickupLocations = [] } = useQuery({ queryKey: ['pickup-locations'], queryFn: () => base44.entities.PickupLocation.list('name') });
-  const { data: allJobs = [] } = useQuery({
-    queryKey: ['v1-board-jobs'],
-    enabled: view === 'week',
-    refetchInterval: 60000,
-    retry: true,
-    queryFn: async () => (await base44.entities.Job.list('-scheduled_date', 6000)).filter((j) => !j.deleted_at),
-  });
-
   const changeDay = (d) => { setDay(d); setManualUntil(d); };
 
   return (
@@ -679,7 +688,7 @@ export function V2Wallboard() {
         <h1 className="text-lg font-bold text-white mr-2">
           {new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </h1>
-        <DayStrip day={day} onChangeDay={changeDay} weekJobsByDate={byDate} dark disabled={view === 'week'} />
+        <DayStrip day={day} onChangeDay={changeDay} weekJobsByDate={byDate} dark />
         <div className="flex gap-0.5 bg-white/10 rounded-lg p-0.5 ml-1">
           {[['day', 'Day'], ['week', 'Week']].map(([v, l]) => (
             <button key={v} onClick={() => setView(v)} className={cn('px-3 py-1.5 text-xs font-medium rounded-md', view === v ? 'bg-white text-gray-950' : 'text-gray-400 hover:text-white')}>{l}</button>
@@ -693,24 +702,35 @@ export function V2Wallboard() {
       </div>
 
       {view === 'week' ? (
-        <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl bg-gray-100 p-2">
-          <MiniWallboard
-            jobs={allJobs}
-            drivers={drivers}
-            pickupLocations={pickupLocations}
-            isAdmin={false}
-            deYellow
-            invoicedIds={sentJobIds}
-            onAddJob={() => {}}
-            onEditJob={() => {}}
-            onSortJobs={() => {}}
-          />
+        <div className="flex-1 min-h-0 overflow-x-auto rounded-2xl border border-gray-700/50">
+          <div className="grid grid-cols-5 min-w-[1050px] h-full divide-x divide-gray-700/50">
+            {Array.from({ length: 5 }, (_, i) => addDays(mondayOf(day), i)).map((date) => {
+              const jobs = (byDate.get(date) || []).slice().sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
+              const today = date === iso(new Date());
+              const loads = jobs.reduce((sum, job) => sum + Number(job.quantity || 0), 0);
+              return <div key={date} className="flex flex-col min-h-0">
+                <div className={cn('px-3 py-3 border-b border-gray-700 flex justify-between items-center', today ? 'bg-amber-900/40' : 'bg-gray-800/60')}>
+                  <div>
+                    <p className={cn('text-xs font-semibold uppercase', today ? 'text-amber-400' : 'text-gray-500')}>{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</p>
+                    <p className={cn('text-xl font-bold', today ? 'text-amber-300' : 'text-gray-200')}>{fmtDay(date)}</p>
+                  </div>
+                  {!!loads && <span className="text-xs rounded px-2 py-1 bg-gray-700/60 text-gray-300">{loads} load{loads !== 1 ? 's' : ''}</span>}
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin text-gray-400 mx-auto mt-6" /> : jobs.length ? jobs.map((job) => <div key={job.id}>
+                    <BoardJobCard job={job} driver={drivers.find((d) => d.id === job.assigned_driver_id)} neutral readOnly invoiced={sentJobIds.has(job.id)} onOpen={setSelectedJob} />
+                  </div>) : <p className="text-xs text-gray-600 text-center pt-6">No jobs</p>}
+                </div>
+              </div>;
+            })}
+          </div>
         </div>
       ) : isLoading && byDate.size === 0 ? (
         <div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-500" /></div>
       ) : (
         <BoardGrid drivers={drivers} weekJobsByDate={byDate} day={day} dark neutral readOnly invoicedMap={new Map([...sentJobIds].map((id) => [id, true]))} />
       )}
+      {selectedJob && <WallboardJobDetailPopup job={selectedJob} driver={drivers.find((d) => d.id === selectedJob.assigned_driver_id)} pickupLocations={pickupLocations} onClose={() => setSelectedJob(null)} />}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { contactError } from '@/lib/contactValidation';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -100,7 +101,7 @@ function DirectoryPage({ kind, title, subtitle, entity, queryKey, newLabel }) {
             >
               <p className="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5">
                 {kind === 'pickup' && r.location_type === 'my_building' && <Warehouse className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
-                {(r.name || '').trim() || '—'}
+                {(r.name || '').trim() || '-'}
               </p>
               <p className="text-xs text-gray-400 truncate">{r.address || ''}</p>
             </button>
@@ -286,7 +287,7 @@ function LocationForm({ kind, entity, queryKey, record, onDone }) {
             {kind === 'pickup' && (
               <div className="col-span-2 space-y-1.5">
                 <Label>Phone</Label>
-                <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+                <Input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
               </div>
             )}
             {kind === 'dropoff' && (
@@ -337,7 +338,7 @@ function LocationForm({ kind, entity, queryKey, record, onDone }) {
           <div className="flex gap-2 mt-5">
             <Button
               onClick={() => save.mutate()}
-              disabled={save.isPending || !form.name.trim()}
+              disabled={save.isPending || !form.name.trim() || !!contactError('tel', form.phone)}
               className="bg-gray-950 hover:bg-gray-800"
             >
               {save.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -368,7 +369,7 @@ function Field({ label, value, pre }) {
       <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{label}</p>
       {value
         ? <p className={cn('text-gray-900 mt-0.5', pre && 'whitespace-pre-wrap')}>{value}</p>
-        : <p className="text-gray-400 mt-0.5 italic">—</p>}
+        : <p className="text-gray-400 mt-0.5 italic">-</p>}
     </div>
   );
 }

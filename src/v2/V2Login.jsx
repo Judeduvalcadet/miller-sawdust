@@ -1,3 +1,4 @@
+import { validContact } from '@/lib/contactValidation';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ export default function V2Login() {
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password) return;
+    if (!validContact('email', email) || !password) return;
     setLoading(true);
     setError('');
     try {
@@ -68,7 +69,7 @@ export default function V2Login() {
             />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <Button type="submit" disabled={loading || !email.trim() || !password} className="w-full bg-gray-950 hover:bg-gray-800">
+          <Button type="submit" disabled={loading || !validContact('email', email) || !password} className="w-full bg-gray-950 hover:bg-gray-800">
             {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Sign in
           </Button>

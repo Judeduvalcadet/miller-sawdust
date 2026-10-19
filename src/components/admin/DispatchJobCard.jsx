@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
-// `readOnly` hides the action menu — used by the V2 wallboard (display only).
+// `readOnly` hides the action menu - used by the V2 wallboard (display only).
 export default function DispatchJobCard({ job, driver, onEdit, onCancel, readOnly = false }) {
   const isCompleted = job.status === 'completed';
   const isCancelled = job.status === 'cancelled';

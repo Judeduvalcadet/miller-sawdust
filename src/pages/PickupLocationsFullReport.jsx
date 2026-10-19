@@ -19,8 +19,8 @@ function formatRangeLabel(range) {
   const sameDay = range.from.getTime() === range.to.getTime();
   if (sameDay) return format(range.from, 'MMM d, yyyy');
   const sameYear = range.from.getFullYear() === range.to.getFullYear();
-  if (sameYear) return `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d, yyyy')}`;
-  return `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
+  if (sameYear) return `${format(range.from, 'MMM d')} - ${format(range.to, 'MMM d, yyyy')}`;
+  return `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`;
 }
 
 export default function PickupLocationsFullReport() {
@@ -148,7 +148,7 @@ export default function PickupLocationsFullReport() {
     return Object.entries(map).map(([name, yards]) => ({ name, yards })).sort((a, b) => b.yards - a.yards);
   };
 
-  // Available sets (within date range, ignoring other filters) — for gray-out logic
+  // Available sets (within date range, ignoring other filters) - for gray-out logic
   const availableDriverIds = useMemo(
     () => new Set(inDateRangeJobs.map(j => j.assigned_driver_id).filter(Boolean)),
     [inDateRangeJobs]
@@ -359,7 +359,7 @@ export default function PickupLocationsFullReport() {
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 flex-wrap gap-3">
                   <div className="flex items-center gap-3">
                     <p className="text-sm text-gray-500">
-                      Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, pickupByLocation.length)} of {pickupByLocation.length}
+                      Showing {page * pageSize + 1}-{Math.min((page + 1) * pageSize, pickupByLocation.length)} of {pickupByLocation.length}
                     </p>
                     <div className="flex items-center gap-1.5">
                       <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>

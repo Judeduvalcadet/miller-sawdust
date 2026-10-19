@@ -87,7 +87,7 @@
   }
 }
 
-/* Note highlight pulse — used when driver opens a job with a note */
+/* Note highlight pulse - used when driver opens a job with a note */
 @keyframes note-pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.75);

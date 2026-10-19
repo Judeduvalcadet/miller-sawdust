@@ -326,7 +326,7 @@ export default function PickupLocationManager() {
             </div>
             <div className="space-y-2">
               <Label>Phone</Label>
-              <Input
+              <Input type="tel"
                 value={formData.phone}
                 onChange={(e) => setFormData({...formData, phone: e.target.value})}
                 placeholder="555-123-4567"
@@ -378,12 +378,12 @@ export default function PickupLocationManager() {
               </Select>
             </div>
 
-            {/* Standing pickup schedule — read by the dispatch assistant */}
+            {/* Standing pickup schedule - read by the dispatch assistant */}
             <div className="space-y-3 border border-gray-200 rounded-xl p-3 bg-gray-50">
               <div>
                 <Label>Pickup Schedule <span className="text-gray-400 font-normal text-xs">(optional)</span></Label>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  How often this location wants sawdust picked up — used by the AI assistant.
+                  How often this location wants sawdust picked up - used by the AI assistant.
                 </p>
               </div>
               <div className="flex flex-wrap gap-1.5">

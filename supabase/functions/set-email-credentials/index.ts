@@ -1,6 +1,6 @@
 // Admin-only: set or update a user's email + password (office login for the
 // invoicing / QuickBooks area). Requires a PASSWORD-authenticated admin
-// session — a PIN session cannot grant or change office credentials. The
+// session - a PIN session cannot grant or change office credentials. The
 // very first credential is bootstrapped server-side with the service key.
 import bcrypt from 'npm:bcryptjs@2'
 import { service, json, handleOptions, verifyAccessToken } from '../_shared/mod.ts'

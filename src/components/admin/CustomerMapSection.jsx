@@ -1,3 +1,4 @@
+import { contactError } from '@/lib/contactValidation';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
@@ -47,7 +48,7 @@ export function MapThumb({ src, className = 'h-24' }) {
     <>
       <img
         src={src}
-        alt="Map picture — tap to enlarge"
+        alt="Map picture - tap to enlarge"
         title="Tap to enlarge"
         onClick={() => setOpen(true)}
         className={`${className} w-auto max-w-full rounded-lg border border-gray-200 cursor-zoom-in hover:opacity-90 block`}
@@ -88,9 +89,9 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
         maptype: map.getMapTypeId() === 'satellite' ? 'satellite' : map.getMapTypeId() === 'hybrid' ? 'hybrid' : 'roadmap',
       });
       if (data?.image) setEditorImage(data.image);
-      else setError("Couldn't capture the map — try again.");
+      else setError("Couldn't capture the map - try again.");
     } catch {
-      setError("Couldn't capture the map — try again.");
+      setError("Couldn't capture the map - try again.");
     }
     setCapturing(false);
   };
@@ -101,7 +102,7 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
       await onSaveImage(blob, instructions);
       setEditorImage(null);
     } catch {
-      setError("Couldn't save the picture — try again.");
+      setError("Couldn't save the picture - try again.");
     }
     setSaving(false);
   };
@@ -116,7 +117,7 @@ export function JobMapPanel({ pin, title, waitingText, canCapture, onSaveImage, 
       )}
       <div className="relative flex-1 min-h-0 isolate">
         {/* z-0 creates a stacking context that CONTAINS Google Maps' internal
-            z-indexes (up to ~1,000,002) — without it they compete with the
+            z-indexes (up to ~1,000,002) - without it they compete with the
             overlays below and cover them intermittently during zoom. The
             overlays additionally carry translateZ(0): Safari composites the
             map's 3D-accelerated tiles above plain siblings regardless of
@@ -213,7 +214,7 @@ export function NewCustomerForm({ onCreated, onCancel, onPinChange, mapBlob, map
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       onCreated(created);
     } catch (e) {
-      setError('Could not save the customer — ' + (e.message || 'try again.'));
+      setError('Could not save the customer - ' + (e.message || 'try again.'));
     }
     setSaving(false);
   };
@@ -264,13 +265,13 @@ export function NewCustomerForm({ onCreated, onCancel, onPinChange, mapBlob, map
         </div>
         <div className="space-y-1 md:col-span-2">
           <Label className="text-xs text-gray-500">Phone</Label>
-          <Input value={fields.phone} onChange={(e) => set('phone', e.target.value)} placeholder="330-555-0100" />
+          <Input type="tel" value={fields.phone} onChange={(e) => set('phone', e.target.value)} placeholder="330-555-0100" />
         </div>
       </div>
 
       {blobUrl && (
         <div className="space-y-1">
-          <Label className="text-xs text-gray-500">Map picture <span className="text-gray-400">(tap to enlarge — saves with the customer)</span></Label>
+          <Label className="text-xs text-gray-500">Map picture <span className="text-gray-400">(tap to enlarge - saves with the customer)</span></Label>
           <MapThumb src={blobUrl} className="h-20" />
         </div>
       )}
@@ -284,7 +285,7 @@ export function NewCustomerForm({ onCreated, onCancel, onPinChange, mapBlob, map
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={saving}>Cancel</Button>
-        <Button type="button" size="sm" onClick={save} disabled={saving} className="bg-amber-600 hover:bg-amber-700">
+        <Button type="button" size="sm" onClick={save} disabled={saving || !!contactError('tel', fields.phone)} className="bg-amber-600 hover:bg-amber-700">
           {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
           Save Customer
         </Button>

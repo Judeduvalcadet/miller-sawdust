@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
 import { JobMapPanel, NewCustomerForm, saveCustomerMapImage } from "@/components/admin/CustomerMapSection";
 
-// V2 job form — QuickBooks-first. The V1 JobForm is untouched; this fork
+// V2 job form - QuickBooks-first. The V1 JobForm is untouched; this fork
 // drives each load from the QB item catalog: pick the item and the truck,
 // yardage and job-card label fill themselves. Layout:
 //   Job type        | Scheduled date (one-time / recurring)
@@ -385,7 +385,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
   const customerOptions = allCustomers.map((c) => ({
     value: c.id,
     label: c.name
-      ? (c.company_name ? `${c.name} — ${c.company_name}` : c.name)
+      ? (c.company_name ? `${c.name} - ${c.company_name}` : c.name)
       : (c.company_name || c.business_name || ''),
   }));
   const byLabel = (a, b) => (a.label || '').localeCompare(b.label || '');
@@ -707,7 +707,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
               {isPickup && <p className="text-xs text-gray-500">Each load will require yards entry on the job detail page</p>}
             </div>
 
-            {/* Per-load sections — delivery jobs */}
+            {/* Per-load sections - delivery jobs */}
             {!isPickup && (
               <div className="col-span-1 md:col-span-2 space-y-3">
                 {loads.map((load, i) => {
@@ -730,7 +730,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                           <ItemSearch items={loadItems} value={load.item_id} onPick={(it) => pickItem(i, it)} />
                         </div>
                       </div>
-                      {/* Truck / yards / config — filled by the item; truck stays
+                      {/* Truck / yards / config - filled by the item; truck stays
                           open when the item says Any. */}
                       <div className="flex gap-3">
                         <div className="space-y-1 w-44 shrink-0">
@@ -740,7 +740,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                             onValueChange={(v) => setLoad(i, { truck_type: v })}
                           >
                             <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder={load.item_id ? 'Choose truck…' : '—'} />
+                              <SelectValue placeholder={load.item_id ? 'Choose truck…' : '-'} />
                             </SelectTrigger>
                             <SelectContent>
                               {TRUCK_TYPES.map((t) => (
@@ -857,7 +857,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
               waitingText={mapWaiting}
               canCapture={mapMode === 'new' || mapMode === 'customer'}
               savedNote={mapMode === 'new'
-                ? (newCustomerBlob ? 'Picture attached — saves with the customer' : '')
+                ? (newCustomerBlob ? 'Picture attached - saves with the customer' : '')
                 : customerMapNote}
               initialInstructions={mapMode === 'new'
                 ? newCustomerInstructions

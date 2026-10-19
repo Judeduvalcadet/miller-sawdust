@@ -1,158 +1,75 @@
-// Send an invoice to the customer by email (Resend) or SMS (Twilio).
-// Office sessions only (admin/assistant signed in with email+password).
-//
-// The client renders the letterhead PDF and posts it here as base64; this
-// function stores the exact copy that was sent in the private `invoices`
-// bucket, sends it out, and stamps the invoice row.
-//
-// Env:
-//   RESEND_API_KEY, INVOICE_FROM_EMAIL       — email sending
-//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN,
-//   TWILIO_FROM_NUMBER                       — SMS sending
-//   INVOICE_SEND_DRY_RUN=true                — sandbox: do everything except
-//                                              the external send
-import { service, json, handleOptions, verifyAccessToken } from '../_shared/mod.ts'
-
-const SIGNED_URL_SECONDS = 60 * 60 * 24 * 30 // 30 days
-
-function b64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return bytes
-}
-
+import { DEFAULT_EMAIL_TEMPLATE, renderEmailTemplate, companyEmailValues } from "../_shared/email-template.ts";
+// Invoice delivery shares the inbox outbox, receipts, privacy and send gates.
+import { service, json, handleOptions } from "../_shared/mod.ts";
+import {
+  checked,
+  MessagingError,
+  office,
+  readBody,
+  send,
+  writable,
+} from "../_shared/messaging.ts";
 Deno.serve(async (req) => {
-  const options = handleOptions(req)
-  if (options) return options
-
-  const claims = await verifyAccessToken(req)
-  if (!claims) return json(401, { error: 'unauthorized' })
-  if (!['admin', 'assistant'].includes(String(claims.app_role)) || claims.amr !== 'password') {
-    return json(403, { error: 'office_only' })
-  }
-
-  let body: Record<string, unknown>
+  const options = handleOptions(req);
+  if (options) return options;
+  if (req.method !== "POST") return json(405, { error: "POST required." });
   try {
-    body = await req.json()
-  } catch {
-    return json(400, { error: 'bad_json' })
-  }
-  const invoiceId = String(body.invoice_id ?? '')
-  const mode = String(body.mode ?? '')
-  const to = String(body.to ?? '').trim()
-  const pdfB64 = String(body.pdf_base64 ?? '')
-  const filename = String(body.filename ?? 'invoice.pdf').replace(/[^\w .()-]/g, '')
-  if (!invoiceId || !['email', 'sms'].includes(mode) || !to || !pdfB64) {
-    return json(400, { error: 'missing_fields' })
-  }
-  if (mode === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-    return json(400, { error: 'bad_email' })
-  }
-  const phone = to.replace(/[^\d+]/g, '')
-  if (mode === 'sms' && !/^\+?\d{10,15}$/.test(phone)) {
-    return json(400, { error: 'bad_phone' })
-  }
-
-  const { data: invoice, error: invErr } = await service
-    .from('invoices').select('id, doc_number, total, balance, status, customer_id')
-    .eq('id', invoiceId).single()
-  if (invErr || !invoice) return json(404, { error: 'invoice_not_found' })
-
-  const { data: settingsRows } = await service.from('settings').select('company_profile').limit(1)
-  const company = settingsRows?.[0]?.company_profile ?? {}
-  const coName = company.company_name || 'Miller Sawdust'
-  const coPhone = company.phone || ''
-  const money = (v: unknown) =>
-    Number(v ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
-
-  // Keep the exact PDF that went out, and a link the customer can open.
-  const path = `${invoice.id}/${Date.now()}-${filename}`
-  const { error: upErr } = await service.storage.from('invoices')
-    .upload(path, b64ToBytes(pdfB64), { contentType: 'application/pdf', upsert: true })
-  if (upErr) return json(500, { error: 'storage_upload_failed', detail: upErr.message })
-  const { data: signed, error: signErr } = await service.storage.from('invoices')
-    .createSignedUrl(path, SIGNED_URL_SECONDS)
-  if (signErr || !signed?.signedUrl) return json(500, { error: 'sign_url_failed' })
-  const link = signed.signedUrl
-
-  const dryRun = Deno.env.get('INVOICE_SEND_DRY_RUN') === 'true'
-  const docLabel = invoice.doc_number ? `#${invoice.doc_number}` : ''
-
-  if (mode === 'email') {
-    const apiKey = Deno.env.get('RESEND_API_KEY')
-    const from = Deno.env.get('INVOICE_FROM_EMAIL')
-    if (!dryRun && (!apiKey || !from)) {
-      return json(501, { error: 'not_configured', missing: ['RESEND_API_KEY', 'INVOICE_FROM_EMAIL'].filter((k) => !Deno.env.get(k)) })
+    const claims = await office(req);
+    writable();
+    const body = await readBody(req);
+    if (!["email", "sms"].includes(body.mode))
+      throw new MessagingError("Invalid delivery channel.");
+    const invoice = checked(
+      await service
+        .from("invoices")
+        .select("id,doc_number,customer_id,txn_date,due_date,total,balance,status")
+        .eq("id", body.invoice_id)
+        .single(),
+    );
+    const rows = checked(
+      await service.from("settings").select("company_profile,email_template").limit(1),
+    );
+    const company = rows?.[0]?.company_profile || {},
+      name = company.company_name || "Miller Sawdust";
+    const label = `${name}: Invoice #${invoice.doc_number || ""}`.trim();
+    let email = { subject: label, body: label };
+    if (body.mode === "email") {
+      const customer = invoice.customer_id ? checked(await service.from("customers").select("company_name,name").eq("id", invoice.customer_id).maybeSingle()) : null;
+      const money = (value: unknown) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value || 0));
+      const date = (value: string) => value ? new Date(value + "T00:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" }) : "";
+      email = renderEmailTemplate(rows?.[0]?.email_template || DEFAULT_EMAIL_TEMPLATE, {
+        ...companyEmailValues(company),
+        customer_name: customer?.company_name || customer?.name || "Customer",
+        invoice_number: invoice.doc_number || "", invoice_date: date(invoice.txn_date), due_date: date(invoice.due_date),
+        invoice_total: money(invoice.total), invoice_balance: money(invoice.status === "paid" ? 0 : (invoice.balance ?? invoice.total)),
+      });
     }
-    if (!dryRun) {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: `${coName} <${from}>`,
-          to: [to],
-          reply_to: company.email || undefined,
-          subject: `Invoice ${docLabel} from ${coName}`.replace('  ', ' '),
-          html: `
-            <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111">
-              <p>Hello,</p>
-              <p>Your invoice ${docLabel} from ${coName} is attached${invoice.status === 'paid' ? ' (paid in full — thank you!)' : ` — amount due ${money(invoice.balance ?? invoice.total)}`}.</p>
-              <p>You can also view it here: <a href="${link}">open invoice</a> (link valid 30 days).</p>
-              <p>Questions? ${coPhone ? `Call ${coPhone}.` : 'Just reply to this email.'}</p>
-              <p>Thank you for your business,<br/>${coName}</p>
-            </div>`,
-          attachments: [{ filename, content: pdfB64 }],
-        }),
-      })
-      if (!res.ok) {
-        const detail = await res.text().catch(() => '')
-        return json(502, { error: 'email_send_failed', detail: detail.slice(0, 400) })
-      }
-    }
-    const now = new Date().toISOString()
-    await service.from('invoices').update({ emailed_at: now, sent_at: now }).eq('id', invoice.id)
-    await service.from('invoice_sends').insert({
-      invoice_id: invoice.id, mode: 'email', recipient: to,
-      storage_path: path, dry_run: dryRun, sent_by: String(claims.name ?? ''),
-    })
-    return json(200, { ok: true, dry_run: dryRun, link })
+    return json(
+      200,
+      await send(
+        {
+          request_id: body.request_id,
+          channel: body.mode,
+          to: body.to,
+          customer_id: invoice.customer_id,
+          invoice_id: invoice.id,
+          subject: email.subject,
+          body: body.mode === "sms" ? label : email.body,
+          reply_to: company.email,
+          attachments: [
+            {
+              name: `Invoice ${invoice.doc_number || invoice.id}.pdf`,
+              type: "application/pdf",
+              content: body.pdf_base64,
+            },
+          ],
+        },
+        claims,
+      ),
+    );
+  } catch (e) {
+    return json(e instanceof MessagingError ? e.status : 400, {
+      error: (e as Error).message,
+    });
   }
-
-  // SMS
-  const sid = Deno.env.get('TWILIO_ACCOUNT_SID')
-  const token = Deno.env.get('TWILIO_AUTH_TOKEN')
-  const fromNumber = Deno.env.get('TWILIO_FROM_NUMBER')
-  if (!dryRun && (!sid || !token || !fromNumber)) {
-    return json(501, { error: 'not_configured', missing: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER'].filter((k) => !Deno.env.get(k)) })
-  }
-  // MMS: Twilio fetches the signed PDF URL and delivers the document itself;
-  // the body is just the short caption under it.
-  const caption = `${coName} invoice ${docLabel}`.trim()
-  if (!dryRun) {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Basic ' + btoa(`${sid}:${token}`),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        From: fromNumber!,
-        To: phone.startsWith('+') ? phone : `+1${phone}`,
-        Body: caption,
-        MediaUrl: link,
-      }),
-    })
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '')
-      return json(502, { error: 'sms_send_failed', detail: detail.slice(0, 400) })
-    }
-  }
-  const now = new Date().toISOString()
-  await service.from('invoices').update({ texted_at: now, sent_at: now }).eq('id', invoice.id)
-  await service.from('invoice_sends').insert({
-    invoice_id: invoice.id, mode: 'mms', recipient: phone.startsWith('+') ? phone : `+1${phone}`,
-    storage_path: path, dry_run: dryRun, sent_by: String(claims.name ?? ''),
-  })
-  return json(200, { ok: true, dry_run: dryRun, link })
-})
+});

@@ -162,7 +162,7 @@ export default function AdminLogs() {
                                         className={`border-b cursor-pointer hover:bg-amber-50 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}
                                     >
                                         <td className="px-4 py-3 text-gray-500 whitespace-nowrap font-mono text-xs">
-                                            {log.timestamp ? format(new Date(log.timestamp), 'MMM d, HH:mm:ss') : '—'}
+                                            {log.timestamp ? format(new Date(log.timestamp), 'MMM d, HH:mm:ss') : '-'}
                                         </td>
                                         <td className="px-4 py-3">
                                             <Badge className={levelColors[log.level] || 'bg-gray-100 text-gray-700'}>
@@ -217,7 +217,7 @@ export default function AdminLogs() {
                                 <div>
                                     <p className="text-gray-500 font-medium mb-1">Timestamp</p>
                                     <p className="font-mono text-xs">
-                                        {selectedLog.timestamp ? format(new Date(selectedLog.timestamp), 'MMM d, yyyy HH:mm:ss') : '—'}
+                                        {selectedLog.timestamp ? format(new Date(selectedLog.timestamp), 'MMM d, yyyy HH:mm:ss') : '-'}
                                     </p>
                                 </div>
                                 <div>

@@ -88,7 +88,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
 
   const initDeliveryLoads = (qty, existingLoads = [], existingJob = null) => {
     const hasLoads = Array.isArray(existingLoads) && existingLoads.length > 0;
-    // Old job without loads array — pre-populate load 1 from single fields
+    // Old job without loads array - pre-populate load 1 from single fields
     if (!hasLoads && existingJob && (existingJob.delivery_yards || existingJob.load_configuration)) {
       const q = parseInt(qty) || 1;
       return Array.from({ length: q }, (_, i) => ({
@@ -144,7 +144,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         }
       }
     });
-    // QuickBooks item catalog — the load presets. Falls back to the numeric
+    // QuickBooks item catalog - the load presets. Falls back to the numeric
     // yard presets if the catalog is empty or fails to load.
     base44.entities.Item.filter({ is_load_item: true, active: true }, 'sort_order')
       .then(list => setLoadItems(list || []))
@@ -342,12 +342,12 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
     mapTitle = 'New customer';
     mapWaiting = 'Pick an address suggestion on the left and the pin drops here.';
   } else if (!isPickup && selectedCustomer) {
-    mapTitle = `${(selectedCustomer.company_name || selectedCustomer.name || '').trim()} — ${[selectedCustomer.street_address, selectedCustomer.city].filter(Boolean).join(', ')}`;
+    mapTitle = `${(selectedCustomer.company_name || selectedCustomer.name || '').trim()} - ${[selectedCustomer.street_address, selectedCustomer.city].filter(Boolean).join(', ')}`;
     if (selectedCustomer.latitude != null) {
       mapMode = 'customer';
       mapPin = { lat: selectedCustomer.latitude, lng: selectedCustomer.longitude };
     } else {
-      mapWaiting = "This customer's address isn't map-verified yet — fix it on the Customers page and the pin appears automatically.";
+      mapWaiting = "This customer's address isn't map-verified yet - fix it on the Customers page and the pin appears automatically.";
     }
   } else if (isPickup && selectedPickupLoc) {
     mapTitle = selectedPickupLoc.name;
@@ -362,7 +362,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const customerOptions = allCustomers.map(c => ({
     value: c.id,
     label: c.name
-      ? (c.company_name ? `${c.name} — ${c.company_name}` : c.name)
+      ? (c.company_name ? `${c.name} - ${c.company_name}` : c.name)
       : (c.company_name || c.business_name || '')
   }));
   const byLabel = (a, b) => (a.label || '').localeCompare(b.label || '');
@@ -461,7 +461,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               {errors.scheduled_date && <p className="text-xs text-red-500">{errors.scheduled_date}</p>}
             </div>
 
-            {/* Recurring options — expands when Recurring is selected */}
+            {/* Recurring options - expands when Recurring is selected */}
             {!job?.id && scheduleType === 'recurring' && (
               <div className="col-span-1 md:col-span-2 bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -489,7 +489,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                     )}
                   </div>
 
-                  {/* Repeat Until — month/year dropdown */}
+                  {/* Repeat Until - month/year dropdown */}
                   <div className="space-y-2">
                     <Label className="text-xs text-gray-500">Through End Of</Label>
                     <Select value={repeatUntilMonth} onValueChange={setRepeatUntilMonth}>
@@ -548,7 +548,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* ── PICKUP LOCATION or CUSTOMER — above driver ── */}
+            {/* ── PICKUP LOCATION or CUSTOMER - above driver ── */}
             {isPickup ? (
               <div className="space-y-2">
                 <Label>Pickup Location</Label>
@@ -588,7 +588,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Inline new customer — the map on the right waits for its pin */}
+            {/* Inline new customer - the map on the right waits for its pin */}
             {!isPickup && showNewCustomer && (
               <NewCustomerForm
                 mapBlob={newCustomerBlob}
@@ -615,7 +615,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               />
             )}
 
-            {/* ── ASSIGN DRIVER — below location ── */}
+            {/* ── ASSIGN DRIVER - below location ── */}
             {canAssign && (
               <div className="space-y-2">
                 <Label>Assign Driver</Label>
@@ -704,7 +704,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Quantity — shown early for all delivery so load count is set before per-load section */}
+            {/* Quantity - shown early for all delivery so load count is set before per-load section */}
             {!isPickup && (
               <div className="space-y-2">
                 <Label>Number of Loads</Label>
@@ -720,14 +720,14 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Per-load pre-fill section — all delivery jobs */}
+            {/* Per-load pre-fill section - all delivery jobs */}
             {!isPickup && (
               <div className="col-span-1 md:col-span-2 space-y-3">
                 <div>
                   <Label className="text-amber-700 font-medium">Per-Load Pickup Info</Label>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {isSpreader
-                      ? 'Optional — leave any field empty and the driver will fill it on their dashboard'
+                      ? 'Optional - leave any field empty and the driver will fill it on their dashboard'
                       : 'Set pickup location, yards, and load configuration for each load'}
                   </p>
                 </div>
@@ -849,14 +849,14 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                               .map(it => (
                                 <SelectItem key={it.id} value={it.id}>
                                   {it.display_label || it.name}
-                                  {it.display_label && it.display_label !== it.name ? ` — ${it.name}` : ''}
+                                  {it.display_label && it.display_label !== it.name ? ` - ${it.name}` : ''}
                                 </SelectItem>
                               ))}
                             <SelectItem value="custom">Custom text...</SelectItem>
                           </SelectContent>
                         </Select>
                         {load.item_id && (
-                          /* Preview of the job-card text — editable per job; the
+                          /* Preview of the job-card text - editable per job; the
                              invoice still bills from the selected item above. */
                           <div className="flex items-center gap-1.5 mt-1">
                             <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">On job card:</span>
@@ -997,7 +997,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               waitingText={mapWaiting}
               canCapture={mapMode === 'new' || mapMode === 'customer'}
               savedNote={mapMode === 'new'
-                ? (newCustomerBlob ? 'Picture attached — saves with the customer' : '')
+                ? (newCustomerBlob ? 'Picture attached - saves with the customer' : '')
                 : customerMapNote}
               initialInstructions={mapMode === 'new'
                 ? newCustomerInstructions

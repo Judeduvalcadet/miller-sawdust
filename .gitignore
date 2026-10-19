@@ -33,3 +33,8 @@ dist-ssr
 # Local data snapshots (never commit production data)
 backups/
 supabase/functions/.env
+
+# Local test evidence, temporary tools, and CLI caches never ship.
+output/
+tmp/
+**/.temp/

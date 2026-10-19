@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 const COLORS = ['#EF4444', '#FACC15', '#111827', '#FFFFFF'];
 
 // The editor is portaled OUTSIDE the modal dialog that opened it, and a
-// modal dialog relentlessly pulls keyboard focus back inside itself — a
+// modal dialog relentlessly pulls keyboard focus back inside itself - a
 // focusable text field out here loses focus (and its content) instantly.
 // So the delivery-instructions box doesn't use focus at all: while it is
 // open, keystrokes are intercepted document-wide in the capture phase,
@@ -156,7 +156,7 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
 
   // Portal to <body>: ancestors with CSS transforms (the radix dialog) would
   // otherwise trap this fixed overlay inside their box. pointer-events must be
-  // re-enabled explicitly — the open modal dialog sets pointer-events:none on
+  // re-enabled explicitly - the open modal dialog sets pointer-events:none on
   // everything outside itself, which this portal inherits and clicks would
   // fall through to the page behind.
   return createPortal(
@@ -207,7 +207,7 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
             <div className="absolute left-2 right-2 top-full mt-1 z-20 bg-white border border-gray-300 rounded-xl shadow-xl p-3">
               <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
                 <Truck className="w-3.5 h-3.5" /> Delivery instructions
-                <span className="font-normal text-gray-400">— saves to the customer</span>
+                <span className="font-normal text-gray-400">- saves to the customer</span>
               </p>
               <div className="mt-2 min-h-[64px] max-h-40 overflow-y-auto px-2.5 py-2 text-sm border-2 border-gray-900 rounded-lg bg-white whitespace-pre-wrap break-words">
                 {instructions || <span className="text-gray-400">Just start typing... e.g. Dump behind the barn, gate code 1234</span>}
@@ -234,7 +234,7 @@ export default function MapSnapshotEditor({ image, onSave, onClose, saving = fal
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 gap-3">
-          <p className="text-xs text-gray-500">Circle the spot, add arrows, note the instructions — drivers will see this.</p>
+          <p className="text-xs text-gray-500">Circle the spot, add arrows, note the instructions - drivers will see this.</p>
           <div className="flex gap-2 shrink-0">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
             <Button type="button" onClick={save} disabled={saving} className="bg-gray-950 hover:bg-gray-800">

@@ -20,8 +20,8 @@ import JobActivityTimeline from "@/components/admin/JobActivityTimeline";
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const TRUCK_LABELS = { straight_truck: 'Straight', semi: 'Semi', spreader: 'Spreader' };
 
-// Quick assign dropdown — rendered as a portal to avoid clipping
-function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
+// Quick assign dropdown - rendered as a portal to avoid clipping
+function AssignPopup({ job, drivers, onAssign, onClose, anchorEl, deYellow = false }) {
   const [selectedId, setSelectedId] = useState(job.assigned_driver_id || '');
   const ref = useRef(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -59,7 +59,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
           onClick={() => setSelectedId('')}
           className={cn(
             "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-            selectedId === '' ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-100 text-gray-700"
+            selectedId === '' ? (deYellow ? "bg-gray-950 text-white font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
           )}>
 
           Unassigned
@@ -70,7 +70,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
           onClick={() => setSelectedId(d.id)}
           className={cn(
             "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-            selectedId === d.id ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-100 text-gray-700"
+            selectedId === d.id ? (deYellow ? "bg-gray-950 text-white font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
           )}>
 
             {d.name}
@@ -80,7 +80,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
       <div className="flex gap-2">
         <button
           onClick={() => onAssign(selectedId)}
-          className="flex-1 flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg py-2 transition-colors">
+          className={cn("flex-1 flex items-center justify-center gap-1 text-white text-xs font-semibold rounded-lg py-2 transition-colors", deYellow ? "bg-gray-950 hover:bg-gray-800" : "bg-green-600 hover:bg-green-700")}>
 
           <Check className="w-3.5 h-3.5" /> Confirm
         </button>
@@ -96,7 +96,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
   );
 }
 
-function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocations = [] }) {
+export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocations = [], deYellow = false }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   // Per-load pickup details (all delivery truck types)
@@ -114,8 +114,8 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {job.job_type === 'pickup' ?
-            <Package className="w-5 h-5 text-amber-600" /> :
-            <Truck className="w-5 h-5 text-blue-600" />
+            <Package className={deYellow ? "w-5 h-5 text-gray-600" : "w-5 h-5 text-amber-600"} /> :
+            <Truck className={deYellow ? "w-5 h-5 text-gray-600" : "w-5 h-5 text-blue-600"} />
             }
             {job.job_type === 'pickup' ? 'Pickup Job' : 'Delivery Job'}
           </DialogTitle>
@@ -123,10 +123,11 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
         <div className="space-y-3 py-2">
           <div className="flex items-center justify-between">
             <Badge className={cn(
-              job.status === 'completed' && "bg-green-100 text-green-700",
-              job.status === 'pending' && "bg-red-100 text-red-700",
-              job.status === 'in_progress' && "bg-yellow-100 text-yellow-700",
-              job.status === 'cancelled' && "bg-gray-100 text-gray-600"
+              deYellow && "bg-gray-100 text-gray-700",
+              !deYellow && job.status === 'completed' && "bg-green-100 text-green-700",
+              !deYellow && job.status === 'pending' && "bg-red-100 text-red-700",
+              !deYellow && job.status === 'in_progress' && "bg-yellow-100 text-yellow-700",
+              !deYellow && job.status === 'cancelled' && "bg-gray-100 text-gray-600"
             )}>
               {job.status}
             </Badge>
@@ -145,7 +146,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             </div>
             {job.job_type === 'pickup' && job.dropoff_location_name && (
               <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                <MapPin className={deYellow ? "w-4 h-4 text-gray-500 mt-0.5 shrink-0" : "w-4 h-4 text-amber-500 mt-0.5 shrink-0"} />
                 <div>
                   <p className="text-xs text-gray-400">Drop-Off Location</p>
                   <p className="font-semibold text-gray-900">{job.dropoff_location_name}</p>
@@ -174,23 +175,23 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             </div>
             <div className="text-gray-700">
               <span className="font-medium">{job.quantity} load{job.quantity !== 1 ? 's' : ''}</span>
-              {job.load_configuration && <span className="text-gray-500 ml-1">— {job.load_configuration}</span>}
+              {job.load_configuration && <span className="text-gray-500 ml-1">- {job.load_configuration}</span>}
             </div>
             {job.dispatcher_notes &&
-            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
-                <p className="text-xs text-amber-800 font-medium mb-1">Notes</p>
-                <p className="text-sm text-amber-900">{job.dispatcher_notes}</p>
+            <div className={deYellow ? "bg-gray-50 border border-gray-100 rounded-lg p-3" : "bg-amber-50 border border-amber-100 rounded-lg p-3"}>
+                <p className={deYellow ? "text-xs text-gray-800 font-medium mb-1" : "text-xs text-amber-800 font-medium mb-1"}>Notes</p>
+                <p className={deYellow ? "text-sm text-gray-900" : "text-sm text-amber-900"}>{job.dispatcher_notes}</p>
               </div>
             }
             {/* Josh per-load pickup details */}
             {perLoadDetails.length > 0 &&
-            <div className="border border-blue-100 rounded-lg overflow-hidden max-w-full overflow-x-auto">
-                <div className="bg-blue-50 px-3 py-2">
-                  <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Load Pickup Details</p>
+            <div className={deYellow ? "border border-gray-100 rounded-lg overflow-hidden max-w-full overflow-x-auto" : "border border-blue-100 rounded-lg overflow-hidden max-w-full overflow-x-auto"}>
+                <div className={deYellow ? "bg-gray-50 px-3 py-2" : "bg-blue-50 px-3 py-2"}>
+                  <p className={deYellow ? "text-xs font-semibold text-gray-800 uppercase tracking-wide" : "text-xs font-semibold text-blue-800 uppercase tracking-wide"}>Load Pickup Details</p>
                 </div>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-blue-100">
+                    <tr className={deYellow ? "border-b border-gray-100" : "border-b border-blue-100"}>
                       <th className="text-left px-3 py-1.5 text-gray-500 font-medium">Load</th>
                       <th className="text-left px-3 py-1.5 text-gray-500 font-medium">Pickup Location</th>
                       <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Yards</th>
@@ -200,8 +201,8 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
                     {perLoadDetails.map((l, idx) =>
                   <tr key={l.load_number} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-3 py-2 font-medium text-gray-700">Load {l.load_number}</td>
-                        <td className="px-3 py-2 text-gray-700">{l.pickup_location_name || '—'}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-amber-700">{l.yards_collected ? `${l.yards_collected} yds` : '—'}</td>
+                        <td className="px-3 py-2 text-gray-700">{l.pickup_location_name || '-'}</td>
+                        <td className={deYellow ? "px-3 py-2 text-right font-semibold text-gray-700" : "px-3 py-2 text-right font-semibold text-amber-700"}>{l.yards_collected ? `${l.yards_collected} yds` : '-'}</td>
                       </tr>
                   )}
                   </tbody>
@@ -216,7 +217,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
           </div>
         }
         <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
-          <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
+          <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? "text-gray-600 border-gray-300 hover:bg-gray-50" : "text-red-600 border-red-300 hover:bg-red-50"}>
             <Trash2 className="w-4 h-4 mr-2" />
             Delete
           </Button>
@@ -225,7 +226,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             {showActivity ? 'Hide Detail' : 'More Detail'}
           </Button>
           <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button onClick={() => {onClose();onEdit(job);}} className="bg-amber-600 hover:bg-amber-700">
+          <Button onClick={() => {onClose();onEdit(job);}} className={deYellow ? "bg-gray-950 hover:bg-gray-800" : "bg-amber-600 hover:bg-amber-700"}>
             <Edit className="w-4 h-4 mr-2" />
             Edit Job
           </Button>
@@ -239,7 +240,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={onDelete} className="bg-red-600 hover:bg-red-700">Confirm Delete</AlertDialogAction>
+            <AlertDialogAction onClick={onDelete} className={deYellow ? "bg-gray-600 hover:bg-gray-700" : "bg-red-600 hover:bg-red-700"}>Confirm Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -277,7 +278,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
   };
 
   const handleInvoice = async (value) => {
-    // Clicking the currently-selected button is a no-op — every delivery job
+    // Clicking the currently-selected button is a no-op - every delivery job
     // must always be either 'yes' or 'no', never null.
     if (job.invoice_sent === value) return;
     const markerName =
@@ -308,7 +309,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
             "bg-green-50 border-green-200 text-green-800" :
             job.status === 'in_progress' ?
             "bg-yellow-50 border-yellow-200 text-yellow-900" :
-            "bg-gray-50 border-gray-200 text-gray-800",
+            deYellow ? "bg-gray-100 border-gray-200 text-gray-800" : "bg-gray-50 border-gray-200 text-gray-800",
             isAdmin && "cursor-pointer hover:shadow-md transition-shadow",
             editMode && isSelected && "ring-2 ring-blue-500 ring-offset-1"
           )}>
@@ -329,8 +330,8 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
           {/* Type row */}
           <div className="flex items-center gap-1 mb-1">
             {job.job_type === 'pickup' ?
-            <Package className="w-2.5 h-2.5 text-amber-600 shrink-0" /> :
-            <Truck className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+            <Package className={cn("w-2.5 h-2.5 shrink-0", "text-amber-600")} /> :
+            <Truck className={cn("w-2.5 h-2.5 shrink-0", "text-blue-600")} />
             }
             <span className={cn(
               "font-bold uppercase text-[9px]",
@@ -384,7 +385,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 
 
-          {/* Notes pill + Invoice toggle row (V1 only — V2 moves NOTE to the
+          {/* Notes pill + Invoice toggle row (V1 only - V2 moves NOTE to the
               type row and shows the INVOICED badge instead of Yes/No) */}
           {!deYellow && isAdmin && !editMode && (hasNotes || job.job_type === 'delivery') &&
           <div
@@ -444,15 +445,15 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
                     className={cn(
                       "flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold transition-colors",
                       driver ?
-                      "bg-gray-100 hover:bg-gray-200 text-gray-600" :
-                      "bg-blue-100 hover:bg-blue-200 text-blue-700"
+                      "bg-gray-200 hover:bg-gray-300 text-gray-600" :
+                      "bg-blue-200 hover:bg-blue-300 text-blue-700"
                     )}>
                     <UserPlus className="w-2.5 h-2.5" />
                     {driver ? 'Reassign' : 'Assign'}
                   </button>
                 ) : <span />}
                 {invoiced && (
-                  <span className="inline-flex items-center gap-0.5 bg-green-600 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold">
+                  <span className={cn("inline-flex items-center gap-0.5 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold", "bg-green-600")}>
                     <Receipt className="w-2.5 h-2.5" /> INVOICED
                   </span>
                 )}
@@ -474,9 +475,10 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
           )}
         </div>
 
-        {/* Assign popup — rendered via portal */}
+        {/* Assign popup - rendered via portal */}
         {showAssign &&
         <AssignPopup
+          deYellow={deYellow}
           job={job}
           drivers={drivers}
           onAssign={handleAssign}
@@ -489,6 +491,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
       {/* Detail popup */}
       {showDetail && isAdmin &&
       <JobDetailPopup
+        deYellow={deYellow}
         job={job}
         driver={driver}
         pickupLocations={pickupLocations}
@@ -501,7 +504,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 }
 
-// `weekAnchor` (optional, 'yyyy-MM-dd'): a parent-controlled week — the board
+// `weekAnchor` (optional, 'yyyy-MM-dd'): a parent-controlled week - the board
 // follows it while its own internal nav keeps working. Absent = V1 behavior.
 // `deYellow` (optional): V2 boards pass it to swap the amber accents for
 // gray/blue; V1 renders exactly as before without it.
@@ -694,7 +697,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const weekLabel = () => {
     if (weekOffset === 0) return 'This Week';
     if (weekOffset === 1) return 'Next Week';
-    return `${format(weekStart, 'MMM d')}–${format(addDays(weekStart, 4), 'MMM d')}`;
+    return `${format(weekStart, 'MMM d')}-${format(addDays(weekStart, 4), 'MMM d')}`;
   };
 
   const activeDrivers = drivers.filter((d) => d.active && d.role === 'driver');
@@ -704,7 +707,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
       {/* Header */}
       <div className="flex flex-row items-center justify-between px-4 py-2.5 lg:py-3 border-b gap-2">
         <div className="flex items-center gap-2">
-          {/* Week controls drive the desktop columns only — hidden on mobile */}
+          {/* Week controls drive the desktop columns only - hidden on mobile */}
           <h2 className="hidden lg:block font-semibold text-gray-800 text-sm">Weekly View</h2>
           {/* Mobile: the calendar picker is how you choose the day */}
           <Button
@@ -990,7 +993,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
         </div>
       )}
 
-      {/* Day Columns — hidden on mobile always, shown on desktop */}
+      {/* Day Columns - hidden on mobile always, shown on desktop */}
       <div className={mobileSelectedDate ? 'hidden lg:flex lg:flex-col lg:flex-1 lg:min-h-0' : 'hidden lg:flex lg:flex-col lg:flex-1 lg:min-h-0'}>
       {/* Day Columns */}
       <DragDropContext
@@ -1052,7 +1055,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                   }
                 </div>
 
-                {/* Jobs — droppable zone */}
+                {/* Jobs - droppable zone */}
                 <Droppable droppableId={dateStr} isDropDisabled={!isAdmin || editMode}>
                   {(provided, snapshot) => (
                     <div
@@ -1068,7 +1071,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                       )}
                     >
                       {dayJobs.length === 0 && !snapshot.isDraggingOver ?
-                        <p className="text-xs text-gray-300 text-center pt-6">—</p> :
+                        <p className="text-xs text-gray-300 text-center pt-6">-</p> :
                         dayJobs.map((job, index) =>
                           <Draggable
                             key={job.id}

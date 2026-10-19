@@ -52,8 +52,8 @@ function formatRangeLabel(range) {
   const sameDay = range.from.getTime() === range.to.getTime();
   if (sameDay) return format(range.from, 'MMM d, yyyy');
   const sameYear = range.from.getFullYear() === range.to.getFullYear();
-  if (sameYear) return `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d, yyyy')}`;
-  return `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
+  if (sameYear) return `${format(range.from, 'MMM d')} - ${format(range.to, 'MMM d, yyyy')}`;
+  return `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`;
 }
 
 // ─── Date Range Picker ────────────────────────────────────────────────────
@@ -215,7 +215,7 @@ export default function Reports() {
   const [pickupLocations, setPickupLocations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Date range — initialized to MTD on load
+  // Date range - initialized to MTD on load
   const [dateRange, setDateRange] = useState(() => computePreset('mtd', new Date(), null));
 
   // Filter state
@@ -254,7 +254,7 @@ export default function Reports() {
     load();
   }, []);
 
-  // Earliest job date — used for "All Time" preset
+  // Earliest job date - used for "All Time" preset
   const earliestJobDate = useMemo(() => {
     if (jobs.length === 0) return null;
     const dates = jobs.map(j => j.scheduled_date).filter(Boolean).sort();
@@ -426,7 +426,7 @@ export default function Reports() {
     { value: 'spreader',       label: 'Spreader' },
   ];
 
-  // Filter button row config — drives the buttons + active chip strip
+  // Filter button row config - drives the buttons + active chip strip
   const FILTERS = [
     { key: 'driver',    label: 'Driver',          icon: Users,    options: driverOptions,    selected: filterDrivers,    setter: setFilterDrivers,    color: 'amber' },
     { key: 'customer',  label: 'Customer',        icon: Building2, options: customerOptions, selected: filterCustomers,  setter: setFilterCustomers,  color: 'blue'  },
@@ -451,7 +451,7 @@ export default function Reports() {
     return `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`;
   };
 
-  // URL params for full-report links — includes date range AND all filters
+  // URL params for full-report links - includes date range AND all filters
   const fullReportQueryString = useMemo(() => {
     const parts = [];
     if (dateRange?.from && dateRange?.to) {
@@ -495,7 +495,7 @@ export default function Reports() {
           </div>
         </div>
 
-        {/* Filter button row — date + all filters on one line */}
+        {/* Filter button row - date + all filters on one line */}
         <div className="flex items-center gap-2 flex-wrap mb-3">
           <DateRangePicker
             value={dateRange}
@@ -516,7 +516,7 @@ export default function Reports() {
           ))}
         </div>
 
-        {/* Active filter chip strip — only when non-date filters are active */}
+        {/* Active filter chip strip - only when non-date filters are active */}
         {anyFilterActive && (
           <div className="flex items-center gap-2 flex-wrap mb-5">
             <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-1">Showing:</span>
@@ -794,7 +794,7 @@ export default function Reports() {
                       {isExpanded && (
                         <div className="border-t px-4 py-3 bg-white">
                           <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                            {d.name} — {d.totalLoads} loads
+                            {d.name} - {d.totalLoads} loads
                           </p>
                           {breakdown.length === 0 ? (
                             <p className="text-xs text-gray-400">No breakdown available</p>

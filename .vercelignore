@@ -1,0 +1,11 @@
+.env
+.env.*
+**/*.local
+backups/
+output/
+tmp/
+supabase/
+production-gateway/
+sandbox-gateway/
+tests/
+scripts/

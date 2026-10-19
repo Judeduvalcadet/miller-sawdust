@@ -1,3 +1,4 @@
+import { validContact } from '@/lib/contactValidation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,14 +27,18 @@ import { supabase } from '@/api/supabaseClient';
 import { cn } from '@/lib/utils';
 import InvoicePreview, { ensureInvertedLogo } from './InvoicePreview';
 import { buildInvoicesPdf, buildInvoicePdfBase64 } from './invoicePdf';
+import { assertV2Writable, V2_READ_ONLY } from './guard';
+import { checkSendResult, STATUS_LABELS } from './inbox/api';
+import QuickBooksBadge from './QuickBooksBadge';
+import QuickBooksPaymentDialog from './QuickBooksPaymentDialog';
 
-// V2 Invoices — "All invoices" (the whole system: QuickBooks import +
+// V2 Invoices - "All invoices" (the whole system: QuickBooks import +
 // app-created, filterable) and "Create" (a week of delivery jobs as a flat
 // table; expand a row to compose its invoice, batch-wizard for many).
 
-const money = (v) => v == null ? '—' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const money = (v) => v == null ? '-' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const fmtDay = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 function mondayOf(dateStr) {
@@ -114,7 +119,7 @@ function DateRangePicker({ from, to, onChange }) {
   };
 
   const label = from && to
-    ? `${fmtDay(from)} – ${fmtDay(to)}${to.slice(0, 4) !== String(new Date().getFullYear()) ? ', ' + to.slice(0, 4) : ''}`
+    ? `${fmtDay(from)} - ${fmtDay(to)}${to.slice(0, 4) !== String(new Date().getFullYear()) ? ', ' + to.slice(0, 4) : ''}`
     : from ? `${fmtDay(from)} → …` : 'Any date';
 
   return (
@@ -168,16 +173,19 @@ function InvoiceList() {
   const [noteInv, setNoteInv] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [statusInv, setStatusInv] = useState(null);
+  const [paymentInv,setPaymentInv]=useState(null);
   const [sendReq, setSendReq] = useState(null); // { inv, mode: 'email' | 'sms' }
   const [checked, setChecked] = useState(new Set());
   const [printQueue, setPrintQueue] = useState(null);
 
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['v2-invoices'],
+    refetchInterval: !V2_READ_ONLY?3000:false,
     queryFn: () => base44.entities.Invoice.list('-txn_date', 10000),
   });
   const { data: customers } = useQuery({
     queryKey: ['v2-customers'],
+    refetchInterval:!V2_READ_ONLY?10000:false,
     queryFn: () => base44.entities.Customer.list('name', 5000),
   });
   const { data: settings } = useQuery({
@@ -198,6 +206,7 @@ function InvoiceList() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (invoices || []).filter((inv) => {
+      if (inv.qb_archived) return false;
       if (status !== 'all' && inv.status !== status) return false;
       if (from && (inv.txn_date || '') < from) return false;
       if (to && (inv.txn_date || '') > to) return false;
@@ -298,21 +307,22 @@ function InvoiceList() {
                 <tr key={inv.id} className="border-t border-gray-100 hover:bg-gray-50">
                   <td className="py-3 pl-4 pr-1"><Checkbox checked={checked.has(inv.id)} onCheckedChange={() => toggle(inv.id)} /></td>
                   <td className="py-3 px-3 text-sm font-medium text-gray-900 whitespace-nowrap cursor-pointer" onClick={() => setPreviewInv(inv)}>
-                    {inv.doc_number || '—'}
+                    {inv.doc_number || '-'}
                     {inv.source === 'quickbooks' && (
-                      <span className="ml-1.5 text-[9px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1 py-0.5 align-middle">QB</span>
+                      <span className="ml-1.5 text-[9px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1 py-0.5 align-middle" title="Imported invoice">Imported</span>
                     )}
                   </td>
                   <td className="py-3 px-3 text-sm text-gray-700 whitespace-nowrap">{fmtDate(inv.txn_date)}</td>
                   <td className="py-3 px-3 text-sm text-gray-900 max-w-[240px] truncate">{custName(inv)}</td>
                   <td className="py-3 px-3 text-sm text-gray-500 max-w-[320px] truncate">
-                    {summary(inv) || '—'}
+                    {summary(inv) || '-'}
                     {inv.note && <span className="ml-1.5 text-[10px] text-amber-600" title={inv.note}>📝</span>}
                   </td>
                   <td className="py-3 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{money(inv.total)}</td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-1.5">
                       <StatusChip inv={inv} />
+                      <QuickBooksBadge record={inv} />
                       <EditedBadge inv={inv} />
                     </div>
                   </td>
@@ -329,6 +339,7 @@ function InvoiceList() {
                         <DropdownMenuItem onClick={() => setStatusInv(inv)}>
                           <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
                         </DropdownMenuItem>
+                        <DropdownMenuItem disabled={!inv.qb_id||inv.qb_sync_status!=='synced'||Number(inv.balance)<=0} onClick={()=>setPaymentInv(inv)}><CircleDollarSign className="w-4 h-4 mr-2" /> Record payment</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => { setNoteInv(inv); setNoteText(inv.note || ''); }}>
                           <StickyNote className="w-4 h-4 mr-2" /> {inv.note ? 'Edit note' : 'Add note'}
                         </DropdownMenuItem>
@@ -379,6 +390,8 @@ function InvoiceList() {
         />
       )}
 
+      {paymentInv&&<QuickBooksPaymentDialog invoice={paymentInv} onClose={()=>setPaymentInv(null)} />}
+
       {sendReq && (
         <SendInvoiceDialog
           key={sendReq.inv.id + sendReq.mode}
@@ -427,8 +440,9 @@ const STATUS_OPTIONS = [
 const invStatusKey = (inv) => inv.status === 'paid' ? 'paid' : inv.sent_at ? 'sent' : 'created';
 const statusPatch = (inv, key) => {
   if (key === 'paid') return { status: 'paid', balance: 0 };
-  if (key === 'sent') return { status: 'open', balance: inv.total, sent_at: inv.sent_at || new Date().toISOString() };
-  return { status: 'open', balance: inv.total, sent_at: null };
+  const balance=inv.status==='paid'?inv.total:(inv.balance??inv.total);
+  if (key === 'sent') return { status: 'open', balance, sent_at: inv.sent_at || new Date().toISOString() };
+  return { status: 'open', balance, sent_at: null };
 };
 
 // Badges "Edited" when an invoice was changed after it went out.
@@ -449,6 +463,7 @@ function EditedBadge({ inv }) {
 
 function StatusChip({ inv }) {
   const key = invStatusKey(inv);
+  const partial=Number(inv.balance)>0&&Number(inv.balance)<Number(inv.total);
   return (
     <span
       className={cn(
@@ -457,9 +472,9 @@ function StatusChip({ inv }) {
         key === 'sent' && 'bg-gray-950 text-white border-gray-950',
         key === 'created' && 'bg-gray-100 text-gray-600 border-gray-200'
       )}
-      title={key === 'sent' && inv.sent_at ? `Sent ${new Date(inv.sent_at).toLocaleString()}` : undefined}
+      title={partial?`Remaining balance ${money(inv.balance)}`:key === 'sent' && inv.sent_at ? `Sent ${new Date(inv.sent_at).toLocaleString()}` : undefined}
     >
-      {STATUS_OPTIONS.find((o) => o.key === key)?.label}
+      {partial?'Partially paid':STATUS_OPTIONS.find((o) => o.key === key)?.label}
     </span>
   );
 }
@@ -470,6 +485,7 @@ function StatusChip({ inv }) {
    the invoice. In the sandbox the function runs in dry-run mode.           */
 
 function SendInvoiceDialog({ inv, mode, customer, company, onClose, onSent }) {
+  const sendRequests = useRef({});
   const isEmail = mode === 'email';
   const [to, setTo] = useState(isEmail ? (customer?.email || '') : (customer?.phone || ''));
   const [busy, setBusy] = useState(false);
@@ -480,11 +496,13 @@ function SendInvoiceDialog({ inv, mode, customer, company, onClose, onSent }) {
     setBusy(true);
     setError('');
     try {
+      assertV2Writable();
       const logo = await ensureInvertedLogo();
       const pdf_base64 = await buildInvoicePdfBase64({ invoice: inv, customer, company, logo });
       const { data, error: fnErr } = await supabase.functions.invoke('send-invoice', {
         body: {
           invoice_id: inv.id,
+          request_id: sendRequests.current[to.trim()] ||= crypto.randomUUID(),
           mode,
           to: to.trim(),
           pdf_base64,
@@ -497,11 +515,12 @@ function SendInvoiceDialog({ inv, mode, customer, company, onClose, onSent }) {
           const j = await fnErr.context.json();
           if (j?.error === 'not_configured') msg = `Sending isn\u2019t configured yet (missing: ${(j.missing || []).join(', ')})`;
           else if (j?.error) msg = j.detail ? `${j.error}: ${j.detail}` : j.error;
+          else if (j?.message) msg = j.message;
         } catch { /* keep generic */ }
         throw new Error(msg);
       }
-      if (data?.error) throw new Error(data.error);
-      setDone({ dry_run: !!data?.dry_run });
+      checkSendResult(data);
+      setDone({ dry_run: !!data?.dry_run, status: data.message.status, conversation_id: data.message.conversation_id });
       onSent?.();
     } catch (e) {
       setError(e.message || 'Send failed');
@@ -520,11 +539,11 @@ function SendInvoiceDialog({ inv, mode, customer, company, onClose, onSent }) {
           <div className="py-2">
             <p className="text-sm text-gray-800 flex items-center gap-2">
               <span className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center shrink-0"><Check className="w-4 h-4 text-white" /></span>
-              {isEmail ? 'Email sent' : 'Text sent'} to {to.trim()}.
+              {STATUS_LABELS[done.status] || 'Queued'} · {to.trim()}.
             </p>
             {done.dry_run && (
               <p className="text-xs text-gray-500 mt-2">
-                Sandbox dry run — everything was prepared and stamped, but no real {isEmail ? 'email' : 'text'} left this machine.
+                Simulation only. No message was sent and the invoice was not marked sent.
               </p>
             )}
           </div>
@@ -554,7 +573,7 @@ function SendInvoiceDialog({ inv, mode, customer, company, onClose, onSent }) {
           ) : (
             <>
               <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-              <Button className="bg-gray-950 hover:bg-gray-800" onClick={send} disabled={busy || !to.trim()}>
+              <Button className="bg-gray-950 hover:bg-gray-800" onClick={send} disabled={busy || !validContact(isEmail ? 'email' : 'tel', to)}>
                 {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Send
               </Button>
@@ -628,6 +647,7 @@ function CreateView() {
 
   const { data: weekJobs, isLoading } = useQuery({
     queryKey: ['inv-week-jobs', weekStart],
+    refetchInterval:!V2_READ_ONLY?3000:false,
     queryFn: async () => {
       const { data, error } = await supabase.from('jobs').select('*')
         .eq('job_type', 'delivery').is('deleted_at', null)
@@ -639,6 +659,7 @@ function CreateView() {
   });
   const { data: weekInvoices } = useQuery({
     queryKey: ['inv-week-invoices', weekStart],
+    refetchInterval:!V2_READ_ONLY?3000:false,
     queryFn: async () => {
       const { data, error } = await supabase.from('invoices').select('*')
         .not('job_id', 'is', null)
@@ -649,6 +670,7 @@ function CreateView() {
   });
   const { data: customers } = useQuery({
     queryKey: ['v2-customers'],
+    refetchInterval:!V2_READ_ONLY?10000:false,
     queryFn: () => base44.entities.Customer.list('name', 5000),
     staleTime: 300000,
   });
@@ -664,7 +686,7 @@ function CreateView() {
   });
 
   // Pre-warm every price book the week's jobs will need, in ONE query, so
-  // opening any composer (single or batch Next) is instant — no per-customer
+  // opening any composer (single or batch Next) is instant - no per-customer
   // fetch at click time.
   const weekCustIds = useMemo(
     () => [...new Set((weekJobs || []).map((j) => j.customer_id).filter(Boolean))],
@@ -761,7 +783,7 @@ function CreateView() {
     return (c?.company_name || c?.name || j.location_name || '').trim();
   };
   const loadText = (j) =>
-    (j.loads || []).map((l) => l.load_configuration).filter(Boolean).join(', ') || j.load_configuration || '—';
+    (j.loads || []).map((l) => l.load_configuration).filter(Boolean).join(', ') || j.load_configuration || '-';
 
   const changeDay = (d) => { setDay(d); setChecked(new Set()); setExpandedId(null); setBatch(null); };
 
@@ -848,7 +870,7 @@ function CreateView() {
       </div>
 
 
-      {/* Day jobs — flat table */}
+      {/* Day jobs - flat table */}
       {isLoading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
       ) : dayJobs.length === 0 ? (
@@ -919,7 +941,7 @@ function CreateView() {
                               id: inv.id,
                               lines: payload.lines,
                               total: payload.total,
-                              balance: inv.status === 'paid' ? 0 : payload.total,
+                              balance: inv.status === 'paid' ? 0 : Math.max(0,payload.total-(Number(inv.total)-Number(inv.balance??inv.total))),
                               note: payload.note,
                               edited_at: new Date().toISOString(),
                             });
@@ -1055,16 +1077,17 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
             )}
           </span>
         </td>
-        <td className="py-3.5 px-3 text-sm text-gray-600 whitespace-nowrap">{yards ?? '—'}</td>
+        <td className="py-3.5 px-3 text-sm text-gray-600 whitespace-nowrap">{yards ?? '-'}</td>
         <td className="py-3.5 px-3 text-sm text-gray-600 max-w-[280px] truncate">{loadText}</td>
         <td className="py-3.5 px-3 text-sm text-gray-600 whitespace-nowrap">{job.quantity || 1}</td>
-        <td className="py-3.5 px-3 text-sm text-gray-500 whitespace-nowrap">{job.assigned_driver_name || '—'}</td>
-        <td className="py-3.5 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">{inv?.doc_number || '—'}</td>
-        <td className="py-3.5 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{inv ? money(inv.total) : '—'}</td>
+        <td className="py-3.5 px-3 text-sm text-gray-500 whitespace-nowrap">{job.assigned_driver_name || '-'}</td>
+        <td className="py-3.5 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">{inv?.doc_number || '-'}</td>
+        <td className="py-3.5 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{inv ? money(inv.total) : '-'}</td>
         <td className="py-3.5 px-3 whitespace-nowrap w-[150px]">
           {inv ? (
             <div className="flex items-center gap-1.5">
               <StatusChip inv={inv} />
+              <QuickBooksBadge record={inv} />
               <EditedBadge inv={inv} />
             </div>
           ) : creating === 'creating' ? (
@@ -1121,15 +1144,6 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
 
 // Read-only expansion for an already-created invoice.
 function InvoiceDetail({ inv }) {
-  const { data: sends = [] } = useQuery({
-    queryKey: ['invoice-sends', inv.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('invoice_sends')
-        .select('*').eq('invoice_id', inv.id).order('created_date', { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
   return (
     <div className="px-6 py-4 border-t border-gray-100">
       <div className="max-w-[1075px] bg-white border border-gray-200">
@@ -1164,31 +1178,7 @@ function InvoiceDetail({ inv }) {
       {inv.note && (
         <p className="text-xs text-gray-500 mt-2"><span className="text-gray-400">Note:</span> {inv.note}</p>
       )}
-      {sends.length > 0 && (
-        <div className="max-w-[1075px] mt-3 bg-white border border-gray-200">
-          <p className="px-4 pt-2.5 pb-1.5 text-[10px] uppercase tracking-wide text-gray-400 font-medium border-b border-gray-100">
-            Communication
-          </p>
-          <ul>
-            {sends.map((snd) => (
-              <li key={snd.id} className="px-4 py-2 flex items-center gap-2.5 border-b border-gray-100 last:border-b-0">
-                {snd.mode === 'email'
-                  ? <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                  : <MessageSquareText className="w-3.5 h-3.5 text-gray-400 shrink-0" />}
-                <span className="text-sm text-gray-800">
-                  {snd.mode === 'email' ? 'Emailed to' : 'PDF texted to'} <span className="font-medium">{snd.recipient}</span>
-                </span>
-                {snd.dry_run && (
-                  <span className="text-[10px] font-medium border border-gray-300 text-gray-500 rounded-full px-1.5 py-0.5">dry run</span>
-                )}
-                <span className="ml-auto text-xs text-gray-400 whitespace-nowrap">
-                  {snd.sent_by ? `${snd.sent_by} · ` : ''}{new Date(snd.created_date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+
     </div>
   );
 }
@@ -1200,7 +1190,7 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
     queryKey: ['customer-prices', job.customer_id],
     queryFn: () => base44.entities.CustomerItemPrice.filter({ customer_id: job.customer_id }),
     enabled: !!job.customer_id,
-    staleTime: 60000, // primed by the Create tab's prefetch — no fetch on open
+    staleTime: 60000, // primed by the Create tab's prefetch - no fetch on open
   });
 
   const itemById = useMemo(() => new Map((items || []).map((i) => [i.id, i])), [items]);
@@ -1221,7 +1211,7 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
     : null);
   const [note, setNote] = useState(initial?.note || '');
   const [showNote, setShowNote] = useState(false);
-  const [picking, setPicking] = useState(null); // { idx, query } — inline item search
+  const [picking, setPicking] = useState(null); // { idx, query } - inline item search
 
   useEffect(() => {
     if (lines !== null || (job.customer_id && prices === undefined)) return;
@@ -1265,7 +1255,7 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
     setLines((p) => (p || []).filter((l) => l.item_id || (l.name || '').trim()));
   };
 
-  // Hand the finished lines up — the parent queues the actual creation so
+  // Hand the finished lines up - the parent queues the actual creation so
   // batch Next can move on instantly.
   const buildPayload = () => {
     const finalLines = (lines || []).map((l) => ({
@@ -1368,7 +1358,7 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
                   )}
                 </td>
                 <td className="py-2 px-3 text-xs text-gray-500 text-right whitespace-nowrap">
-                  {l.item_id && itemById.get(l.item_id)?.yards != null ? itemById.get(l.item_id).yards : '—'}
+                  {l.item_id && itemById.get(l.item_id)?.yards != null ? itemById.get(l.item_id).yards : '-'}
                 </td>
                 <td className="py-2 px-3">
                   <Input type="number" min="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} className="no-spin h-8 text-sm text-right bg-white" />

@@ -1,3 +1,4 @@
+import { contactError } from '@/lib/contactValidation';
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -6,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Loader2, Link2, Unlink, CheckCircle2, AlertTriangle, Building2, SlidersHorizontal,
-  Package, Users, Plus, X, Check, Truck, CalendarDays, Pencil,
+  Package, Users, Plus, X, Check, Truck, CalendarDays, Pencil, Mail,
 } from 'lucide-react';
 import { base44 } from '@/api/entities';
 import DriverManager from '@/pages/DriverManager';
@@ -16,8 +17,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import InvoicePreview from './InvoicePreview';
+import EmailSettings from './EmailSettings';
+import QuickBooksSyncPanel from './QuickBooksSyncPanel';
 
-// V2 Settings — tabbed: Company | Presets | Items | Team | QuickBooks.
+// V2 Settings - tabbed: Company | Presets | Items | Team | QuickBooks.
 // Items is the QuickBooks catalog imported into the app: the same record
 // drives the job-form presets, the customer price book, and invoicing.
 
@@ -26,6 +29,7 @@ const TABS = [
   { key: 'presets', label: 'Presets', icon: SlidersHorizontal },
   { key: 'items', label: 'Items', icon: Package },
   { key: 'team', label: 'Team', icon: Users },
+  { key: 'email', label: 'Email', icon: Mail },
   { key: 'quickbooks', label: 'QuickBooks', icon: Link2 },
 ];
 
@@ -57,6 +61,7 @@ export default function V2Settings() {
         {tab === 'presets' && <PresetsTab />}
         {tab === 'items' && <ItemsTab />}
         {tab === 'team' && <DriverManager embedded />}
+        {tab === 'email' && <EmailSettings />}
         {tab === 'quickbooks' && <QuickBooksTab />}
       </div>
     </div>
@@ -77,16 +82,17 @@ const COMPANY_FIELDS = [
 
 function CompanyTab() {
   const queryClient = useQueryClient();
-  const { data: settings } = useQuery({
+  const { data: settings, isPending, isError } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await base44.entities.Settings.list())[0] || null,
   });
   const [form, setForm] = useState(null);
+  const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
   useEffect(() => {
-    if (settings && form === null) setForm(settings.company_profile || {});
-  }, [settings, form]);
+    if (!isPending && !editing) setForm(settings?.company_profile || {});
+  }, [settings, isPending, editing]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -95,11 +101,13 @@ function CompanyTab() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      setEditing(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
   });
 
+  if (isError) return <p role="alert" className="p-6 text-red-700">Could not load company details.</p>;
   if (form === null) return <TabLoading />;
   return (
     <div className="p-6 max-w-xl">
@@ -107,24 +115,28 @@ function CompanyTab() {
         Company details shown on invoices and statements.
       </p>
       <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-        {COMPANY_FIELDS.map(({ key, label }) => (
+        <div className="flex items-center justify-between"><h3 className="font-semibold">Company details</h3>{!editing && <Button variant="outline" onClick={() => setEditing(true)}><Pencil className="w-4 h-4 mr-2" />Edit</Button>}</div>
+        {editing ? <>{COMPANY_FIELDS.map(({ key, label }) => (
           <div key={key}>
-            <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-            <Input
+            <label htmlFor={`company-${key}`} className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+            <Input type={key === 'phone' ? 'tel' : key === 'email' ? 'email' : 'text'} id={`company-${key}`}
               value={form[key] || ''}
               onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
             />
           </div>
         ))}
         <div className="flex items-center gap-3 pt-1">
-          <Button onClick={() => save.mutate()} disabled={save.isPending} className="bg-gray-950 hover:bg-gray-800">
+          <Button onClick={() => save.mutate()} disabled={save.isPending || !!contactError('tel', form.phone) || !!contactError('email', form.email)} className="bg-gray-950 hover:bg-gray-800">
             {save.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null} Save
           </Button>
+          <Button variant="outline" disabled={save.isPending} onClick={() => { setForm(settings?.company_profile || {}); setEditing(false); save.reset(); }}>Cancel</Button>
           {saved && <span className="flex items-center gap-1 text-sm text-green-600"><Check className="w-4 h-4" /> Saved</span>}
         </div>
+        {save.error && <p role="alert" className="text-sm text-red-700">{save.error.message}</p>}
+        </> : <dl className="space-y-3">{COMPANY_FIELDS.map(({key,label}) => <div key={key}><dt className="text-xs text-gray-500">{label}</dt><dd className="text-sm mt-1 break-words">{settings?.company_profile?.[key] || 'Not set'}</dd></div>)}</dl>}
       </div>
 
-      {/* Invoice template — fixed layout; these company details fill its header. */}
+      {/* Invoice template - fixed layout; these company details fill its header. */}
       <div className="mt-5 bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 text-sm">Invoice template</h3>
@@ -141,7 +153,7 @@ function CompanyTab() {
         onClose={() => setShowTemplate(false)}
         invoice={SAMPLE_INVOICE}
         customer={SAMPLE_CUSTOMER}
-        company={form}
+        company={settings?.company_profile}
       />
     </div>
   );
@@ -202,7 +214,7 @@ function DeliveryYardagesPanel() {
     queryKey: ['items'],
     queryFn: () => base44.entities.Item.list('sort_order'),
   });
-  // Delivery yardages come from the QuickBooks item catalog — shown here
+  // Delivery yardages come from the QuickBooks item catalog - shown here
   // read-only so the presets page reflects what the job form actually offers.
   const itemYards = (truck) => [...new Set(
     (items || [])
@@ -353,7 +365,7 @@ function LoadConfigsPanel() {
                       {TRUCK_TYPES.find((t) => t.value === i.truck_type)?.label || 'Any'}
                     </td>
                     <td className="py-2.5 px-2 text-xs text-gray-600 whitespace-nowrap">
-                      {i.yards != null ? `${i.yards} yds` : '—'}
+                      {i.yards != null ? `${i.yards} yds` : '-'}
                     </td>
                     <td className="py-2.5 px-2 text-sm text-gray-800">
                       {i.display_label || <span className="text-gray-400 italic">{i.name}</span>}
@@ -574,12 +586,12 @@ function ItemsTab() {
           <td className="py-2.5 px-2">
             {i.qb_id && <span className="text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1.5 py-0.5 whitespace-nowrap">QB #{i.qb_id}</span>}
           </td>
-          <td className="py-2.5 px-2 text-sm text-gray-600 whitespace-nowrap">{i.yards != null ? `${i.yards} yds` : '—'}</td>
+          <td className="py-2.5 px-2 text-sm text-gray-600 whitespace-nowrap">{i.yards != null ? `${i.yards} yds` : '-'}</td>
           <td className="py-2.5 px-2 text-sm text-gray-600 whitespace-nowrap">
             {TRUCK_TYPES.find((t) => t.value === i.truck_type)?.label || 'Any'}
           </td>
           <td className="py-2.5 px-2 text-sm font-semibold text-gray-900 whitespace-nowrap">
-            {i.unit_price != null ? `$${Number(i.unit_price).toLocaleString()}` : '—'}
+            {i.unit_price != null ? `$${Number(i.unit_price).toLocaleString()}` : '-'}
           </td>
           <td className="py-2.5 px-2">
             <div className="flex items-center gap-1.5" title="Offered as a preset in the job form">
@@ -625,7 +637,7 @@ function ItemsTab() {
         <p className="text-sm text-gray-500 max-w-2xl">
           Imported from QuickBooks: one source of truth for pricing across job creation,
           customer price books, and invoices. Edits apply here now and will push back to
-          QuickBooks automatically once the write sync is turned on.
+          QuickBooks automatically when your company is connected and synchronization is enabled.
         </p>
         <label className="flex items-center gap-2 text-sm text-gray-500 whitespace-nowrap">
           <Switch checked={showInactive} onCheckedChange={setShowInactive} /> Show inactive
@@ -668,6 +680,7 @@ function QuickBooksTab() {
     try {
       const { data } = await base44.functions.invoke('qb-auth', { action: 'auth-url' });
       if (data?.url) {
+        sessionStorage.setItem('qb_oauth_state', data.state);
         window.location.href = data.url;
         return;
       }
@@ -727,12 +740,10 @@ function QuickBooksTab() {
                 </div>
               </div>
               <div className="flex gap-2">
-                {qb.tokenExpired && (
                   <Button onClick={connect} disabled={working} className="bg-gray-950 hover:bg-gray-800">
                     {working ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
                     Reconnect
                   </Button>
-                )}
                 <Button variant="outline" onClick={() => setConfirmDisconnect(true)} disabled={working}>
                   <Unlink className="w-4 h-4 mr-2" /> Disconnect
                 </Button>
@@ -742,7 +753,7 @@ function QuickBooksTab() {
             <div className="space-y-3">
               <p className="text-sm text-gray-600">
                 Not connected. Connecting requires signing in to Intuit with the account
-                that administers the Miller Sawdust QuickBooks company.
+                that administers your company's QuickBooks account.
               </p>
               <Button onClick={connect} disabled={working} className="bg-gray-950 hover:bg-gray-800">
                 {working ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
@@ -753,6 +764,8 @@ function QuickBooksTab() {
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </div>
       </section>
+
+      {qb.connected&&<QuickBooksSyncPanel sandbox={qb.environment==='sandbox'} />}
 
       <AlertDialog open={confirmDisconnect} onOpenChange={setConfirmDisconnect}>
         <AlertDialogContent>

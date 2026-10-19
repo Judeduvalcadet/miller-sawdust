@@ -1,3 +1,5 @@
+import { validateContactFields } from '@/lib/contactValidation'
+import { v2ReadOnly } from '@/lib/v2Release'
 import { supabase } from './supabaseClient'
 
 // ---------------------------------------------------------------------------
@@ -14,7 +16,7 @@ function parseSort(sortField) {
 }
 
 // ---------------------------------------------------------------------------
-// Known columns per table — used to strip unknown fields before insert/update.
+// Known columns per table - used to strip unknown fields before insert/update.
 // Base44 SDK silently ignored unknown fields; Supabase/PostgREST rejects them.
 // ---------------------------------------------------------------------------
 const TABLE_COLUMNS = {
@@ -32,7 +34,7 @@ const TABLE_COLUMNS = {
     'active','last_login_at','avatar_url','created_date','updated_date',
   ],
   customers: [
-    'id','name','company_name','street_address','city','state','country','zip_code',
+    'id','name','company_name','street_address','city','state','country','zip_code','active',
     'phone','email','map_image_url','delivery_instructions','created_date','updated_date',
     'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
   ],
@@ -54,7 +56,7 @@ const TABLE_COLUMNS = {
   settings: [
     'id','truck_yard_presets','recurring_interval_presets','company_profile','created_date','updated_date',
   ],
-  // QuickBooks item catalog — qb_* columns are stamped by the server sync,
+  // QuickBooks item catalog - qb_* columns are stamped by the server sync,
   // the rest is office-editable (name/price edits push to QBO in Phase 3).
   items: [
     'id','name','description','unit_price','item_type','yards','truck_type',
@@ -64,11 +66,11 @@ const TABLE_COLUMNS = {
   customer_item_prices: [
     'id','customer_id','item_id','price','is_default','notes','created_date','updated_date',
   ],
-  // Invoice history — QuickBooks import now, app-created invoices later.
+  // Invoice history - QuickBooks import now, app-created invoices later.
   invoices: [
     'id','customer_id','qb_customer_id','qb_id','qb_sync_token','doc_number',
     'txn_date','due_date','total','balance','status','lines','source',
-    'job_id','note','sent_at','edited_at','emailed_at','texted_at','created_date','updated_date',
+    'job_id','note','sent_at','edited_at','emailed_at','texted_at','created_date','updated_date','qb_archived',
   ],
   log_entries: [
     'id','timestamp','level','message','category','user_id','details','created_date','updated_date',
@@ -79,7 +81,7 @@ const TABLE_COLUMNS = {
   ],
 }
 
-// UUID foreign key columns — empty strings must become null
+// UUID foreign key columns - empty strings must become null
 const UUID_COLUMNS = new Set([
   'assigned_driver_id','customer_id','pickup_location_id','dropoff_location_id','driver_id','item_id','job_id',
 ])
@@ -91,6 +93,7 @@ const UUID_COLUMNS = new Set([
  * 3. Strip undefined values
  */
 function sanitize(tableName, record) {
+  validateContactFields(record)
   const allowed = TABLE_COLUMNS[tableName]
   const clean = {}
   for (const [key, value] of Object.entries(record)) {
@@ -111,7 +114,7 @@ function sanitize(tableName, record) {
 // ---------------------------------------------------------------------------
 // Auto-geocoding: whenever an address is created or edited, ask the
 // geocode-address edge function (server-side Google key) to refresh the
-// record's coordinates. Fire-and-forget — a failed geocode never blocks or
+// record's coordinates. Fire-and-forget - a failed geocode never blocks or
 // breaks the save; the record just keeps its REVIEW/stale state.
 // ---------------------------------------------------------------------------
 const GEOCODE_FIELDS = {
@@ -135,7 +138,7 @@ function maybeGeocode(tableName, recordId, payload) {
 // PostgREST silently caps every SELECT response at 1000 rows even when a
 // larger `.limit()` is requested. To actually fetch more, we have to issue
 // successive `.range(from, to)` requests in chunks of 1000 and stitch them
-// together. `fetchPaginated` does that — it stops as soon as a chunk comes
+// together. `fetchPaginated` does that - it stops as soon as a chunk comes
 // back short (end of table) or we hit the caller's requested limit.
 // ---------------------------------------------------------------------------
 const POSTGREST_CHUNK = 1000
@@ -165,7 +168,7 @@ async function fetchPaginated(buildQuery, limit) {
 // ---------------------------------------------------------------------------
 // Factory: createEntity(tableName)
 // Returns an object with list, filter, create, update, delete, bulkCreate,
-// and subscribe — matching the Base44 SDK interface.
+// and subscribe - matching the Base44 SDK interface.
 // ---------------------------------------------------------------------------
 function createEntity(tableName) {
   return {
@@ -221,6 +224,7 @@ function createEntity(tableName) {
 
       if (error) throw error
       maybeGeocode(tableName, created?.id, sanitize(tableName, data))
+      kickQuickBooks(tableName)
       return created
     },
 
@@ -240,6 +244,7 @@ function createEntity(tableName) {
 
       if (error) throw error
       maybeGeocode(tableName, id, sanitize(tableName, data))
+      kickQuickBooks(tableName)
       return updated
     },
 
@@ -249,6 +254,9 @@ function createEntity(tableName) {
      * @returns {Promise<void>}
      */
     async delete(id) {
+      if(!v2ReadOnly(import.meta.env) && window.location.pathname.startsWith('/v2') && ['customers','invoices'].includes(tableName)) {
+        return this.update(id,tableName==='customers'?{active:false}:{qb_archived:true})
+      }
       const { error } = await supabase
         .from(tableName)
         .delete()
@@ -282,8 +290,8 @@ function createEntity(tableName) {
      * Calls `callback()` on any INSERT, UPDATE, or DELETE so the consumer
      * can refetch data (matches Base44 behaviour).
      *
-     * @param {Function} callback — called with no args on every change
-     * @returns {Function} unsubscribe — call to remove the subscription
+     * @param {Function} callback - called with no args on every change
+     * @returns {Function} unsubscribe - call to remove the subscription
      */
     subscribe(callback) {
       const channel = supabase
@@ -306,7 +314,7 @@ function createEntity(tableName) {
 }
 
 // ---------------------------------------------------------------------------
-// File upload — replaces base44.integrations.Core.UploadFile
+// File upload - replaces base44.integrations.Core.UploadFile
 // ---------------------------------------------------------------------------
 async function uploadFile(file) {
   const fileExt = file.name.split('.').pop()
@@ -327,7 +335,7 @@ async function uploadFile(file) {
 }
 
 // ---------------------------------------------------------------------------
-// Edge Function invocation — replaces base44.functions.invoke
+// Edge Function invocation - replaces base44.functions.invoke
 // ---------------------------------------------------------------------------
 async function invokeFn(fnName, payload) {
   const { data, error } = await supabase.functions.invoke(fnName, {
@@ -337,6 +345,14 @@ async function invokeFn(fnName, payload) {
   if (error) throw error
   // Return { data } wrapper to match Base44 SDK convention (callers do res.data)
   return { data }
+}
+
+function kickQuickBooks(table) {
+  if(!v2ReadOnly(import.meta.env) && ['customers','invoices','items'].includes(table)) {
+    // The database queue persists the write; failure to wake the worker cannot
+    // lose it. The independent worker also polls while no browser is open.
+    void invokeFn('qb-sync',{action:'run'}).catch(()=>{});
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -367,7 +383,7 @@ export const base44 = {
     invoke: async (fnName, payload) => invokeFn(fnName, payload),
   },
   auth: {
-    // PIN-based auth — read current user from localStorage (set by DriverLogin).
+    // PIN-based auth - read current user from localStorage (set by DriverLogin).
     me: async () => {
       if (typeof window === 'undefined') return null
       const id = window.localStorage.getItem('miller_driver_id')

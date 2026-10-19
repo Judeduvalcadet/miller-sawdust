@@ -75,7 +75,7 @@ export function getDeviceId() {
 function storeTokens({ access_token, refresh_token, driver }) {
   localStorage.setItem(KEYS.jwt, access_token)
   localStorage.setItem(KEYS.refresh, refresh_token)
-  // Keep the legacy session id around too — it's what ties this device to its
+  // Keep the legacy session id around too - it's what ties this device to its
   // session row, and older code paths still read it as the "logged in" flag.
   localStorage.setItem(KEYS.session, refresh_token.split('.')[0])
   if (driver) {
@@ -132,7 +132,7 @@ async function renew() {
       storeTokens(data)
       return data.access_token
     } catch (e) {
-      // Dead session (expired or already claimed) — stop retrying it.
+      // Dead session (expired or already claimed) - stop retrying it.
       if (e.status === 401) localStorage.removeItem(KEYS.session)
       return null
     }
@@ -176,7 +176,7 @@ export async function loginWithEmail(email, password) {
   return data.driver
 }
 
-// Reads a claim from the stored access token (client-side convenience only —
+// Reads a claim from the stored access token (client-side convenience only -
 // every server endpoint re-verifies the real thing).
 export function getTokenClaim(name) {
   try {
@@ -196,7 +196,7 @@ export async function logout() {
       await callFn('logout', { refresh_token: refresh, session_id: session })
     }
   } catch {
-    // best effort — the session row expires on its own
+    // best effort - the session row expires on its own
   }
   clearAll()
 }

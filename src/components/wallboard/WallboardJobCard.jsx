@@ -78,7 +78,7 @@ export default function WallboardJobCard({ job, drivers, onAssign, canAssign, on
         <p className="text-[9px] text-gray-400 truncate -mt-0.5">{job.customer_company_name}</p>
       )}
 
-      {/* Driver + Quantity + Config — 2 column layout */}
+      {/* Driver + Quantity + Config - 2 column layout */}
       <div className="flex items-start gap-1 mt-0">
         {/* Left: driver */}
         <div className="flex-1 min-w-0">

@@ -1,6 +1,11 @@
 // Shared helpers for the Miller Sawdust auth edge functions.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { SignJWT, jwtVerify } from 'npm:jose@5'
+import { assertLocalSandboxDatabase } from './environment.ts'
+
+if (Deno.env.get('APP_ENV') === 'sandbox') {
+  assertLocalSandboxDatabase(Deno.env.get('SUPABASE_URL') || '');
+}
 
 export const service = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -27,7 +32,7 @@ export const corsHeaders = {
 export function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store, no-cache', 'Referrer-Policy': 'no-referrer' },
   })
 }
 
@@ -48,7 +53,7 @@ export async function signAccessToken(driver: DriverRow, authMethod = 'pin'): Pr
     role: 'authenticated', // Postgres role PostgREST switches to
     app_role: driver.role,
     name: driver.name,
-    amr: authMethod, // 'pin' | 'password' — QB/invoicing requires 'password'
+    amr: authMethod, // 'pin' | 'password' - QB/invoicing requires 'password'
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(driver.id)

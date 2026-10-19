@@ -10,6 +10,15 @@ import { createClient } from '@supabase/supabase-js'
 const prod = createClient('https://mwunopdpquixccfdxpei.supabase.co', process.env.PROD_SVC)
 const local = createClient('http://127.0.0.1:54521', process.env.LOCAL_SVC)
 
+// An active accounting test database must not be overwritten by a production
+// snapshot, which carries unrelated QuickBooks IDs and different test baselines.
+const { data: accountingConfig, error: accountingConfigError } = await local
+  .from('qb_sync_config').select('enabled').eq('id', true).maybeSingle()
+if (accountingConfigError && accountingConfigError.code !== 'PGRST205') throw accountingConfigError
+if (accountingConfig?.enabled) {
+  throw new Error('QuickBooks sandbox synchronization is enabled. Refusing to replace its test data with a production snapshot.')
+}
+
 async function all(db, table) {
   const rows = []
   for (let f = 0; ; f += 1000) {

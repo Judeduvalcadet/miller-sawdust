@@ -39,7 +39,7 @@ async function fileToAvatarDataUrl(file) {
   return canvas.toDataURL('image/jpeg', 0.82);
 }
 
-// `embedded` renders it as a section (no page header/back link) — used by the
+// `embedded` renders it as a section (no page header/back link) - used by the
 // V2 Settings "Team" tab. V1 renders it as its own page, unchanged.
 export default function DriverManager({ embedded = false } = {}) {
   const queryClient = useQueryClient();
@@ -415,7 +415,7 @@ export default function DriverManager({ embedded = false } = {}) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Phone</Label>
-                <Input
+                <Input type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   placeholder="555-123-4567"

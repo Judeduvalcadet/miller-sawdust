@@ -99,7 +99,7 @@ export default function AssistantChat() {
       if (data?.conversation_id) setConversationId(data.conversation_id);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: data?.reply || 'Something went wrong on my end — try again.',
+        content: data?.reply || 'Something went wrong on my end - try again.',
       }]);
     } catch {
       setMessages(prev => [...prev, {

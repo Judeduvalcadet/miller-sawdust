@@ -5,9 +5,8 @@ import { base44 } from '@/api/entities';
 import { getTokenClaim } from '@/api/authClient';
 import { Button } from '@/components/ui/button';
 
-// Intuit redirects here after the user authorizes the app
-// (?code=...&realmId=...). Requires the office session that initiated the
-// connect from V2 Settings; the code is exchanged server-side.
+// The server redirects here with a short-lived completion ticket.
+// Intuit authorization codes are exchanged before any HTML is returned.
 export default function QBCallback() {
   const navigate = useNavigate();
   const ran = useRef(false);
@@ -18,10 +17,20 @@ export default function QBCallback() {
     ran.current = true;
 
     const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const realmId = params.get('realmId');
+    const ticket = params.get('ticket');
+    // Scrub even invalid responses before rendering or making any requests.
+    window.history.replaceState({}, '', window.location.pathname);
+    const oauthState = params.get('state');
+    const expectedState = sessionStorage.getItem('qb_oauth_state');
+    if (!oauthState || oauthState !== expectedState) {
+      setState({ phase: 'error', message: 'This connection request expired. Start again from Settings.' });
+      return;
+    }
+    sessionStorage.removeItem('qb_oauth_state');
+    // Remove the one-time authorization code from the browser address/history.
+    window.history.replaceState({}, '', window.location.pathname);
 
-    if (!code || !realmId) {
+    if (!ticket) {
       setState({ phase: 'error', message: 'The QuickBooks sign-in was cancelled or incomplete.' });
       return;
     }
@@ -30,7 +39,7 @@ export default function QBCallback() {
       return;
     }
 
-    base44.functions.invoke('qb-auth', { action: 'callback', code, realmId })
+    base44.functions.invoke('qb-auth', { action: 'callback', ticket })
       .then(({ data }) => {
         if (data?.success) {
           setState({ phase: 'done', company: data.companyName });

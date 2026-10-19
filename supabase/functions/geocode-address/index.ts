@@ -1,6 +1,6 @@
 // Geocode one record on save. Called fire-and-forget by the app after a
 // customer / pickup / drop-off address is created or edited, and by the CSV
-// re-import. The Google key lives only in function secrets — never in the
+// re-import. The Google key lives only in function secrets - never in the
 // browser. Accepted results write coordinates (and the normalized street
 // text); everything else clears the pin and marks REVIEW:<reason> so the
 // record shows up as needing attention instead of silently keeping a stale pin.

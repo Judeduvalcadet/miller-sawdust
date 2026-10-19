@@ -68,7 +68,7 @@ const AuthenticatedApp = () => {
       <Route path="/CustomerDeliveriesFullReport" element={<LayoutWrapper currentPageName="CustomerDeliveriesFullReport"><CustomerDeliveriesFullReport /></LayoutWrapper>} />
       <Route path="/BackupRestore" element={<LayoutWrapper currentPageName="BackupRestore"><BackupRestore /></LayoutWrapper>} />
 
-      {/* V2 — parallel interface, own shell and login; V1 untouched */}
+      {/* V2 - parallel interface, own shell and login; V1 untouched */}
       <Route path="/v2/*" element={<V2App />} />
       <Route path="/QBCallback" element={<QBCallback />} />
 

@@ -60,7 +60,7 @@ export default function BackupRestore() {
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(ev.target.result);
-        if (!parsed.entities) throw new Error('Invalid backup file — missing entities key.');
+        if (!parsed.entities) throw new Error('Invalid backup file - missing entities key.');
         setBackupFile(parsed);
         setRestoreStatus('confirm');
         setRestoreError('');
@@ -253,7 +253,7 @@ export default function BackupRestore() {
                       <span>
                         {s === 'loading' && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" />}
                         {s === 'done' && <span className="text-green-600">{count} records restored ✓</span>}
-                        {s === 'skipped' && <span className="text-gray-400">empty — skipped</span>}
+                        {s === 'skipped' && <span className="text-gray-400">empty - skipped</span>}
                         {s === 'error' && <span className="text-red-500 text-xs">{error}</span>}
                       </span>
                     </div>

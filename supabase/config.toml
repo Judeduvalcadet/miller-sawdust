@@ -359,11 +359,15 @@ enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
 # `per_worker` (default) — enables hot reload during local development.
 # `oneshot` — fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
-policy = "per_worker"
+# Release request isolates between calls on the memory-constrained local stack.
+policy = "oneshot"
 # Port to attach the Chrome inspector for debugging edge functions.
 inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
+
+[functions.qb-oauth-return]
+verify_jwt = false
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
@@ -394,3 +398,22 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./declarative"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# Custom Miller JWTs are validated inside these handlers; provider callbacks
+# instead require Twilio/Svix signatures. No anonymous mutation path exists.
+[functions.messaging]
+verify_jwt = false
+[functions.send-invoice]
+verify_jwt = false
+[functions.messaging-twilio]
+verify_jwt = false
+[functions.messaging-resend]
+verify_jwt = false
+
+# Office JWTs are verified by qb-auth; the receiver verifies Intuit HMAC.
+[functions.qb-auth]
+verify_jwt = false
+[functions.qb-webhook]
+verify_jwt = false
+[functions.qb-sync]
+verify_jwt = false

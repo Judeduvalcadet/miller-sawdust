@@ -18,7 +18,7 @@ export function loadGoogleMaps() {
   return loadPromise;
 }
 
-// Places API (New) — autocomplete + place details over REST with the same
+// Places API (New) - autocomplete + place details over REST with the same
 // browser key. Biased to the Millersburg service area.
 const PLACES_BIAS = { latitude: 40.55, longitude: -81.92 };
 

@@ -36,7 +36,7 @@ export default function DriverDashboard() {
       return;
     }
 
-    // Stale/expired sessions would otherwise render an empty dashboard —
+    // Stale/expired sessions would otherwise render an empty dashboard -
     // this redirects to login when the session can't be renewed.
     ensureAuthenticated();
 
@@ -96,7 +96,7 @@ export default function DriverDashboard() {
   };
 
   const handleLogout = async () => {
-    // Must clear ALL auth state (token included) — removing only the driver
+    // Must clear ALL auth state (token included) - removing only the driver
     // keys used to leave a half-logged-out device stuck in a redirect loop.
     await logout();
     window.location.href = createPageUrl('DriverLogin');
