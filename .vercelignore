@@ -1,10 +1,15 @@
 .env
 .env.*
+**/.env
+**/.env.*
 **/*.local
+**/.temp/
 backups/
 output/
 tmp/
-supabase/
+supabase/config.toml
+supabase/migrations/
+supabase/pending-for-live/
 production-gateway/
 sandbox-gateway/
 tests/
