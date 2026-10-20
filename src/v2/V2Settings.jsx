@@ -1,3 +1,4 @@
+import { DETAIL_ROWS } from '@/lib/detailLayout';
 import { contactError } from '@/lib/contactValidation';
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -134,7 +135,7 @@ function CompanyTab() {
           {saved && <span className="flex items-center gap-1 text-sm text-green-600"><Check className="w-4 h-4" /> Saved</span>}
         </div>
         {save.error && <p role="alert" className="text-sm text-red-700">{save.error.message}</p>}
-        </> : <dl className="space-y-3">{COMPANY_FIELDS.map(({key,label}) => <div key={key}><dt className="text-xs text-gray-500">{label}</dt><dd className="text-sm mt-1 break-words">{settings?.company_profile?.[key] || 'Not set'}</dd></div>)}</dl>}
+        </> : <dl className={DETAIL_ROWS}>{COMPANY_FIELDS.map(({key,label}) => <div key={key}><dt className="text-xs text-gray-500">{label}</dt><dd className="text-sm mt-1 break-words">{settings?.company_profile?.[key] || 'Not set'}</dd></div>)}</dl>}
       </div>
 
       {/* Invoice template - fixed layout; these company details fill its header. */}

@@ -1,3 +1,4 @@
+import { DETAIL_ROWS } from '@/lib/detailLayout';
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { directionsDestination, directionsLinks } from '@/lib/driverDirections';
@@ -540,7 +541,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Job Details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className={deYellow ? DETAIL_ROWS : "space-y-4"}>
             <div className="flex items-start gap-3">
               <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
               <div>

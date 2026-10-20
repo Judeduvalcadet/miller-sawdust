@@ -1,3 +1,4 @@
+import { DARK_DETAIL_ROWS } from '@/lib/detailLayout';
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 const TRUCK_LABELS = { straight_truck: 'Straight', semi: 'Semi', spreader: 'Spreader' };
 
-export default function WallboardJobDetailPopup({ job, driver, pickupLocations = [], onClose }) {
+export default function WallboardJobDetailPopup({ job, driver, pickupLocations = [], onClose, structuredDetails = false }) {
   const hasPerLoadData = job.job_type === 'delivery' && Array.isArray(job.loads) && job.loads.length > 0;
   const perLoadDetails = hasPerLoadData
     ? job.loads.filter((l) => l.pickup_location_name || l.yards_collected)
@@ -42,7 +43,7 @@ export default function WallboardJobDetailPopup({ job, driver, pickupLocations =
             )}
           </div>
 
-          <div className="space-y-2.5 text-sm">
+          <div className={cn("text-sm", structuredDetails ? DARK_DETAIL_ROWS : "space-y-2.5")}>
             {/* Location */}
             <div className="flex items-start gap-2">
               <MapPin className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />

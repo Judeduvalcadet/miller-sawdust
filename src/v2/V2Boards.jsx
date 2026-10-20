@@ -730,7 +730,7 @@ export function V2Wallboard() {
       ) : (
         <BoardGrid drivers={drivers} weekJobsByDate={byDate} day={day} dark neutral readOnly invoicedMap={new Map([...sentJobIds].map((id) => [id, true]))} />
       )}
-      {selectedJob && <WallboardJobDetailPopup job={selectedJob} driver={drivers.find((d) => d.id === selectedJob.assigned_driver_id)} pickupLocations={pickupLocations} onClose={() => setSelectedJob(null)} />}
+      {selectedJob && <WallboardJobDetailPopup structuredDetails job={selectedJob} driver={drivers.find((d) => d.id === selectedJob.assigned_driver_id)} pickupLocations={pickupLocations} onClose={() => setSelectedJob(null)} />}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { DETAIL_GRID } from '@/lib/detailLayout';
 import { contactError } from '@/lib/contactValidation';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -144,7 +145,7 @@ function LocationDetail({ kind, record, entity, queryKey, subtitle }) {
             <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="absolute top-3 right-3 h-7 px-2.5 text-xs">
               <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
             </Button>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div className={DETAIL_GRID}>
               <Field label="Name" value={record.name} />
               {kind === 'pickup' && (
                 <Field label="Type" value={record.location_type === 'my_building' ? 'Our building' : 'Supplier'} />

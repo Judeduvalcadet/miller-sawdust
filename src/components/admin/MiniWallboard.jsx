@@ -1,6 +1,6 @@
+import { DETAIL_ROWS, DETAIL_FOOTER } from '@/lib/detailLayout';
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import CalendarPicker from "@/components/driver/CalendarPicker";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format, startOfWeek, addDays, addWeeks, isToday, isSameDay } from "date-fns";
+import { format, startOfWeek, addDays, addWeeks, isToday } from "date-fns";
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
@@ -136,7 +136,7 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupL
             }
           </div>
           <div className={deYellow
-            ? "text-sm divide-y divide-gray-200/70 [&>div]:py-3 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0"
+            ? cn("text-sm", DETAIL_ROWS)
             : "space-y-2 text-sm"}>
             <div className="flex items-start gap-2">
               <MapPin className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
@@ -220,7 +220,7 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupL
         }
         <div className={cn(
           "flex flex-wrap items-center justify-end gap-3 pt-2",
-          deYellow && "border-t border-gray-200/70 pt-4"
+          deYellow && DETAIL_FOOTER
         )}>
           <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? "text-gray-600 border-gray-300 hover:bg-gray-50" : "text-red-600 border-red-300 hover:bg-red-50"}>
             <Trash2 className="w-4 h-4 mr-2" />

@@ -1,3 +1,4 @@
+import { DETAIL_GRID } from '@/lib/detailLayout';
 import { contactError } from '@/lib/contactValidation';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -240,7 +241,7 @@ function InfoTab({ customer }) {
             >
               <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
             </Button>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div className={DETAIL_GRID}>
               <Field label="Name" value={customer.name} />
               <Field label="Company" value={customer.company_name} />
               <Field label="Phone" value={customer.phone} />
