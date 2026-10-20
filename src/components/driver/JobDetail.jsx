@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { directionsDestination, directionsLinks } from '@/lib/driverDirections';
 import { base44 } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -271,6 +273,20 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
 }
 
 export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLocations = [], driverName = '', customer = null, deYellow = false, items = [] }) {
+  const destinationId = job.job_type === 'pickup' ? job.pickup_location_id : job.customer_id;
+  const { data: currentDestination, isFetching: loadingDestination, isError: destinationError, refetch: refreshDestination } = useQuery({
+    queryKey: ['driver-directions-destination', job.job_type, destinationId],
+    enabled: !!destinationId,
+    queryFn: async () => {
+      const entity = job.job_type === 'pickup' ? base44.entities.PickupLocation : base44.entities.Customer;
+      return (await entity.filter({ id: destinationId }, undefined, 1))[0] || null;
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
+  const destination = directionsDestination(job, currentDestination);
+  const directions = directionsLinks(destination, navigator.userAgent, navigator.maxTouchPoints);
+  const directionsReady = !!directions && !loadingDestination && !destinationError;
   const [driverNotes, setDriverNotes] = useState(job.driver_notes || '');
   const [paymentCollected, setPaymentCollected] = useState(job.payment_collected || false);
   const [loads, setLoads] = useState(() => initLoads(job));
@@ -360,15 +376,6 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
       next[index] = updatedLoad;
       return next;
     });
-  };
-
-  const handleGetDirections = () => {
-    const encodedAddress = encodeURIComponent(job.address);
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const url = isIOS
-      ? `maps://maps.apple.com/?daddr=${encodedAddress}`
-      : `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`;
-    window.open(url, '_blank');
   };
 
   const handleCall = () => {
@@ -510,15 +517,23 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
       <div className="p-4 space-y-4">
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3">
-          <Button variant="outline" className="h-14 text-base font-medium" onClick={handleGetDirections}>
-            <Navigation className="w-5 h-5 mr-2 text-blue-600" />
-            Get Directions
-          </Button>
+          {directionsReady ? <Button asChild variant="outline" className="h-14 text-base font-medium">
+            <a href={directions.href} target={directions.mobile ? undefined : '_blank'} rel="noopener noreferrer">
+              <Navigation className="w-5 h-5 mr-2 text-blue-600" />Get Directions
+            </a>
+          </Button> : <Button variant="outline" className="h-14 text-base font-medium" disabled>
+            {loadingDestination ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Navigation className="w-5 h-5 mr-2 text-blue-600" />}Get Directions
+          </Button>}
           <Button variant="outline" className="h-14 text-base font-medium" onClick={handleCall} disabled={!job.phone}>
             <Phone className="w-5 h-5 mr-2 text-green-600" />
             Call
           </Button>
         </div>
+
+        {destinationError ? <p className="text-sm text-red-700">Could not load the current destination. <button type="button" className="underline" onClick={() => refreshDestination()}>Try again</button></p> : !loadingDestination && !destination ? <p className="text-sm text-gray-600">Ask the office to confirm a street address or map pin for this stop.</p> : directionsReady ? <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+          {directions.mobile && <a href={directions.web} target="_blank" rel="noopener noreferrer" className="underline">Open in browser instead</a>}
+          {!destination.pinned && <span>No verified map pin. Confirm the destination before driving.</span>}
+        </div> : null}
 
         {/* Job Info */}
         <Card>
@@ -530,8 +545,8 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
               <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
               <div>
                 <p className="text-sm text-gray-500">{isPickupJob ? 'Pickup Location' : 'Address'}</p>
-                <p className="font-medium">{job.location_name || job.address}</p>
-                {job.address && job.location_name && <p className="text-sm text-gray-500">{job.address}</p>}
+                <p className="font-medium">{job.location_name || destination?.address || job.address}</p>
+                {(destination?.address || job.address) && job.location_name && <p className="text-sm text-gray-500">{destination?.address || job.address}</p>}
               </div>
             </div>
             {isPickupJob && job.dropoff_location_name && (
