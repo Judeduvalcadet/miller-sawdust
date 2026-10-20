@@ -31,6 +31,7 @@ import { assertV2Writable, V2_READ_ONLY } from './guard';
 import { checkSendResult, STATUS_LABELS } from './inbox/api';
 import QuickBooksBadge from './QuickBooksBadge';
 import QuickBooksPaymentDialog from './QuickBooksPaymentDialog';
+import { fetchInvoicePage, fetchSelectedInvoices } from '@/lib/invoiceList';
 
 // V2 Invoices - "All invoices" (the whole system: QuickBooks import +
 // app-created, filterable) and "Create" (a week of delivery jobs as a flat
@@ -164,6 +165,7 @@ const PAGE_SIZES = [25, 50, 100];
 function InvoiceList() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [status, setStatus] = useState('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -175,24 +177,38 @@ function InvoiceList() {
   const [statusInv, setStatusInv] = useState(null);
   const [paymentInv,setPaymentInv]=useState(null);
   const [sendReq, setSendReq] = useState(null); // { inv, mode: 'email' | 'sms' }
-  const [checked, setChecked] = useState(new Set());
+  const [checked, setChecked] = useState(new Map());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkError, setBulkError] = useState('');
   const [printQueue, setPrintQueue] = useState(null);
+  useEffect(() => { setChecked(new Map()); }, [searchTerm, status, from, to]);
 
-  const { data: invoices, isLoading } = useQuery({
-    queryKey: ['v2-invoices'],
+  useEffect(() => {
+    const timer = setTimeout(() => { setSearchTerm(search.trim()); setPage(1); }, 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const { data: invoicePage, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ['v2-invoices', 'page', searchTerm, status, from, to, page, pageSize],
     refetchInterval: !V2_READ_ONLY?3000:false,
-    queryFn: () => base44.entities.Invoice.list('-txn_date', 10000),
-  });
-  const { data: customers } = useQuery({
-    queryKey: ['v2-customers'],
-    refetchInterval:!V2_READ_ONLY?10000:false,
-    queryFn: () => base44.entities.Customer.list('name', 5000),
+    staleTime: 3000,
+    queryFn: ({ signal }) => fetchInvoicePage(supabase, { search: searchTerm, status, from, to, page, pageSize }, signal),
   });
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => (await base44.entities.Settings.list())[0] || null,
+    staleTime: 60000,
   });
-  const custById = useMemo(() => new Map((customers || []).map((c) => [c.id, c])), [customers]);
+  const rows = invoicePage?.rows || [];
+  const total = invoicePage?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  useEffect(() => {
+    if (invoicePage && page > totalPages) setPage(totalPages);
+  }, [invoicePage, page, totalPages]);
+  const custById = useMemo(() => new Map(
+    [...checked.values(), ...(invoicePage?.rows || []), previewInv, sendReq?.inv]
+      .filter(inv => inv?.customer).map(inv => [inv.customer.id, inv.customer])
+  ), [checked, invoicePage, previewInv, sendReq]);
   const custName = (inv) => {
     const c = custById.get(inv.customer_id);
     return c ? (c.company_name || c.name || '').trim() : '(not matched)';
@@ -203,31 +219,20 @@ function InvoiceList() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['v2-invoices'] }),
   });
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (invoices || []).filter((inv) => {
-      if (inv.qb_archived) return false;
-      if (status !== 'all' && inv.status !== status) return false;
-      if (from && (inv.txn_date || '') < from) return false;
-      if (to && (inv.txn_date || '') > to) return false;
-      if (q) {
-        const hay = `${custName(inv)} ${inv.doc_number || ''} ${inv.note || ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [invoices, search, status, from, to, custById]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  const toggle = (id) => setChecked((p) => {
-    const n = new Set(p);
-    n.has(id) ? n.delete(id) : n.add(id);
+  const toggle = (inv) => setChecked((p) => {
+    const n = new Map(p);
+    n.has(inv.id) ? n.delete(inv.id) : n.set(inv.id, inv);
     return n;
   });
-  const checkedRows = filtered.filter((i) => checked.has(i.id));
+  const openBulkPdf = async () => {
+    setBulkLoading(true); setBulkError('');
+    try {
+      const selected = await fetchSelectedInvoices(supabase, [...checked.keys()]);
+      setChecked(new Map(selected.map(inv => [inv.id, inv])));
+      setPrintQueue(selected);
+    } catch (error) { setBulkError(error.message || 'Could not load selected invoices. Please try again.'); }
+    finally { setBulkLoading(false); }
+  };
 
   const markSent = (list) => {
     const now = new Date().toISOString();
@@ -248,7 +253,7 @@ function InvoiceList() {
           <Input
             placeholder="Search customer, invoice #…"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-9 w-64 bg-white"
           />
         </div>
@@ -261,23 +266,24 @@ function InvoiceList() {
           </SelectContent>
         </Select>
         <DateRangePicker from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); setPage(1); }} />
-        <span className="ml-auto text-[11px] text-gray-400">{filtered.length.toLocaleString()} invoices</span>
+        <span className="ml-auto text-[11px] text-gray-400">{isLoading ? 'Loading…' : `${total.toLocaleString()} invoices`}</span>
       </div>
 
       {/* Bulk bar */}
       {checked.size > 0 && (
         <div className="mb-2 inline-flex w-fit items-center gap-3 bg-gray-950 text-white rounded-xl px-4 py-2 text-sm">
           <span>{checked.size} selected</span>
-          <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => setPrintQueue(checkedRows)}>
+          <Button size="sm" variant="secondary" className="h-7 text-xs" disabled={bulkLoading} onClick={openBulkPdf}>
             <Download className="w-3.5 h-3.5 mr-1.5" /> Send (save PDF)
           </Button>
-          <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs">Clear</button>
+          <button disabled={bulkLoading} onClick={() => { setChecked(new Map()); setBulkError(''); }} className="text-gray-400 hover:text-white text-xs">Clear</button>
         </div>
       )}
+      {bulkError && <p role="alert" className="mb-2 text-sm text-red-700">{bulkError}</p>}
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-auto flex-1 min-h-0">
-        {isLoading ? (
+        {error ? <div role="alert" className="p-8 text-center text-sm text-red-700">Could not load invoices. <button className="underline" onClick={() => refetch()}>Try again</button></div> : isLoading ? (
           <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
         ) : (
           <table className="w-full text-left">
@@ -285,10 +291,11 @@ function InvoiceList() {
               <tr className="text-[11px] uppercase tracking-wide text-gray-400">
                 <th className="py-3 pl-4 pr-1 w-8">
                   <Checkbox
+                    aria-label="Select all invoices on this page"
                     checked={rows.length > 0 && rows.every((r) => checked.has(r.id))}
                     onCheckedChange={(v) => setChecked((p) => {
-                      const n = new Set(p);
-                      rows.forEach((r) => v ? n.add(r.id) : n.delete(r.id));
+                      const n = new Map(p);
+                      rows.forEach((r) => v ? n.set(r.id, r) : n.delete(r.id));
                       return n;
                     })}
                   />
@@ -305,7 +312,7 @@ function InvoiceList() {
             <tbody>
               {rows.map((inv) => (
                 <tr key={inv.id} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="py-3 pl-4 pr-1"><Checkbox checked={checked.has(inv.id)} onCheckedChange={() => toggle(inv.id)} /></td>
+                  <td className="py-3 pl-4 pr-1"><Checkbox aria-label={`Select invoice ${inv.doc_number || inv.id}`} checked={checked.has(inv.id)} onCheckedChange={() => toggle(inv)} /></td>
                   <td className="py-3 px-3 text-sm font-medium text-gray-900 whitespace-nowrap cursor-pointer" onClick={() => setPreviewInv(inv)}>
                     {inv.doc_number || '-'}
                     {inv.source === 'quickbooks' && (
@@ -366,9 +373,9 @@ function InvoiceList() {
           </Select>
         </span>
         <span className="flex items-center gap-0.5">
-          <button onClick={() => setPage(safePage - 1)} disabled={safePage <= 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-30" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button>
+          <button onClick={() => setPage(safePage - 1)} disabled={isFetching || safePage <= 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-30" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button>
           <span className="tabular-nums text-[11px] px-0.5">{safePage} / {totalPages}</span>
-          <button onClick={() => setPage(safePage + 1)} disabled={safePage >= totalPages} className="p-1 rounded hover:bg-gray-200 disabled:opacity-30" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button>
+          <button onClick={() => setPage(safePage + 1)} disabled={isFetching || safePage >= totalPages} className="p-1 rounded hover:bg-gray-200 disabled:opacity-30" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button>
         </span>
       </div>
 
@@ -420,7 +427,7 @@ function InvoiceList() {
           invoices={printQueue}
           custById={custById}
           company={settings?.company_profile}
-          onDone={(printed) => { if (printed) markSent(printQueue); setPrintQueue(null); setChecked(new Set()); }}
+          onDone={(printed) => { if (printed) markSent(printQueue); setPrintQueue(null); setChecked(new Map()); }}
         />
       )}
     </div>
