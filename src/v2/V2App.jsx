@@ -11,6 +11,8 @@ import { V2Pickups, V2Dropoffs } from './V2Directory';
 import V2Invoices from './V2Invoices';
 import V2Driver from './V2Driver';
 import V2Inbox from './V2Inbox';
+import V2AddressReview from './V2AddressReview';
+import { addressReviewAvailable } from '@/lib/addressReview';
 import { V2Dispatch, V2Wallboard } from './V2Boards';
 import { installV2LiveGuard, V2_READ_ONLY } from './guard';
 import { base44 } from '@/api/entities';
@@ -53,6 +55,8 @@ const DIRECTORY = [
   { to: '/v2/customers', icon: Users, label: 'Customers' },
   { to: '/v2/pickups', icon: Factory, label: 'Pickup Locations' },
   { to: '/v2/dropoffs', icon: MapPin, label: 'Drop-off Locations' },
+  ...(addressReviewAvailable(window.location.hostname, import.meta.env.MODE)
+    ? [{ to: '/v2/address-review', icon: MapPin, label: 'Address review' }] : []),
 ];
 const NAV_BOTTOM = [
   { to: '/v2/wallboard', icon: Monitor, label: 'Wallboard' },
@@ -174,6 +178,7 @@ export default function V2App() {
       <Route path="inbox" element={<RequireOffice><V2Inbox /></RequireOffice>} />
       <Route path="invoices" element={<RequireOffice><V2Invoices /></RequireOffice>} />
       <Route path="customers" element={<RequireOffice><V2Customers /></RequireOffice>} />
+      <Route path="address-review" element={<RequireOffice><V2AddressReview /></RequireOffice>} />
       <Route path="pickups" element={<RequireOffice><V2Pickups /></RequireOffice>} />
       <Route path="dropoffs" element={<RequireOffice><V2Dropoffs /></RequireOffice>} />
       <Route path="wallboard" element={<RequireOffice><V2Wallboard /></RequireOffice>} />

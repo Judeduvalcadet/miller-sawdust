@@ -22,7 +22,7 @@ export function loadGoogleMaps() {
 // browser key. Biased to the Millersburg service area.
 const PLACES_BIAS = { latitude: 40.55, longitude: -81.92 };
 
-export async function suggestAddresses(input) {
+export async function suggestAddresses(input, { throwOnError = false } = {}) {
   if (!input || input.trim().length < 3) return [];
   const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
     method: 'POST',
@@ -36,7 +36,10 @@ export async function suggestAddresses(input) {
       locationBias: { circle: { center: PLACES_BIAS, radius: 50000 } },
     }),
   });
-  if (!res.ok) return [];
+  if (!res.ok) {
+    if (throwOnError) throw new Error('Google address suggestions are unavailable. Please try again.');
+    return [];
+  }
   const data = await res.json();
   return (data.suggestions || [])
     .map(s => s.placePrediction)
@@ -63,6 +66,8 @@ export async function fetchPlace(placeId) {
     .replace(/\bTownship Highway\b/i, 'Township Road')
     .replace(/\bCounty Highway\b/i, 'County Road');
   return {
+    placeId,
+    country: comp('country', true),
     street: [streetNumber, route].filter(Boolean).join(' '),
     city: comp('locality') || comp('postal_town') || comp('administrative_area_level_3'),
     state: comp('administrative_area_level_1', true),
