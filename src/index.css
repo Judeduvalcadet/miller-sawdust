@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Applied only while the V2 office shell is mounted; V1 keeps its own
+   document scrolling. Long V2 lists scroll inside the fixed app frame. */
+html.v2-office-open,
+html.v2-office-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

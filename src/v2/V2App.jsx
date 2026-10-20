@@ -1,5 +1,5 @@
 import VersionSwitch from '@/components/VersionSwitch';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { Truck, FileText, Users, Map, LogOut, Monitor, BookUser, Factory, MapPin, ChevronDown, MessageSquare } from 'lucide-react';
 import { getTokenClaim, logout } from '@/api/authClient';
@@ -105,10 +105,16 @@ function DirectoryGroup() {
 function V2Shell({ children }) {
   const navigate = useNavigate();
   const { name } = useOfficeSession();
+  useEffect(() => {
+    // The office interface owns its scroll areas. Don't let a long list (or
+    // scrolling past its end) move the document and sidebar behind it.
+    document.documentElement.classList.add('v2-office-open');
+    return () => document.documentElement.classList.remove('v2-office-open');
+  }, []);
   return (
-    <div className="h-screen overflow-hidden bg-gray-100 flex flex-col md:flex-row">
+    <div className="fixed inset-0 overflow-hidden bg-gray-100 flex flex-col md:flex-row">
       {/* Sidebar */}
-      <aside className="hidden md:flex w-56 shrink-0 bg-gray-950 text-white flex-col">
+      <aside className="hidden md:flex w-56 shrink-0 min-h-0 bg-gray-950 text-white flex-col">
         <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10">
           <img src="/logo.jpg" alt="" className="w-9 h-9 rounded-xl object-cover" />
           <div className="min-w-0">
@@ -125,7 +131,7 @@ function V2Shell({ children }) {
             )}
           </div>
         </div>
-        <nav className="flex-1 py-3 space-y-0.5 px-2">
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain py-3 space-y-0.5 px-2">
           {NAV_TOP.map(({ to, end, icon: Icon, label }) => (
             <NavLink key={to} to={to} end={end} className={navLinkClass}>
               <Icon className="w-4 h-4 shrink-0" /> {label}
@@ -157,7 +163,7 @@ function V2Shell({ children }) {
         <button onClick={async () => { await logout(); navigate('/v2/login'); }} className="shrink-0 px-3 text-xs text-gray-400">Sign out</button>
       </nav>
       {/* Content */}
-      <main className="flex-1 min-w-0 min-h-0 flex flex-col">{children}</main>
+      <main className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">{children}</main>
     </div>
   );
 }

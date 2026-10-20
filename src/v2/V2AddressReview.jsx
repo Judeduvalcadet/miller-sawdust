@@ -26,7 +26,7 @@ function ReviewList() {
   const visible = rows.filter(row => `${row.name} ${customerAddress(row)}`.toLowerCase().includes(search.trim().toLowerCase()));
   const visibleIds = new Set(visible.map(row => row.id));
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-7">
+    <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain p-4 md:p-7">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-wrap gap-4 items-start justify-between mb-5">
           <div>
