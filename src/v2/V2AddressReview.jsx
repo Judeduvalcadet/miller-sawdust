@@ -24,6 +24,7 @@ function ReviewList() {
     staleTime: Infinity, refetchOnWindowFocus: false,
   });
   const visible = rows.filter(row => `${row.name} ${customerAddress(row)}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const visibleIds = new Set(visible.map(row => row.id));
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-7">
       <div className="max-w-6xl mx-auto">
@@ -46,7 +47,7 @@ function ReviewList() {
         {isLoading ? <p role="status">Loading addresses…</p> : error ? <p role="alert" className="text-red-700">Could not load addresses. Use Refresh list to try again.</p> : visible.length === 0 ? <p className="p-8 bg-white border rounded-xl text-gray-600">{rows.length ? 'No matching customers.' : 'No unresolved customer addresses.'}</p> : (
           <div className="space-y-3">
             <div className="hidden md:grid grid-cols-2 gap-8 px-5 text-xs font-semibold uppercase tracking-wide text-gray-500"><span>Current address</span><span>Verified address</span></div>
-            {visible.map(row => <ReviewRow key={`${row.id}-${row.updated_date}`} customer={row} onSaved={() => setSaved(previous => new Set([...previous, row.id]))} />)}
+            {rows.map(row => <div key={`${row.id}-${row.updated_date}`} hidden={!visibleIds.has(row.id)}><ReviewRow customer={row} onSaved={() => setSaved(previous => new Set([...previous, row.id]))} /></div>)}
           </div>
         )}
       </div>
@@ -133,6 +134,7 @@ function ReviewRow({ customer, onSaved }) {
             {suggestions.map((suggestion, index) => <li key={suggestion.placeId} id={`${inputId}-${index}`} role="option" aria-selected={index === active}>
               <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => pick(suggestion)} className={`w-full px-3 py-3 text-left text-sm hover:bg-gray-100 ${index === active ? 'bg-gray-100' : ''}`}>{suggestion.text}</button>
             </li>)}
+            <li role="presentation" className="px-3 py-2 border-t text-right text-xs text-[#5E5E5E] font-normal not-italic whitespace-nowrap" translate="no">Google Maps</li>
           </ul>}
         </div>
         {place && <p className="text-xs text-gray-500 mt-2">Map pin: {place.lat.toFixed(6)}, {place.lng.toFixed(6)} · {place.city}, {place.state} {place.zip}</p>}
