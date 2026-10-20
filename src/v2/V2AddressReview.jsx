@@ -44,8 +44,9 @@ function ReviewList() {
           <p className="text-sm text-gray-600" aria-live="polite">{rows.filter(row => !saved.has(row.id)).length} to review · {saved.size} saved this session</p>
         </div>
         {V2_READ_ONLY && <p className="text-sm text-red-700 mb-4">Saving is disabled on this deployment.</p>}
-        {isLoading ? <p role="status">Loading addresses…</p> : error ? <p role="alert" className="text-red-700">Could not load addresses. Use Refresh list to try again.</p> : visible.length === 0 ? <p className="p-8 bg-white border rounded-xl text-gray-600">{rows.length ? 'No matching customers.' : 'No unresolved customer addresses.'}</p> : (
+        {isLoading ? <p role="status">Loading addresses…</p> : error ? <p role="alert" className="text-red-700">Could not load addresses. Use Refresh list to try again.</p> : rows.length === 0 ? <p className="p-8 bg-white border rounded-xl text-gray-600">No unresolved customer addresses.</p> : (
           <div className="space-y-3">
+            {visible.length === 0 && <p className="p-8 bg-white border rounded-xl text-gray-600">No matching customers.</p>}
             <div className="hidden md:grid grid-cols-2 gap-8 px-5 text-xs font-semibold uppercase tracking-wide text-gray-500"><span>Current address</span><span>Verified address</span></div>
             {rows.map(row => <div key={`${row.id}-${row.updated_date}`} hidden={!visibleIds.has(row.id)}><ReviewRow customer={row} onSaved={() => setSaved(previous => new Set([...previous, row.id]))} /></div>)}
           </div>
