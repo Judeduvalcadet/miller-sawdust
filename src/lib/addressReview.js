@@ -38,7 +38,7 @@ export async function saveReviewedAddress(client, customer, patch) {
     'latitude', 'longitude', 'geocode_precision', 'geocode_place_id']) {
     query = customer[field] == null ? query.is(field, null) : query.eq(field, customer[field]);
   }
-  const { data, error } = await query.select('id').maybeSingle();
+  const { data, error } = await query.select('*').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('This customer changed since the list loaded. Refresh the list before saving.');
   return data;

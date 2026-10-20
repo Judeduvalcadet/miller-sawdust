@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate } from 'react-router-dom';
-import { Check, Loader2, MapPin, Search } from 'lucide-react';
+import { Check, Loader2, MapPin, Search, Pencil } from 'lucide-react';
 import { base44 } from '@/api/entities';
 import { supabase } from '@/api/supabaseClient';
 import { Button } from '@/components/ui/button';
@@ -47,8 +47,8 @@ function ReviewList() {
         {isLoading ? <p role="status">Loading addresses…</p> : error ? <p role="alert" className="text-red-700">Could not load addresses. Use Refresh list to try again.</p> : rows.length === 0 ? <p className="p-8 bg-white border rounded-xl text-gray-600">No unresolved customer addresses.</p> : (
           <div className="space-y-3">
             {visible.length === 0 && <p className="p-8 bg-white border rounded-xl text-gray-600">No matching customers.</p>}
-            <div className="hidden md:grid grid-cols-2 gap-8 px-5 text-xs font-semibold uppercase tracking-wide text-gray-500"><span>Current address</span><span>Verified address</span></div>
-            {rows.map(row => <div key={`${row.id}-${row.updated_date}`} hidden={!visibleIds.has(row.id)}><ReviewRow customer={row} onSaved={() => setSaved(previous => new Set([...previous, row.id]))} /></div>)}
+            <div className="hidden md:grid md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.4fr)_7.5rem] gap-5 px-4 text-xs font-semibold uppercase tracking-wide text-gray-500"><span>Current address</span><span>Verified address</span><span className="sr-only">Action</span></div>
+            {rows.map(row => <div key={`${row.id}-${row.updated_date}`} hidden={!visibleIds.has(row.id)}><ReviewRow customer={row} onSaved={() => setSaved(previous => new Set([...previous, row.id]))} onEdit={() => setSaved(previous => { const next = new Set(previous); next.delete(row.id); return next; })} /></div>)}
           </div>
         )}
       </div>
@@ -56,8 +56,10 @@ function ReviewList() {
   );
 }
 
-function ReviewRow({ customer, onSaved }) {
+function ReviewRow({ customer, onSaved, onEdit }) {
   const inputId = useId();
+  const inputRef = useRef(null);
+  const [baseline, setBaseline] = useState(customer);
   const [text, setText] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [place, setPlace] = useState(null);
@@ -99,7 +101,8 @@ function ReviewRow({ customer, onSaved }) {
     setSaving(true); setError('');
     try {
       assertV2Writable();
-      await saveReviewedAddress(supabase, customer, reviewedAddressPatch(place));
+      const updated = await saveReviewedAddress(supabase, baseline, reviewedAddressPatch(place));
+      setBaseline(updated);
       setSaved(true); onSaved();
       // Same best-effort wake used by regular customer editing. A paused QB
       // connection retains its queue; it does not prevent address review.
@@ -108,18 +111,15 @@ function ReviewRow({ customer, onSaved }) {
     finally { setSaving(false); }
   };
   return (
-    <section aria-label={`Review ${customer.name}`} className={`grid md:grid-cols-2 gap-5 md:gap-8 bg-white border rounded-xl p-5 ${saved ? 'border-green-200' : 'border-gray-200'}`}>
-      <div>
-        <h2 className="font-semibold text-gray-950">{customer.name}</h2>
-        {customer.company_name && <p className="text-sm text-gray-500">{customer.company_name}</p>}
-        <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{customerAddress(customer) || 'No address recorded'}</p>
-        <p className="text-xs text-gray-500 mt-3">{customer.geocode_precision?.startsWith('REVIEW:') ? `Needs checking: ${customer.geocode_precision.slice(7).replaceAll('_', ' ').toLowerCase()}` : 'No verified map coordinates'}</p>
-        {customer.geocode_formatted_address && <p className="text-xs text-gray-500 mt-1">Previous Google result (unconfirmed): {customer.geocode_formatted_address}</p>}
+    <section aria-label={`Review ${customer.name}`} className={`grid md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.4fr)_7.5rem] items-center gap-3 md:gap-5 bg-white border rounded-xl px-4 py-3 ${saved ? 'border-green-200' : 'border-gray-200'}`}>
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold text-gray-950">{customer.name}</h2>
+        <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{customerAddress(baseline) || 'No address recorded'}</p>
       </div>
-      <div>
-        <label htmlFor={inputId} className="text-xs font-medium text-gray-600 block mb-2">Correct address for {customer.name}</label>
+      <div className="min-w-0">
+        <label htmlFor={inputId} className="sr-only">Correct address for {customer.name}</label>
         <div className="relative">
-          <Input id={inputId} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={`${inputId}-suggestions`} aria-activedescendant={active >= 0 ? `${inputId}-${active}` : undefined}
+          <Input ref={inputRef} id={inputId} role="combobox" aria-autocomplete="list" aria-expanded={suggestions.length > 0} aria-controls={`${inputId}-suggestions`} aria-activedescendant={active >= 0 ? `${inputId}-${active}` : undefined}
             autoComplete="off" placeholder="Search Google for the correct address…" value={text} disabled={saved || saving} className="pr-9"
             onFocus={() => setFocused(true)} onBlur={e => { if (!e.currentTarget.parentElement.contains(e.relatedTarget)) { setFocused(false); setSuggestions([]); } }}
             onChange={e => { requestId.current++; setText(e.target.value); setPlace(null); setSuggestions([]); setError(''); }}
@@ -138,12 +138,16 @@ function ReviewRow({ customer, onSaved }) {
             <li role="presentation" className="px-3 py-2 border-t text-right text-xs text-[#5E5E5E] font-normal not-italic whitespace-nowrap" translate="no">Google Maps</li>
           </ul>}
         </div>
-        {place && <p className="text-xs text-gray-500 mt-2">Map pin: {place.lat.toFixed(6)}, {place.lng.toFixed(6)} · {place.city}, {place.state} {place.zip}</p>}
         {error && <p role="alert" className="text-sm text-red-700 mt-2">{error}</p>}
-        <div className="flex items-center gap-3 mt-3">
-          <Button size="sm" className="bg-gray-950 hover:bg-gray-800" disabled={!place || saving || saved || V2_READ_ONLY} onClick={save}>{saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : saved ? <Check className="w-4 h-4 mr-2" /> : null}{saved ? 'Saved' : 'Save verified address'}</Button>
-          {!place && !saved && <span className="text-xs text-gray-500">Select a Google suggestion first</span>}
-        </div>
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        {saved ? <>
+          <Button size="sm" disabled className="bg-green-600 text-white disabled:opacity-100 disabled:cursor-default"><Check className="w-4 h-4 mr-1.5" />Done</Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-gray-500 hover:text-gray-950" aria-label={`Edit verified address for ${customer.name}`} onClick={() => {
+            setSaved(false); setPlace(null); setError(''); setFocused(true); onEdit();
+            requestAnimationFrame(() => inputRef.current?.focus());
+          }}><Pencil className="w-4 h-4" /></Button>
+        </> : <Button size="sm" className="bg-gray-950 hover:bg-gray-800 min-w-20" disabled={!place || saving || V2_READ_ONLY} onClick={save}>{saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}Save</Button>}
       </div>
     </section>
   );
