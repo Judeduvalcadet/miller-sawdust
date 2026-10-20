@@ -135,7 +135,9 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupL
             <span className="text-xs text-gray-500">{TRUCK_LABELS[job.truck_type] || job.truck_type}</span>
             }
           </div>
-          <div className="space-y-2 text-sm">
+          <div className={deYellow
+            ? "text-sm divide-y divide-gray-200/70 [&>div]:py-3 [&>div:first-child]:pt-0 [&>div:last-child]:pb-0"
+            : "space-y-2 text-sm"}>
             <div className="flex items-start gap-2">
               <MapPin className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
               <div>
@@ -216,7 +218,10 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupL
             <JobActivityTimeline job={job} />
           </div>
         }
-        <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+        <div className={cn(
+          "flex flex-wrap items-center justify-end gap-3 pt-2",
+          deYellow && "border-t border-gray-200/70 pt-4"
+        )}>
           <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? "text-gray-600 border-gray-300 hover:bg-gray-50" : "text-red-600 border-red-300 hover:bg-red-50"}>
             <Trash2 className="w-4 h-4 mr-2" />
             Delete
