@@ -2,6 +2,7 @@ import { contactError } from '@/lib/contactValidation';
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -255,8 +256,7 @@ function LoadConfigsPanel() {
     queryKey: ['items'],
     queryFn: () => base44.entities.Item.list('sort_order'),
   });
-  // One row edits at a time: hover shows the pencil, edit opens truck /
-  // yards / label fields with explicit Save and Cancel.
+  // Keep the table fixed while the selected configuration is edited in a dialog.
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState({ truck_type: '', yards: '', display_label: '' });
   const [savedId, setSavedId] = useState(null);
@@ -265,12 +265,14 @@ function LoadConfigsPanel() {
     mutationFn: ({ id, ...patch }) => base44.entities.Item.update(id, patch),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['items'] });
+      setEditingId(null);
       setSavedId(vars.id);
       setTimeout(() => setSavedId(null), 1500);
     },
   });
 
   const startEdit = (i) => {
+    save.reset();
     setEditingId(i.id);
     setDraft({
       truck_type: i.truck_type || 'any',
@@ -279,7 +281,7 @@ function LoadConfigsPanel() {
     });
   };
   const commit = (i) => {
-    setEditingId(null);
+    save.reset();
     save.mutate({
       id: i.id,
       truck_type: draft.truck_type === 'any' ? null : draft.truck_type,
@@ -298,10 +300,6 @@ function LoadConfigsPanel() {
           Load configurations
           <span className="text-[10px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1.5 py-0.5">from QuickBooks items</span>
         </h3>
-        <p className="text-xs text-gray-500 mt-0.5">
-          Picking an item on a job fills the truck, yardage and job-card label from
-          these fields. Invoicing always bills the QuickBooks item and its pricing.
-        </p>
       </div>
       <table className="w-full text-left">
         <thead>
@@ -315,52 +313,13 @@ function LoadConfigsPanel() {
         </thead>
         <tbody>
           {loads.map((i) => {
-            const editing = editingId === i.id;
             return (
               <tr key={i.id} className="border-t border-gray-100 group hover:bg-gray-50/60">
                 <td className="py-2.5 pl-5 pr-2">
                   <p className="text-sm font-medium text-gray-900">{i.name}</p>
                   {i.qb_id && <span className="text-[10px] text-gray-400">QB #{i.qb_id}</span>}
                 </td>
-                {editing ? (
-                  <>
-                    <td className="py-2 px-2">
-                      <Select value={draft.truck_type} onValueChange={(v) => setDraft((p) => ({ ...p, truck_type: v }))}>
-                        <SelectTrigger className="h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="any">Any</SelectItem>
-                          {TRUCK_TYPES.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="py-2 px-2">
-                      <Input
-                        type="number" min="0" max="999" step="0.5"
-                        value={draft.yards}
-                        onChange={(e) => setDraft((p) => ({ ...p, yards: e.target.value }))}
-                        className="no-spin h-8 text-xs text-right bg-white"
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <Input
-                        value={draft.display_label}
-                        placeholder={i.name}
-                        onChange={(e) => setDraft((p) => ({ ...p, display_label: e.target.value }))}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(i); } if (e.key === 'Escape') setEditingId(null); }}
-                        className="h-8 text-xs bg-white"
-                      />
-                    </td>
-                    <td className="py-2 px-2 pr-5">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button size="sm" className="h-7 text-xs bg-gray-950 hover:bg-gray-800" onClick={() => commit(i)}>Save</Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingId(null)}>Cancel</Button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
+
                     <td className="py-2.5 px-2 text-xs text-gray-600 whitespace-nowrap">
                       {TRUCK_TYPES.find((t) => t.value === i.truck_type)?.label || 'Any'}
                     </td>
@@ -375,20 +334,35 @@ function LoadConfigsPanel() {
                         {savedId === i.id && <Check className="w-4 h-4 text-green-600" />}
                         <button
                           onClick={() => startEdit(i)}
-                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-800 p-1 rounded hover:bg-gray-100 transition-opacity"
+                          className="text-gray-400 hover:text-gray-800 p-1 rounded hover:bg-gray-100 transition-opacity"
                           title="Edit"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
-                  </>
-                )}
+
               </tr>
             );
           })}
         </tbody>
       </table>
+      <Dialog open={!!editingId} onOpenChange={(open) => { if (!open && !save.isPending) setEditingId(null); }}>
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>Edit load configuration</DialogTitle></DialogHeader>
+          <p className="text-sm font-medium">{loads.find((i) => i.id === editingId)?.name}</p>
+          <label className="text-sm space-y-1 block">Truck
+            <Select value={draft.truck_type} onValueChange={(v) => setDraft((p) => ({ ...p, truck_type: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="any">Any</SelectItem>{TRUCK_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </label>
+          <label className="text-sm space-y-1 block">Yards<Input type="number" min="0" max="999" step="0.5" value={draft.yards} onChange={(e) => setDraft((p) => ({ ...p, yards: e.target.value }))} /></label>
+          <label className="text-sm space-y-1 block">Config label<Input value={draft.display_label} onChange={(e) => setDraft((p) => ({ ...p, display_label: e.target.value }))} /></label>
+          {save.isError && <p role="alert" className="text-sm text-red-600">Could not save. Please try again.</p>}
+          <DialogFooter><Button variant="outline" disabled={save.isPending} onClick={() => setEditingId(null)}>Cancel</Button><Button className="bg-gray-950 hover:bg-gray-800" disabled={save.isPending || (draft.yards !== '' && (!Number.isFinite(Number(draft.yards)) || Number(draft.yards) < 0 || Number(draft.yards) > 999))} onClick={() => commit({ id: editingId })}>{save.isPending ? 'Saving…' : 'Save and close'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -529,10 +503,10 @@ function ItemsTab() {
   const loads = visible.filter((i) => i.is_load_item);
   const others = visible.filter((i) => !i.is_load_item);
 
-  const startEdit = (i) => setEditing({
+  const startEdit = (i) => { save.reset(); setEditing({
     id: i.id, name: i.name, description: i.description || '',
     unit_price: i.unit_price ?? '', yards: i.yards ?? '', truck_type: i.truck_type || '',
-  });
+  }); };
   const commitEdit = () => {
     if (!editing) return;
     save.mutate({
@@ -542,43 +516,12 @@ function ItemsTab() {
       unit_price: editing.unit_price === '' ? null : parseFloat(editing.unit_price),
       yards: editing.yards === '' ? null : parseFloat(editing.yards),
       truck_type: editing.truck_type || null,
-    });
-    setEditing(null);
+    }, { onSuccess: () => setEditing(null) });
   };
 
   const Row = ({ i }) => (
     <tr className={cn('border-t border-gray-100', !i.active && 'opacity-50')}>
-      {editing?.id === i.id ? (
-        <>
-          <td className="py-2 pl-4 pr-2" colSpan={2}>
-            <Input value={editing.name} onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))} className="h-8 text-sm mb-1.5" />
-            <Input value={editing.description} placeholder="Description (shows on invoices)" onChange={(e) => setEditing((p) => ({ ...p, description: e.target.value }))} className="h-8 text-sm" />
-          </td>
-          <td className="py-2 px-2">
-            <Input type="number" step="0.5" value={editing.yards} placeholder="yds" onChange={(e) => setEditing((p) => ({ ...p, yards: e.target.value }))} className="h-8 text-sm w-20" />
-          </td>
-          <td className="py-2 px-2">
-            <select
-              value={editing.truck_type}
-              onChange={(e) => setEditing((p) => ({ ...p, truck_type: e.target.value }))}
-              className="h-8 text-sm border border-gray-200 rounded-md px-2 bg-white"
-            >
-              <option value="">Any truck</option>
-              {TRUCK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </td>
-          <td className="py-2 px-2">
-            <Input type="number" step="0.01" value={editing.unit_price} onChange={(e) => setEditing((p) => ({ ...p, unit_price: e.target.value }))} className="h-8 text-sm w-24" />
-          </td>
-          <td className="py-2 px-2" colSpan={2}>
-            <div className="flex gap-1.5">
-              <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={commitEdit}>Save</Button>
-              <Button size="sm" variant="outline" className="h-8" onClick={() => setEditing(null)}>Cancel</Button>
-            </div>
-          </td>
-        </>
-      ) : (
-        <>
+
           <td className="py-2.5 pl-4 pr-2">
             <p className="font-medium text-gray-900 text-sm">{i.name}</p>
             {i.description && <p className="text-xs text-gray-500 mt-0.5 max-w-md">{i.description}</p>}
@@ -607,8 +550,7 @@ function ItemsTab() {
               <Pencil className="w-4 h-4" />
             </button>
           </td>
-        </>
-      )}
+
     </tr>
   );
 
@@ -633,24 +575,33 @@ function ItemsTab() {
 
   return (
     <div className="p-6 max-w-5xl space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-sm text-gray-500 max-w-2xl">
-          Imported from QuickBooks: one source of truth for pricing across job creation,
-          customer price books, and invoices. Edits apply here now and will push back to
-          QuickBooks automatically when your company is connected and synchronization is enabled.
-        </p>
-        <label className="flex items-center gap-2 text-sm text-gray-500 whitespace-nowrap">
-          <Switch checked={showInactive} onCheckedChange={setShowInactive} /> Show inactive
-        </label>
-      </div>
       <div>
-        <h3 className="font-semibold text-gray-900 text-sm mb-2">Load presets <span className="text-gray-400 font-normal">(shown when creating a job)</span></h3>
+        <div className="flex items-center justify-between gap-4 mb-2">
+          <h3 className="font-semibold text-gray-900 text-sm">Load presets</h3>
+          <label className="flex items-center gap-2 text-sm text-gray-500"><Switch checked={showInactive} onCheckedChange={setShowInactive} />Show inactive</label>
+        </div>
         <Table rows={loads} />
       </div>
       <div>
         <h3 className="font-semibold text-gray-900 text-sm mb-2">Other items <span className="text-gray-400 font-normal">(surcharges, hauling, services)</span></h3>
         <Table rows={others} />
       </div>
+      <Dialog open={!!editing} onOpenChange={(open) => { if (!open && !save.isPending) setEditing(null); }}>
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>Edit item</DialogTitle></DialogHeader>
+          {editing && <>
+            <label className="text-sm space-y-1 block">Name<Input value={editing.name} onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))} /></label>
+            <label className="text-sm space-y-1 block">Description<Input value={editing.description} onChange={(e) => setEditing((p) => ({ ...p, description: e.target.value }))} /></label>
+            <div className="grid grid-cols-2 gap-4">
+              <label className="text-sm space-y-1 block">Yards<Input type="number" min="0" step="0.5" value={editing.yards} onChange={(e) => setEditing((p) => ({ ...p, yards: e.target.value }))} /></label>
+              <label className="text-sm space-y-1 block">Price<Input type="number" min="0" step="0.01" value={editing.unit_price} onChange={(e) => setEditing((p) => ({ ...p, unit_price: e.target.value }))} /></label>
+            </div>
+            <label className="text-sm space-y-1 block">Truck<select value={editing.truck_type} onChange={(e) => setEditing((p) => ({ ...p, truck_type: e.target.value }))} className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"><option value="">Any truck</option>{TRUCK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
+          </>}
+          {save.isError && <p role="alert" className="text-sm text-red-600">Could not save. Please try again.</p>}
+          <DialogFooter><Button variant="outline" disabled={save.isPending} onClick={() => setEditing(null)}>Cancel</Button><Button className="bg-gray-950 hover:bg-gray-800" disabled={save.isPending || !editing?.name.trim() || [editing?.yards, editing?.unit_price].some((v) => v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0))} onClick={commitEdit}>{save.isPending ? 'Saving…' : 'Save and close'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -748,10 +748,11 @@ function CreateView() {
     list.forEach((inv) => update.mutate({ id: inv.id, sent_at: now }));
   };
 
-  const uninvoicedChecked = [...checked].filter((id) => !invByJob.has(id));
+  const selectedPending = [...checked].some((id) => creating.get(id) === 'creating');
+  const uninvoicedChecked = [...checked].filter((id) => !invByJob.has(id) && creating.get(id) !== 'creating');
   const invoicedChecked = dayJobs.filter((j) => checked.has(j.id) && invByJob.has(j.id)).map((j) => invByJob.get(j.id));
   const startBatch = () => {
-    const ids = dayJobs.filter((j) => checked.has(j.id) && !invByJob.has(j.id)).map((j) => j.id);
+    const ids = dayJobs.filter((j) => checked.has(j.id) && !invByJob.has(j.id) && creating.get(j.id) !== 'creating').map((j) => j.id);
     if (!ids.length) return;
     setExpandedId(null);
     setBatch({ ids, index: 0 });
@@ -763,7 +764,7 @@ function CreateView() {
       try {
         const { data: num, error: numErr } = await supabase.rpc('next_invoice_number');
         if (numErr) throw numErr;
-        await base44.entities.Invoice.create({
+        const createdInvoice = await base44.entities.Invoice.create({
           customer_id: job.customer_id,
           job_id: job.id,
           doc_number: num,
@@ -776,6 +777,11 @@ function CreateView() {
           source: 'app',
           note: payload.note,
         });
+        // A pre-save poll must not overwrite the freshly created row.
+        await queryClient.cancelQueries({ queryKey: ['inv-week-invoices', mondayOf(job.scheduled_date)], exact: true });
+        // Publish the finished row before releasing its pending guard.
+        queryClient.setQueryData(['inv-week-invoices', mondayOf(job.scheduled_date)], (rows = []) =>
+          [...rows.filter((inv) => inv.id !== createdInvoice.id), createdInvoice]);
         setCreating((m) => { const n = new Map(m); n.delete(job.id); return n; });
         queryClient.invalidateQueries({ queryKey: ['inv-week-invoices'] });
         queryClient.invalidateQueries({ queryKey: ['v2-invoices'] });
@@ -797,7 +803,7 @@ function CreateView() {
 
   return (
     <div className="p-6">
-      {/* Week strip; batch progress sits quietly at the right of this row */}
+      {/* Week strip and actions for the selected jobs. */}
       <div className="flex items-center gap-2 mb-4">
         <button onClick={() => { const w = addDays(weekStart, -7); setWeekStart(w); changeDay(w); }} className="p-1.5 rounded-lg hover:bg-gray-200" aria-label="Previous week">
           <ChevronLeft className="w-4 h-4 text-gray-500" />
@@ -862,19 +868,15 @@ function CreateView() {
               </Button>
             )}
             {invoicedChecked.length > 0 && (
-              <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => setPrintQueue(invoicedChecked)}>
-                <Download className="w-3.5 h-3.5 mr-1.5" /> Send {invoicedChecked.length}
+              <Button size="sm" variant="secondary" className="h-8 text-xs" disabled={selectedPending} onClick={() => setPrintQueue(invoicedChecked)}>
+                <Download className="w-3.5 h-3.5 mr-1.5" /> Send {invoicedChecked.length} invoice{invoicedChecked.length !== 1 ? 's' : ''}
               </Button>
             )}
+            {selectedPending && <span className="px-2 text-xs text-white" role="status">Creating invoices…</span>}
             <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs px-2">Cancel</button>
           </span>
         )}
-        {batch && (
-          <span className="ml-auto flex items-center gap-2.5 bg-gray-200/80 text-gray-700 rounded-lg px-4 py-2.5 text-[13px] font-medium">
-            Batch invoice {Math.min(batch.index + 1, batch.ids.length)} of {batch.ids.length}
-            <button onClick={() => setBatch(null)} className="text-gray-400 hover:text-gray-700">Stop</button>
-          </span>
-        )}
+
       </div>
 
 
@@ -882,7 +884,7 @@ function CreateView() {
       {isLoading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
       ) : dayJobs.length === 0 ? (
-        <p className="text-sm text-gray-400 italic py-8">No delivery jobs on {fmtDate(day)}.</p>
+        <p className="text-sm text-gray-400 italic py-8">No jobs marked as completed on {fmtDate(day)}.</p>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
           <table className="w-full text-left">
@@ -929,43 +931,54 @@ function CreateView() {
                     }}
                     onPreview={() => setPreviewInv(inv)}
                     onSend={() => setPrintQueue([inv])}
-                    onEdit={() => { setEditingId(job.id); setExpandedId(job.id); }}
+                    onEdit={() => { update.reset(); setEditingId(job.id); setExpandedId(job.id); }}
                     onUpdateStatus={() => setStatusInv(inv)}
                     onEmail={() => setSendReq({ inv, mode: 'email' })}
                     onText={() => setSendReq({ inv, mode: 'sms' })}
                     onDelete={() => setDeleteInv(inv)}
                     composer={open && (!inv || editing) && customers && items ? (
-                      <InvoiceComposer
-                        key={editing ? `edit-${inv.id}` : job.id}
-                        job={job}
-                        items={items}
-                        initial={editing ? inv : null}
-                        isBatch={!!isBatchCurrent}
-                        batchInfo={isBatchCurrent ? { index: batch.index, count: batch.ids.length } : null}
-                        onCancel={() => { setExpandedId(null); setEditingId(null); setBatch(null); }}
-                        onCreated={(payload) => {
-                          if (editing) {
-                            update.mutate({
-                              id: inv.id,
-                              lines: payload.lines,
-                              total: payload.total,
-                              balance: inv.status === 'paid' ? 0 : Math.max(0,payload.total-(Number(inv.total)-Number(inv.balance??inv.total))),
-                              note: payload.note,
-                              edited_at: new Date().toISOString(),
-                            });
-                            setEditingId(null);
-                            setExpandedId(null);
-                            return;
-                          }
-                          enqueueCreate(job, payload);
-                          if (isBatchCurrent) {
-                            if (batch.index + 1 >= batch.ids.length) { setBatch(null); setChecked(new Set()); }
-                            else setBatch({ ...batch, index: batch.index + 1 });
-                          } else {
-                            setExpandedId(null);
-                          }
-                        }}
-                      />
+                      <Dialog open onOpenChange={(open) => { if (!open && !update.isPending) { setExpandedId(null); setEditingId(null); setBatch(null); } }}>
+                        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-5xl max-h-[90dvh] overflow-y-auto p-0" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
+                          <DialogHeader className="px-6 pt-6 pb-2 pr-12">
+                            <div className="flex items-center justify-between gap-4">
+                              <DialogTitle>Invoice for {jobLabel(job)}</DialogTitle>
+                              {isBatchCurrent && <span className="text-sm text-gray-500 shrink-0" aria-live="polite">{batch.index + 1} of {batch.ids.length}</span>}
+                            </div>
+                            {editing && <p className="text-sm text-gray-500">#{inv.doc_number}</p>}
+                          </DialogHeader>
+                          {editing && update.isError && <p role="alert" className="px-6 text-sm text-red-600">Could not save. Please try again.</p>}
+                          <InvoiceComposer
+                            key={editing ? `edit-${inv.id}` : job.id}
+                            saving={editing && update.isPending}
+                            job={job}
+                            items={items}
+                            initial={editing ? inv : null}
+                            isBatch={!!isBatchCurrent}
+                            batchInfo={isBatchCurrent ? { index: batch.index, count: batch.ids.length } : null}
+                            onCancel={() => { setExpandedId(null); setEditingId(null); setBatch(null); }}
+                            onCreated={(payload) => {
+                              if (editing) {
+                                update.mutate({
+                                  id: inv.id,
+                                  lines: payload.lines,
+                                  total: payload.total,
+                                  balance: inv.status === 'paid' ? 0 : Math.max(0,payload.total-(Number(inv.total)-Number(inv.balance??inv.total))),
+                                  note: payload.note,
+                                  edited_at: new Date().toISOString(),
+                                }, { onSuccess: () => { setEditingId(null); setExpandedId(null); } });
+                                return;
+                              }
+                              enqueueCreate(job, payload);
+                              if (isBatchCurrent) {
+                                if (batch.index + 1 >= batch.ids.length) setBatch(null);
+                                else setBatch({ ...batch, index: batch.index + 1 });
+                              } else {
+                                setExpandedId(null);
+                              }
+                            }}
+                          />
+                        </DialogContent>
+                      </Dialog>
                     ) : null}
                   />
                 );
@@ -1139,10 +1152,11 @@ function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, c
           </div>
         </td>
       </tr>
-      {open && (
+      {composer}
+      {open && inv && !editing && (
         <tr className="bg-gray-50/60">
           <td colSpan={10} className="p-0">
-            {inv && !editing ? <InvoiceDetail inv={inv} /> : composer}
+            <InvoiceDetail inv={inv} />
           </td>
         </tr>
       )}
@@ -1193,7 +1207,7 @@ function InvoiceDetail({ inv }) {
 
 /* ---------------------------- Composer ---------------------------------- */
 
-export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCancel, onCreated, hideFooter = false, exposeApi = null }) {
+export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCancel, onCreated, hideFooter = false, exposeApi = null, saving = false }) {
   const { data: prices } = useQuery({
     queryKey: ['customer-prices', job.customer_id],
     queryFn: () => base44.entities.CustomerItemPrice.filter({ customer_id: job.customer_id }),
@@ -1425,12 +1439,10 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
 
       {!hideFooter && (
       <div className="flex items-center gap-2 mt-3">
-        <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={create} disabled={total <= 0}>
-          {initial ? 'Save changes' : isBatch ? (batchInfo.index + 1 >= batchInfo.count ? 'Done' : 'Next') : 'Create invoice'}
+        <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={create} disabled={saving || total <= 0 || !Number.isFinite(total)}>
+          {saving ? 'Saving…' : isBatch && batchInfo.index + 1 < batchInfo.count ? 'Create and next' : 'Save and close'}
         </Button>
-        <Button size="sm" variant="outline" className="h-8" onClick={onCancel}>Cancel</Button>
-        {initial && <span className="text-[11px] text-gray-400">Editing invoice #{initial.doc_number}</span>}
-        {isBatch && <span className="text-[11px] text-gray-400">Saves this invoice and {batchInfo.index + 1 >= batchInfo.count ? 'finishes the batch' : 'opens the next job'}.</span>}
+        <Button size="sm" variant="outline" className="h-8" disabled={saving} onClick={onCancel}>Cancel</Button>
       </div>
       )}
     </div>

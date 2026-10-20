@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -207,7 +207,7 @@ export default function DriverManager({ embedded = false } = {}) {
   return (
     <div className={embedded ? '' : 'min-h-screen bg-gray-50'}>
       <div className={embedded ? '' : 'bg-white border-b sticky top-0 z-10'}>
-        <div className={embedded ? 'max-w-4xl mx-auto px-4 pt-6' : 'max-w-4xl mx-auto px-4 py-4'}>
+        <div className={embedded ? 'max-w-4xl px-6 pt-6' : 'max-w-4xl mx-auto px-4 py-4'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {!embedded && (
@@ -220,7 +220,7 @@ export default function DriverManager({ embedded = false } = {}) {
               <h1 className={embedded ? 'font-semibold text-sm text-gray-900' : 'font-bold text-xl'}>{embedded ? 'Team' : 'User Manager'}</h1>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowCsvImport(true)}>
+              <Button variant="outline" className={embedded ? 'bg-gray-950 text-white hover:bg-gray-800 hover:text-white' : undefined} onClick={() => setShowCsvImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
                 Import CSV
               </Button>
@@ -230,7 +230,7 @@ export default function DriverManager({ embedded = false } = {}) {
                   resetForm();
                   setShowForm(true);
                 }}
-                className="bg-amber-600 hover:bg-amber-700"
+                className={embedded ? 'bg-gray-950 hover:bg-gray-800' : 'bg-amber-600 hover:bg-amber-700'}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add User
@@ -240,7 +240,7 @@ export default function DriverManager({ embedded = false } = {}) {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className={embedded ? 'max-w-4xl px-6 py-6' : 'max-w-4xl mx-auto px-4 py-6'}>
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
@@ -256,9 +256,9 @@ export default function DriverManager({ embedded = false } = {}) {
                         <img src={driver.avatar_url} alt="" className={`w-12 h-12 rounded-full object-cover ${driver.active ? '' : 'opacity-50 grayscale'}`} />
                       ) : (
                       <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                        driver.active ? 'bg-amber-100' : 'bg-gray-100'
+                        embedded ? 'bg-gray-950' : driver.active ? 'bg-amber-100' : 'bg-gray-100'
                       }`}>
-                        <User className={`w-6 h-6 ${driver.active ? 'text-amber-600' : 'text-gray-400'}`} />
+                        <User className={`w-6 h-6 ${embedded ? 'text-white' : driver.active ? 'text-amber-600' : 'text-gray-400'}`} />
                       </div>
                       )}
                       <div>
@@ -302,6 +302,7 @@ export default function DriverManager({ embedded = false } = {}) {
                           setResetPinDriver(driver);
                           setShowPinReset(true);
                         }}
+                        className={embedded ? 'text-gray-950 hover:bg-gray-200' : undefined}
                         title="Reset PIN"
                       >
                         <Key className="w-4 h-4" />
@@ -313,7 +314,7 @@ export default function DriverManager({ embedded = false } = {}) {
                         title={driver.active ? 'Deactivate' : 'Activate'}
                       >
                         {driver.active ? (
-                          <UserCheck className="w-4 h-4 text-green-600" />
+                          <UserCheck className={embedded ? 'w-4 h-4 text-gray-950' : 'w-4 h-4 text-green-600'} />
                         ) : (
                           <UserX className="w-4 h-4 text-gray-400" />
                         )}
@@ -329,7 +330,7 @@ export default function DriverManager({ embedded = false } = {}) {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(driver)}
-                        className="text-red-600 hover:text-red-700"
+                        className={embedded ? 'text-gray-950 hover:bg-gray-200' : 'text-red-600 hover:text-red-700'}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -505,7 +506,8 @@ export default function DriverManager({ embedded = false } = {}) {
                 Cancel
               </Button>
               <Button 
-                type="submit" 
+                type="submit"
+                className={embedded ? 'bg-gray-950 hover:bg-gray-800' : undefined}
                 disabled={createMutation.isPending || updateMutation.isPending}
               >
                 {(createMutation.isPending || updateMutation.isPending) && (
