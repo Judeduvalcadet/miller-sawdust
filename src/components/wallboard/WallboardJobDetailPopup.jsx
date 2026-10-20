@@ -14,23 +14,9 @@ export default function WallboardJobDetailPopup({ job, driver, pickupLocations =
     ? job.loads.filter((l) => l.pickup_location_name || l.yards_collected)
     : [];
 
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-md bg-gray-900 text-white border-gray-700">
-        <DialogHeader className="border-b border-gray-700 pb-3">
-          <DialogTitle className="flex items-center gap-2 text-white">
-            {job.job_type === 'pickup'
-              ? <Package className="w-5 h-5 text-amber-500" />
-              : <Truck className="w-5 h-5 text-blue-400" />
-            }
-            {job.job_type === 'pickup' ? 'Pickup Job Details' : 'Delivery Job Details'}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3 py-2">
-          {/* Status + Truck */}
-          <div className="flex items-center justify-between">
-            <Badge className={cn(
+  const statusDetails = (
+          <div className={structuredDetails ? "ml-auto flex items-center gap-2 shrink-0" : "flex items-center justify-between"}>
+            <Badge variant={structuredDetails ? "outline" : "default"} className={cn(
               job.status === 'completed' && "bg-green-500/30 text-green-300 border-green-600/30",
               job.status === 'pending' && "bg-gray-500/30 text-gray-300 border-gray-600/30",
               job.status === 'in_progress' && "bg-yellow-500/30 text-yellow-300 border-yellow-600/30",
@@ -42,6 +28,25 @@ export default function WallboardJobDetailPopup({ job, driver, pickupLocations =
               <span className="text-xs text-gray-400">{TRUCK_LABELS[job.truck_type] || job.truck_type}</span>
             )}
           </div>
+  );
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md bg-gray-900 text-white border-gray-700">
+        <DialogHeader className={cn("border-b border-gray-700 pb-3", structuredDetails && "flex-row flex-wrap items-center justify-between gap-3 space-y-0 pr-7")}>
+          <DialogTitle className="flex items-center gap-2 text-white">
+            {job.job_type === 'pickup'
+              ? <Package className="w-5 h-5 text-amber-500" />
+              : <Truck className="w-5 h-5 text-blue-400" />
+            }
+            {structuredDetails ? (job.job_type === 'pickup' ? 'Pickup Job' : 'Delivery Job') : (job.job_type === 'pickup' ? 'Pickup Job Details' : 'Delivery Job Details')}
+          </DialogTitle>
+          {structuredDetails && statusDetails}
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          {/* Status + Truck */}
+          {!structuredDetails && statusDetails}
 
           <div className={cn("text-sm", structuredDetails ? DARK_DETAIL_ROWS : "space-y-2.5")}>
             {/* Location */}

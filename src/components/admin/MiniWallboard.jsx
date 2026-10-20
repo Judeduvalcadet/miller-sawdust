@@ -105,25 +105,10 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupL
   job.loads.filter((l) => l.pickup_location_name || l.yards_collected) :
   [];
 
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className={cn(
-        "max-h-[85vh] overflow-y-auto overflow-x-hidden",
-        showActivity ? "sm:max-w-2xl" : "sm:max-w-xl"
-      )}>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {job.job_type === 'pickup' ?
-            <Package className={deYellow ? "w-5 h-5 text-gray-600" : "w-5 h-5 text-amber-600"} /> :
-            <Truck className={deYellow ? "w-5 h-5 text-gray-600" : "w-5 h-5 text-blue-600"} />
-            }
-            {job.job_type === 'pickup' ? 'Pickup Job' : 'Delivery Job'}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="flex items-center justify-between">
-            <Badge className={cn(
-              deYellow && "bg-gray-100 text-gray-700",
+  const statusDetails = (
+          <div className={deYellow ? "ml-auto flex items-center gap-2 shrink-0" : "flex items-center justify-between"}>
+            <Badge variant={deYellow ? "outline" : "default"} className={cn(
+              deYellow && "border-transparent bg-gray-100 text-gray-700 hover:bg-gray-100 hover:text-gray-700",
               !deYellow && job.status === 'completed' && "bg-green-100 text-green-700",
               !deYellow && job.status === 'pending' && "bg-red-100 text-red-700",
               !deYellow && job.status === 'in_progress' && "bg-yellow-100 text-yellow-700",
@@ -135,6 +120,26 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupL
             <span className="text-xs text-gray-500">{TRUCK_LABELS[job.truck_type] || job.truck_type}</span>
             }
           </div>
+  );
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className={cn(
+        "max-h-[85vh] overflow-y-auto overflow-x-hidden",
+        showActivity ? "sm:max-w-2xl" : "sm:max-w-xl"
+      )}>
+        <DialogHeader className={deYellow ? "flex-row flex-wrap items-center justify-between gap-3 space-y-0 pr-7" : undefined}>
+          <DialogTitle className="flex items-center gap-2">
+            {job.job_type === 'pickup' ?
+            <Package className={deYellow ? "w-5 h-5 text-gray-600" : "w-5 h-5 text-amber-600"} /> :
+            <Truck className={deYellow ? "w-5 h-5 text-gray-600" : "w-5 h-5 text-blue-600"} />
+            }
+            {job.job_type === 'pickup' ? 'Pickup Job' : 'Delivery Job'}
+          </DialogTitle>
+          {deYellow && statusDetails}
+        </DialogHeader>
+        <div className={deYellow ? "space-y-3" : "space-y-3 py-2"}>
+          {!deYellow && statusDetails}
           <div className={deYellow
             ? cn("text-sm", DETAIL_ROWS)
             : "space-y-2 text-sm"}>

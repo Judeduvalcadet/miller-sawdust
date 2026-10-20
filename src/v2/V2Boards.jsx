@@ -173,8 +173,8 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
             <span className={cn('text-[10px] font-semibold uppercase shrink-0', neutral ? (isPickup ? 'text-amber-400' : 'text-blue-400') : isPickup ? 'text-amber-700' : 'text-blue-700')}>
               {job.job_type}
             </span>
-            <Badge className={cn(
-              'text-[10px] px-1.5 py-0 shrink-0',
+            <Badge variant="outline" className={cn(
+              'border-transparent text-[10px] px-1.5 py-0 shrink-0',
               neutral ? (isCompleted ? 'bg-green-500/30 text-green-300' : job.status === 'in_progress' ? 'bg-yellow-500/30 text-yellow-300' : 'bg-gray-500/30 text-gray-300') : isCompleted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
             )}>
               {job.status}

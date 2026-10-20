@@ -483,7 +483,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
             )}>
               {job.job_type}
             </span>
-            <Badge className={cn(
+            <Badge variant={deYellow ? "outline" : "default"} className={cn(
               (job.status === 'pending' || job.status === 'in_progress') && "bg-red-200 text-red-800",
               job.status === 'completed' && "bg-green-200 text-green-800"
             )}>
