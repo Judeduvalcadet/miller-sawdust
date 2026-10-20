@@ -184,9 +184,10 @@ function InvoiceList() {
   useEffect(() => { setChecked(new Map()); }, [searchTerm, status, from, to]);
 
   useEffect(() => {
+    if (search.trim() === searchTerm) return;
     const timer = setTimeout(() => { setSearchTerm(search.trim()); setPage(1); }, 250);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, searchTerm]);
   const { data: invoicePage, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['v2-invoices', 'page', searchTerm, status, from, to, page, pageSize],
     refetchInterval: !V2_READ_ONLY?3000:false,
