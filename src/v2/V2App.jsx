@@ -1,3 +1,4 @@
+import AssistantChat from '@/components/admin/AssistantChat';
 import { useLiveUpdates } from './useLiveUpdates';
 import VersionSwitch from '@/components/VersionSwitch';
 import { useEffect, useState } from 'react';
@@ -167,6 +168,7 @@ function V2Shell({ children }) {
       </nav>
       {/* Content */}
       <main className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col">{children}</main>
+      <AssistantChat />
     </div>
   );
 }
