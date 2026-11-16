@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote, History, Receipt } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote, History, Receipt, DollarSign, CircleCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import CalendarPicker from "@/components/driver/CalendarPicker";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -66,23 +66,27 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl, deYellow = fal
       <div className="space-y-1 max-h-48 overflow-y-auto mb-3">
         <button
           onClick={() => setSelectedId('')}
+          aria-pressed={selectedId === ''}
           className={cn(
-            "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-            selectedId === '' ? (deYellow ? "bg-gray-950 text-white font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
+            "w-full flex items-center justify-between gap-2 border border-transparent text-left px-3 py-2 rounded-lg text-sm transition-colors",
+            selectedId === '' ? (deYellow ? "bg-gray-100 border-2 border-gray-500 text-gray-950 font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
           )}>
 
-          Unassigned
+          <span>Unassigned</span>
+          {deYellow && selectedId === '' && <CircleCheck className="w-4 h-4 shrink-0" aria-hidden="true" />}
         </button>
         {availableDrivers.map((d) =>
         <button
           key={d.id}
           onClick={() => setSelectedId(d.id)}
+          aria-pressed={selectedId === d.id}
           className={cn(
-            "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-            selectedId === d.id ? (deYellow ? "bg-gray-950 text-white font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
+            "w-full flex items-center justify-between gap-2 border border-transparent text-left px-3 py-2 rounded-lg text-sm transition-colors",
+            selectedId === d.id ? (deYellow ? "bg-white border-gray-500 text-gray-950 font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
           )}>
 
-            {d.name}
+            <span>{d.name}</span>
+            {deYellow && selectedId === d.id && <CircleCheck className="w-4 h-4 shrink-0" aria-hidden="true" />}
           </button>
         )}
       </div>
@@ -233,10 +237,10 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, onSendI
           </div>
         }
         <div className={cn('flex flex-wrap items-center justify-end pt-2', deYellow ? 'gap-1.5' : 'gap-3', deYellow && DETAIL_FOOTER)}>
-          <Button variant="outline" size={deYellow ? 'icon' : 'default'} aria-label="Delete job" title="Delete job" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? 'h-8 w-8 text-gray-600 border-gray-300 hover:bg-gray-50' : 'text-red-600 border-red-300 hover:bg-red-50'}>
-            <Trash2 className="w-4 h-4" />{!deYellow && 'Delete'}
+          <Button variant="outline" size={deYellow ? 'sm' : 'default'} aria-label="Delete job" title="Delete job" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? 'mr-auto gap-1 px-2 text-gray-600 border-gray-300 hover:bg-transparent hover:text-red-600 hover:border-red-600' : 'text-red-600 border-red-300 hover:bg-red-50'}>
+            <Trash2 className="w-4 h-4" />Delete
           </Button>
-          {onSendInvoice && job.job_type === 'delivery' && job.customer_id && job.status !== 'cancelled' && <Button size="sm" variant="outline" className="gap-1 px-2 border-gray-300 bg-transparent text-gray-900 shadow-none hover:bg-gray-200 hover:text-gray-950" onClick={() => {onClose();onSendInvoice(job);}}><FileText className="w-4 h-4" /> Send Invoice</Button>}
+          {onSendInvoice && job.job_type === 'delivery' && job.customer_id && job.status !== 'cancelled' && <Button size="sm" variant="outline" className="gap-1 px-2 border-gray-300 bg-transparent text-gray-900 shadow-none hover:bg-gray-200 hover:text-gray-950" onClick={() => {onClose();onSendInvoice(job);}}><DollarSign className="w-4 h-4" /> Send Invoice</Button>}
           <Button size={deYellow ? "sm" : "default"} variant="outline" className={deYellow ? "gap-1 px-2" : undefined} onClick={() => setShowActivity(v => !v)}>
             <History className="w-4 h-4" />{showActivity ? 'Hide Details' : 'More Details'}
           </Button>
