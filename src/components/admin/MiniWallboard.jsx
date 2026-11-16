@@ -59,7 +59,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl, deYellow = fal
       ref={ref}
       role="dialog" aria-label="Assign driver"
       style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, maxHeight: 'calc(100dvh - 16px)' }}
-      className="w-52 max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain bg-white rounded-xl shadow-xl border border-gray-200 p-3"
+      className="w-72 max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain bg-white rounded-xl shadow-xl border border-gray-200 p-3"
       onClick={(e) => e.stopPropagation()}>
 
       <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Assign Driver</p>
