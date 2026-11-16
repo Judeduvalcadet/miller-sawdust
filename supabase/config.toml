@@ -417,3 +417,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.qb-sync]
 verify_jwt = false
+
+[functions.assistant-dev]
+verify_jwt = false

@@ -1,3 +1,5 @@
+import { checkAnswer, conversationSignals, progressLabel } from '../_shared/assistant-checks.ts'
+import { learningAction, verifiedRules } from '../_shared/assistant-learning.ts'
 import { DATA_FIELDS, validateRecordQuery, recordTable } from '../_shared/assistant-data.ts'
 import { parseAssistantResults, type AssistantResults } from '../_shared/assistant-results.ts'
 // Dispatch assistant chat - admin + dispatcher only.
@@ -17,7 +19,7 @@ import { parseAssistantResults, type AssistantResults } from '../_shared/assista
 //      and full conversations are stored in assistant_conversations.
 //   6. Database text inside tool results is data, never instructions -
 //      stated in the system prompt, and harmless anyway given (1).
-import { service, json, handleOptions, verifyAccessToken } from '../_shared/mod.ts'
+import { service, json, handleOptions, verifyAccessToken, corsHeaders } from '../_shared/mod.ts'
 import { runRouteCheck } from '../_shared/route-check.ts'
 
 const MODEL = 'claude-sonnet-5-5'
@@ -326,13 +328,14 @@ For job boards and other record lists, use query_records then show_records so or
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string; results?: AssistantResults }
 
-async function runChat(context: ChatMsg[], apiKey: string): Promise<{ reply: string; toolsUsed: string[]; results?: AssistantResults } | { error: string }> {
+async function runChat(context: ChatMsg[], apiKey: string, progress: (label: string) => void = () => {}, rules = '', trace = {direct:false, toolErrors:0, partial:false}): Promise<{ reply: string; toolsUsed: string[]; results?: AssistantResults } | { error: string }> {
   const messages: Array<Record<string, unknown>> = context.map((m) => ({ role: m.role, content: m.content + (m.results ? "\nSaved result table (data): " + JSON.stringify(m.results) : "") }))
   const toolsUsed: string[] = []
   const datasets = new Map<string, {records: Record<string, unknown>[]; fields: string[]; total: number; offset: number}>()
   let outputBudget = 4096
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+    progress(round === 0 ? 'Understanding your question' : 'Preparing the answer')
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -343,7 +346,7 @@ async function runChat(context: ChatMsg[], apiKey: string): Promise<{ reply: str
       body: JSON.stringify({
         model: MODEL,
         max_tokens: outputBudget,
-        system: systemPrompt(),
+        system: systemPrompt() + rules,
         tools: TOOLS,
         messages,
       }),
@@ -361,6 +364,8 @@ async function runChat(context: ChatMsg[], apiKey: string): Promise<{ reply: str
       const source = datasets.get(String(display.input?.result_id))
       const fields = display.input?.fields
       if (source && Array.isArray(fields) && fields.length && fields.length <= 12 && fields.every((f: string) => source.fields.includes(f))) {
+        trace.direct = true
+        progress('Preparing results')
         const page = source.total > source.records.length ? ` Showing ${source.offset + 1}-${source.offset + source.records.length} of ${source.total} matching records.` : ''
         return {reply:String(display.input.summary || 'Results ready.').slice(0,1000)+page,results:recordTable(String(display.input.title || 'Results'),source.records,fields),toolsUsed}
       }
@@ -389,11 +394,14 @@ async function runChat(context: ChatMsg[], apiKey: string): Promise<{ reply: str
     messages.push({ role: 'assistant', content: data.content })
     const results = []
     for (const call of toolCalls) {
+      progress(progressLabel(call.name,call.input?.entity))
       toolsUsed.push(call.name)
       let result = await runTool(call.name, call.input ?? {})
+      if ((result as {error?:string}).error) trace.toolErrors++
       console.info('assistant tool', JSON.stringify({name:call.name,entity:call.input?.entity,error:(result as {error?:string}).error}))
       const value = result as {records?:Record<string,unknown>[];fields?:string[];total?:number;offset?:number}
       if (Array.isArray(value.records) && Array.isArray(value.fields)) {
+        if ((value.total ?? 0) > value.records.length) trace.partial = true
         const id = `result_${datasets.size + 1}`
         datasets.set(id,{records:value.records,fields:value.fields,total:value.total ?? value.records.length,offset:value.offset ?? 0})
         result = {...value,result_id:id,records:value.records.slice(0,10),preview_only:value.records.length > 10,displayed_record_count:value.records.length}
@@ -418,15 +426,23 @@ Deno.serve(async (req) => {
     if (!claims || !['admin', 'dispatcher'].includes(String(claims.app_role))) {
       return json(403, { error: 'forbidden' })
     }
+    const isDev = new URL(req.url).pathname.split('/').includes('assistant-dev')
+    const conversationTable = isDev ? 'assistant_dev_conversations' : 'assistant_conversations'
     const userId = String(claims.sub || '')
+    if (isDev) {
+      const {data:member}=await service.from('drivers').select('active,role').eq('id',userId).maybeSingle()
+      if(!member?.active || !['admin','dispatcher'].includes(member.role) || member.role !== claims.app_role) return json(403,{error:'forbidden'})
+    }
     const userName = String(claims.name || 'unknown')
 
     const body = await req.json().catch(() => ({}))
     const action = typeof body.action === 'string' ? body.action : 'chat'
 
+    if (isDev) { const response = await learningAction(action,body,userId,claims.app_role === 'admin'); if(response) return response }
+
     // ---- conversation history (each user sees only their own) ----
     if (action === 'list') {
-      const { data } = await service.from('assistant_conversations')
+      const { data } = await service.from(conversationTable)
         .select('id, title, updated_date')
         .eq('user_id', userId)
         .order('updated_date', { ascending: false })
@@ -437,7 +453,7 @@ Deno.serve(async (req) => {
     if (action === 'get') {
       const id = String(body.conversation_id || '')
       if (!id) return json(400, { error: 'invalid_request' })
-      const { data } = await service.from('assistant_conversations')
+      const { data } = await service.from(conversationTable)
         .select('id, title, messages')
         .eq('id', id).eq('user_id', userId).maybeSingle()
       if (!data) return json(404, { error: 'not_found' })
@@ -455,9 +471,10 @@ Deno.serve(async (req) => {
 
     // Per-user rate limit
     const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString()
-    const { count } = await service.from('log_entries')
-      .select('id', { count: 'exact', head: true })
-      .eq('category', 'assistant').eq('user_id', userId).gte('created_date', fiveMinAgo)
+    const countQuery = isDev
+      ? service.from('assistant_dev_runs').select('id',{count:'exact',head:true}).eq('user_id',userId).gte('created_at',fiveMinAgo)
+      : service.from('log_entries').select('id',{count:'exact',head:true}).eq('category','assistant').eq('user_id',userId).gte('created_date',fiveMinAgo)
+    const {count} = await countQuery
     if ((count ?? 0) >= RATE_LIMIT) {
       return json(429, { error: 'rate_limited', reply: "You've sent a lot of requests in a short time - give it a few minutes and try again." })
     }
@@ -466,26 +483,38 @@ Deno.serve(async (req) => {
     let convId = String(body.conversation_id || '')
     let stored: ChatMsg[] = []
     if (convId) {
-      const { data } = await service.from('assistant_conversations')
+      const { data } = await service.from(conversationTable)
         .select('id, messages')
         .eq('id', convId).eq('user_id', userId).maybeSingle()
       if (!data) return json(404, { error: 'not_found' })
       stored = Array.isArray(data.messages) ? data.messages : []
     }
 
+    const signals = conversationSignals(userMessage, stored)
+    const rules = isDev ? await verifiedRules() : ''
+    const execute = async (progress: (label: string) => void = () => {}) => {
     stored = [...stored, { role: 'user', content: userMessage }]
     const started = Date.now()
-    const result = await runChat(stored.slice(-CONTEXT_MESSAGES), apiKey)
-    if ('error' in result) return json(502, { error: result.error })
+    const trace = {direct:false,toolErrors:0,partial:false}
+    const result = await runChat(stored.slice(-CONTEXT_MESSAGES), apiKey, progress, rules, trace)
+    if ('error' in result) {
+      if(isDev) await service.from('assistant_dev_runs').insert({user_id:userId,prompt:userMessage,reply:'Request failed',checks:[{name:'Response',status:'warning',detail:result.error}],signals,tools:[],elapsed_ms:Date.now()-started})
+      return json(502, { error: result.error })
+    }
+    progress('Checking results')
+    const checks = isDev ? checkAnswer(result.reply,result.results,result.toolsUsed,trace.direct,trace.toolErrors,trace.partial) : undefined
+    const runId = isDev ? crypto.randomUUID() : undefined
+    const elapsed = Date.now()-started
+    const extra = isDev ? {run_id:runId,checks,elapsed_ms:elapsed} : {}
 
-    stored = [...stored, { role: 'assistant' as const, content: result.reply, ...(result.results ? { results: result.results } : {}) }].slice(-STORED_MESSAGES)
+    stored = [...stored, { role: 'assistant' as const, content: result.reply, ...extra, ...(result.results ? { results: result.results } : {}) }].slice(-STORED_MESSAGES)
 
     if (convId) {
-      await service.from('assistant_conversations')
+      await service.from(conversationTable)
         .update({ messages: stored, updated_date: new Date().toISOString() })
         .eq('id', convId).eq('user_id', userId)
     } else {
-      const { data: created, error: insErr } = await service.from('assistant_conversations')
+      const { data: created, error: insErr } = await service.from(conversationTable)
         .insert({
           user_id: userId, user_name: userName,
           title: userMessage.slice(0, 60),
@@ -495,8 +524,12 @@ Deno.serve(async (req) => {
       convId = created?.id ?? ''
     }
 
+    if (isDev) {
+      const {error} = await service.from('assistant_dev_runs').insert({id:runId,user_id:userId,conversation_id:convId || null,prompt:userMessage,reply:result.reply,results:result.results,checks,signals,tools:result.toolsUsed,elapsed_ms:elapsed})
+      if(error) return json(500,{error:'Response could not be recorded for verification. Please retry.'})
+    }
     // Audit log (failure never blocks the reply)
-    service.from('log_entries').insert({
+    if (!isDev) service.from('log_entries').insert({
       timestamp: new Date().toISOString(),
       level: 'info',
       category: 'assistant',
@@ -505,7 +538,24 @@ Deno.serve(async (req) => {
       details: { tools_used: result.toolsUsed, reply_preview: result.reply.slice(0, 300), conversation_id: convId, ms: Date.now() - started },
     }).then(({ error }) => { if (error) console.error('assistant log failed', error.message) })
 
-    return json(200, { reply: result.reply, results: result.results, conversation_id: convId })
+    return json(200, { reply: result.reply, results: result.results, conversation_id: convId, ...extra })
+    }
+    if(isDev && body.stream === true) {
+      const encoder = new TextEncoder()
+      const stream = new ReadableStream({async start(controller) {
+        let connected=true
+        const emit=(event:string,data:unknown)=>{if(connected)try{controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))}catch{connected=false}}
+        const heartbeat=setInterval(()=>emit('heartbeat',{}),10000)
+        try {
+          const response=await execute(label=>emit('progress',{label}))
+          const data=await response.json()
+          emit(response.ok?'done':'error',data)
+        } catch {emit('error',{error:'The assistant request failed. Please retry.'})}
+        finally {clearInterval(heartbeat);if(connected)try{controller.close()}catch{ /* disconnected */ }}
+      }})
+      return new Response(stream,{headers:{...corsHeaders,'Content-Type':'text/event-stream','Cache-Control':'no-store','X-Accel-Buffering':'no'}})
+    }
+    return await execute()
   } catch (e) {
     console.error('assistant error', e)
     return json(500, { error: 'server_error' })

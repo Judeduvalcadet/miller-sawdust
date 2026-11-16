@@ -3,7 +3,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MessageCircle, Send, X, Loader2, History, SquarePen, ChevronLeft } from 'lucide-react';
-import { base44 } from '@/api/entities';
+import { assistantRequest, assistantDev } from '@/api/assistantClient';
+import AssistantFeedback from './AssistantFeedback';
+import AssistantReview from './AssistantReview';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -49,6 +51,10 @@ function MessageContent({ content, dark }) {
 // read-only by construction: its server tools can look things up and run
 // route checks, nothing else. Conversations are stored server-side.
 export default function AssistantChat() {
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [progress, setProgress] = useState('Connecting');
+  const [elapsed, setElapsed] = useState(0);
+  const startedRef = useRef(0);
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState(null);
   const [resultSearch, setResultSearch] = useState('');
@@ -87,6 +93,20 @@ export default function AssistantChat() {
     };
   }, [open]);
 
+  useEffect(() => {
+    const field = inputRef.current;
+    if (!field) return;
+    const resize = () => { field.style.height = 'auto'; field.style.height = `${Math.min(field.scrollHeight, 256)}px`; };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, [input, open, view]);
+  useEffect(() => {
+    if (!isLoading) return;
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now()-startedRef.current)/1000)), 1000);
+    return () => clearInterval(timer);
+  }, [isLoading]);
+
   const resultRows = splitAssistantRows(results);
   const visibleRows = resultRows.rows.filter(row => row.some(cell => String(cell).toLowerCase().includes(resultSearch.toLowerCase())));
 
@@ -98,21 +118,23 @@ export default function AssistantChat() {
     setMessages(prev => [...prev, { role: 'user', content }]);
     setInput('');
     setIsLoading(true);
+    startedRef.current = Date.now(); setElapsed(0); setProgress('Connecting');
     try {
-      const { data } = await base44.functions.invoke('assistant', {
+      const { data } = await assistantRequest( {
         message: content,
         conversation_id: conversationId || undefined,
-      });
+      }, setProgress);
       if (data?.conversation_id) setConversationId(data.conversation_id);
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data?.reply || 'Something went wrong on my end - try again.',
         results: data?.results,
+        run_id: data?.run_id, checks: data?.checks, elapsed_ms: data?.elapsed_ms ?? Date.now()-startedRef.current,
       }]);
-    } catch {
+    } catch (error) {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: "I couldn't reach the assistant just now. Give it a moment and try again.",
+        content: error.message || "The request failed. Please try again.",
       }]);
     }
     setIsLoading(false);
@@ -122,7 +144,7 @@ export default function AssistantChat() {
     setView('history');
     setHistoryLoading(true);
     try {
-      const { data } = await base44.functions.invoke('assistant', { action: 'list' });
+      const { data } = await assistantRequest( { action: 'list' });
       setConversations(data?.conversations || []);
     } catch {
       setConversations([]);
@@ -133,7 +155,7 @@ export default function AssistantChat() {
   const openConversation = async (id) => {
     setHistoryLoading(true);
     try {
-      const { data } = await base44.functions.invoke('assistant', { action: 'get', conversation_id: id });
+      const { data } = await assistantRequest( { action: 'get', conversation_id: id });
       setMessages(Array.isArray(data?.messages) ? data.messages : []);
       setConversationId(id);
       setView('chat');
@@ -150,6 +172,7 @@ export default function AssistantChat() {
 
   return (
     <>
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}><DialogContent className="max-w-3xl max-h-[85dvh] flex flex-col"><DialogHeader><DialogTitle>Assistant review</DialogTitle><DialogDescription>Verify corrections before they become dev rules.</DialogDescription></DialogHeader>{reviewOpen && <AssistantReview/>}</DialogContent></Dialog>
       <Dialog open={!!results} onOpenChange={value => { if (!value) setResults(null); }}>
         <DialogContent className="sm:max-w-4xl w-[calc(100vw-2rem)] max-h-[85dvh] flex flex-col gap-0 p-0 overflow-hidden">
           <div className="flex flex-wrap items-start gap-3 px-6 pt-6 pb-4 pr-12">
@@ -202,10 +225,11 @@ export default function AssistantChat() {
               <p className="font-semibold text-sm leading-tight">Dispatch Assistant</p>
               <p className="text-[11px] text-gray-400">Ask anything</p>
             </div>
-            <button onClick={newChat} className="p-1.5 rounded hover:bg-white/15" aria-label="New chat" title="New chat">
+            {assistantDev && role === 'admin' && <button onClick={()=>setReviewOpen(true)} className="text-xs p-1 hover:bg-white/15 rounded">Review</button>}
+            <button disabled={isLoading} onClick={newChat} className="p-1.5 rounded hover:bg-white/15" aria-label="New chat" title="New chat">
               <SquarePen className="w-[18px] h-[18px]" />
             </button>
-            <button onClick={openHistory} className="p-1.5 rounded hover:bg-white/15" aria-label="Chat history" title="Chat history">
+            <button disabled={isLoading} onClick={openHistory} className="p-1.5 rounded hover:bg-white/15" aria-label="Chat history" title="Chat history">
               <History className="w-[18px] h-[18px]" />
             </button>
             <button onClick={() => setOpen(false)} className="p-1.5 rounded hover:bg-white/15" aria-label="Close">
@@ -279,6 +303,9 @@ export default function AssistantChat() {
                         : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
                     )}>
                       <MessageContent content={m.content} dark={m.role === 'user'} />
+                      {m.role === 'assistant' && m.elapsed_ms != null && <p className="mt-1 text-[11px] text-gray-400">{Math.max(1,Math.round(m.elapsed_ms/1000))} seconds</p>}
+                      {assistantDev && m.run_id && <AssistantFeedback message={m}/>}
+
                       {m.role === 'assistant' && m.results?.columns?.length > 0 && Array.isArray(m.results.rows) && (
                         <button type="button" className="mt-2 text-xs font-semibold underline underline-offset-4 text-gray-700 hover:text-black" onClick={() => { setResults(m.results); setResultSearch(''); }}>View results</button>
                       )}
@@ -288,7 +315,8 @@ export default function AssistantChat() {
                 {isLoading && (
                   <div className="flex justify-start">
                     <div className="bg-white border border-gray-200 px-3 py-2 rounded-2xl rounded-bl-sm">
-                      <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                      <div className="text-xs text-gray-500"><span role="status">{progress}</span><span className="ml-2 tabular-nums">{elapsed}s</span></div>
+                      <div aria-label="Assistant is working" className="flex gap-1 py-2">{[0,1,2].map(i=><span key={i} className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce motion-reduce:animate-none" style={{animationDelay:`${i*150}ms`}} />)}</div>
                     </div>
                   </div>
                 )}
@@ -298,14 +326,16 @@ export default function AssistantChat() {
                 onSubmit={(e) => { e.preventDefault(); send(); }}
                 className="border-t border-gray-200 bg-white p-2 flex items-center gap-2 shrink-0"
               >
-                <input
+                <textarea
+                  rows={1}
                   ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
                   placeholder="Ask the assistant..."
                   maxLength={2000}
-                  className="flex-1 text-base sm:text-sm px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                  style={{lineHeight:"24px",maxHeight:256}}
+                  className="flex-1 min-w-0 resize-none overflow-y-auto text-base sm:text-sm px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                 />
                 <Button type="submit" size="icon" disabled={!input.trim() || isLoading} className="bg-gray-950 hover:bg-gray-800 shrink-0">
                   <Send className="w-4 h-4" />
