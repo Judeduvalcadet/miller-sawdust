@@ -42,7 +42,7 @@ await page.getByRole('button',{name:'Open dispatch assistant'}).click();
 const field=page.getByPlaceholder('Ask the assistant...');
 await field.fill('One');const small=(await field.boundingBox()).height;
 await field.fill('One\nTwo\nThree');assert((await field.boundingBox()).height>small);
-await field.fill(Array(15).fill('Line').join('\n'));assert((await field.boundingBox()).height<=256);
+await field.fill(Array(15).fill('Line').join('\n'));assert((await field.boundingBox()).height<=258);
 await field.fill('Show jobs');await field.press('Enter');
 await page.getByText('Assistant test response',{exact:true}).waitFor();
 await page.getByText('12 seconds',{exact:true}).waitFor();

@@ -96,7 +96,7 @@ export default function AssistantChat() {
   useEffect(() => {
     const field = inputRef.current;
     if (!field) return;
-    const resize = () => { field.style.height = 'auto'; field.style.height = `${Math.min(field.scrollHeight, 256)}px`; };
+    const resize = () => { field.style.height = 'auto'; const height = field.scrollHeight + 2; field.style.height = `${Math.min(height, 258)}px`; field.style.overflowY = height > 258 ? 'auto' : 'hidden'; };
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
@@ -334,7 +334,7 @@ export default function AssistantChat() {
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
                   placeholder="Ask the assistant..."
                   maxLength={2000}
-                  style={{lineHeight:"24px",maxHeight:256}}
+                  style={{lineHeight:"24px",maxHeight:258}}
                   className="flex-1 min-w-0 resize-none overflow-y-auto text-base sm:text-sm px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                 />
                 <Button type="submit" size="icon" disabled={!input.trim() || isLoading} className="bg-gray-950 hover:bg-gray-800 shrink-0">
