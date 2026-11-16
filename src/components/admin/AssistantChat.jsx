@@ -167,7 +167,7 @@ export default function AssistantChat() {
               <tbody>{visibleRows.map((row, index) => (
                 <tr key={index} className="even:bg-gray-50/70 hover:bg-blue-50/60 transition-colors">
                   <td className="px-4 py-3 border-b border-r border-gray-100 text-gray-400 text-xs text-right tabular-nums">{index + 1}</td>
-                  {row.map((cell, i) => <td key={i} className={cn('px-4 py-3 border-b border-r last:border-r-0 border-gray-100 text-gray-800', /^-?[\d,.]+(?:\s*(?:loads?|yds|mi|min))?$/.test(String(cell)) && 'text-right tabular-nums font-medium')} >{cell}</td>)}
+                  {row.map((cell, i) => <td key={i} className={cn('px-4 py-3 border-b border-r last:border-r-0 border-gray-100 text-gray-800 whitespace-pre-line break-words min-w-[100px] max-w-sm', /^-?[\d,.]+(?:\s*(?:loads?|yds|mi|min))?$/.test(String(cell)) && 'text-right tabular-nums font-medium')} >{cell}</td>)}
                 </tr>
               ))}</tbody>
               {resultRows.totals.length > 0 && <tfoot className="sticky bottom-0 bg-slate-200 text-gray-950 font-bold border-t-2 border-slate-300">
