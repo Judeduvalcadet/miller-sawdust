@@ -1,0 +1,20 @@
+# Approved office workflow changes
+
+Implement locally in Miller Sawdust. No production deployment or QuickBooks catch-up.
+
+1. Constrain portaled menus to viewport space; verify bottom-row assignment and scrolling.
+2. Reuse Reports and full report pages under V2 routes with a neutral scoped theme.
+3. Move delivery truck selectors above load containers; expose pickup truck selector at top.
+4. Add invoice billing snapshots with shipping/default, existing customer, and new address modes. Use Google address suggestions. Retain delivery customer for pricing.
+5. Atomically remember saved per-item invoice rates on the delivery customer. Ignore unchanged historical rates and server imports; preserve other invoices. Invalidate cached rates after saves.
+6. Verify SQL rollback tests, billing helper tests, production build and local browser flows. Defer live QuickBooks connection/payment reconciliation until client connects.
+
+## Local verification
+- Additive migration applied and recorded only in local Miller Supabase.
+- Pricing regression transaction passed and rolled back its fixtures: new rate, changed rate, quantity-only historical edit, unaffected other invoice, ignored service import.
+- Seven billing tests and two release guard tests passed.
+- Browser test (mocked API, no mail sent) passed: bottom week assignment placement/scroll, truck selector position, reports route, new billing address preview.
+- Local PostgREST invoice/customer relation confirmed after adding second customer foreign key.
+- Production build, targeted ESLint and diff whitespace checks passed.
+- Independent review addressed preservation of legacy multiline addresses and nonblocking unchanged contact fields.
+- QuickBooks connection, live payment reconciliation and production deployment remain deferred.

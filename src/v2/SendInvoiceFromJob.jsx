@@ -74,12 +74,15 @@ export default function SendInvoiceFromJob({ job, customer, onClose, onSent }) {
     total: payload.total,
     balance: existingInv?.status === 'paid' ? 0 : Math.max(0,payload.total-(Number(existingInv?.total||0)-Number(existingInv?.balance??existingInv?.total??0))),
     note: payload.note,
+    billing_address: payload.billing_address,
+    billing_customer_id: payload.billing_customer_id,
+    billing_mode: payload.billing_mode,
   });
 
   const openPreview = () => {
     const api = composerApi.current;
     if (!api?.ready) return;
-    setPreviewInv(draftInvoice(api.getPayload()));
+    try { setPreviewInv(draftInvoice(api.getPayload())); } catch (e) { setError(e.message); }
   };
 
   // Create the invoice if the job has none, or save the composer's current
@@ -88,7 +91,7 @@ export default function SendInvoiceFromJob({ job, customer, onClose, onSent }) {
     assertV2Writable();
     if (invoiceLoading || invoiceLoadError) throw new Error('Wait for the existing invoice to load before sending.');
     if (preparedInvoice.current) {
-      if (JSON.stringify({ lines: payload.lines, total: payload.total, note: payload.note }) !== preparedInvoice.current.payloadKey) {
+      if (JSON.stringify(payload) !== preparedInvoice.current.payloadKey) {
         throw new Error('This invoice was already prepared. Close and reopen it to edit before sending again.');
       }
       return preparedInvoice.current.invoice;
@@ -99,11 +102,14 @@ export default function SendInvoiceFromJob({ job, customer, onClose, onSent }) {
         total: payload.total,
         balance: existingInv.status === 'paid' ? 0 : Math.max(0,payload.total-(Number(existingInv.total)-Number(existingInv.balance??existingInv.total))),
         note: payload.note,
+        billing_address: payload.billing_address,
+        billing_customer_id: payload.billing_customer_id,
+        billing_mode: payload.billing_mode,
         edited_at: new Date().toISOString(),
       };
       const updated = await base44.entities.Invoice.update(existingInv.id, patch);
       const invoice = { ...existingInv, ...patch, ...(updated || {}) };
-      preparedInvoice.current = { invoice, payloadKey: JSON.stringify({ lines: payload.lines, total: payload.total, note: payload.note }) };
+      preparedInvoice.current = { invoice, payloadKey: JSON.stringify(payload) };
       return invoice;
     }
     const { data: num, error: numErr } = await supabase.rpc('next_invoice_number');
@@ -120,8 +126,11 @@ export default function SendInvoiceFromJob({ job, customer, onClose, onSent }) {
       lines: payload.lines,
       source: 'app',
       note: payload.note,
+      billing_address: payload.billing_address,
+      billing_customer_id: payload.billing_customer_id,
+      billing_mode: payload.billing_mode,
     });
-    preparedInvoice.current = { invoice: created, payloadKey: JSON.stringify({ lines: payload.lines, total: payload.total, note: payload.note }) };
+    preparedInvoice.current = { invoice: created, payloadKey: JSON.stringify(payload) };
     queryClient.setQueryData(['job-invoice', job.id], created);
     return created;
   };
@@ -142,6 +151,7 @@ export default function SendInvoiceFromJob({ job, customer, onClose, onSent }) {
         queryClient.invalidateQueries({ queryKey: ['v2-customers'] });
       }
       const invoice = await ensureInvoice(payload);
+      await queryClient.invalidateQueries({ queryKey: ['customer-prices'] });
       const logo = await ensureInvertedLogo();
       const pdf_base64 = await buildInvoicePdfBase64({ invoice, customer, company, logo });
       const { data, error: fnErr } = await supabase.functions.invoke('send-invoice', {

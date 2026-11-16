@@ -233,7 +233,7 @@ function BoardJobCard({ job, driver, drivers = [], readOnly, neutral, invoiced, 
                   {job.assigned_driver_id ? 'Reassign' : 'Assign'}
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+              <DropdownMenuContent align="start" className="max-h-[min(16rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto">
                 {assignable.map((d) => (
                   <DropdownMenuItem key={d.id} onClick={() => onAssign(job, d.id)} className={cn(job.assigned_driver_id === d.id && 'font-semibold')}>
                     <DriverAvatar driver={d} size={20} /> <span className="ml-2">{d.name}</span>

@@ -208,7 +208,7 @@ function KPICard({ icon: Icon, label, value, suffix, color }) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-export default function Reports() {
+export default function Reports({ v2 = false }) {
   const [jobs, setJobs] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -578,7 +578,7 @@ export default function Reports() {
                       <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} />
                       <Tooltip formatter={(v) => [`${v} yds`, 'Yards']} />
-                      <Bar dataKey="yards" fill="#d97706" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="yards" fill={v2 ? "#374151" : "#d97706"} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                   <table className="w-full mt-3 text-sm">
@@ -637,7 +637,7 @@ export default function Reports() {
                         )}
                       </Button>
                       {pickupByLocation.length > EXPANDED_COUNT && (
-                        <Link to={`/PickupLocationsFullReport?${fullReportQueryString}`}>
+                        <Link to={`${v2 ? '/v2/reports/pickups' : '/PickupLocationsFullReport'}?${fullReportQueryString}`}>
                           <Button variant="outline" size="sm" className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50">
                             <ExternalLink className="w-3.5 h-3.5" />
                             View full report ({pickupByLocation.length} locations)
@@ -730,7 +730,7 @@ export default function Reports() {
                         )}
                       </Button>
                       {customerStats.length > EXPANDED_COUNT && (
-                        <Link to={`/CustomerDeliveriesFullReport?${fullReportQueryString}`}>
+                        <Link to={`${v2 ? '/v2/reports/customers' : '/CustomerDeliveriesFullReport'}?${fullReportQueryString}`}>
                           <Button variant="outline" size="sm" className="gap-2 text-blue-700 border-blue-300 hover:bg-blue-50">
                             <ExternalLink className="w-3.5 h-3.5" />
                             View full report ({customerStats.length} customers)

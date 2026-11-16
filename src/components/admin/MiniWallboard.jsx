@@ -1,5 +1,5 @@
 import { DETAIL_ROWS, DETAIL_FOOTER } from '@/lib/detailLayout';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,22 +26,30 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl, deYellow = fal
   const ref = useRef(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
-  useEffect(() => {
-    if (anchorEl) {
+  useLayoutEffect(() => {
+    const place = () => {
+      if (!anchorEl || !ref.current) return;
       const rect = anchorEl.getBoundingClientRect();
-      setPos({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX
-      });
-    }
-  }, [anchorEl]);
+      const height = Math.min(ref.current.scrollHeight, window.innerHeight - 16);
+      const width = ref.current.offsetWidth;
+      const below = window.innerHeight - rect.bottom - 8;
+      const top = below >= height ? rect.bottom + 4 : rect.top - height - 4;
+      setPos({ top: Math.max(8, Math.min(top, window.innerHeight - height - 8)), left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
+  }, [anchorEl, drivers.length]);
 
   useEffect(() => {
     const handler = (e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     };
+    const escape = (e) => { if (e.key === 'Escape') { onClose(); anchorEl?.focus(); } };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', escape); };
   }, [onClose]);
 
   const availableDrivers = drivers.filter((d) => d.active && d.role === 'driver');
@@ -49,8 +57,9 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl, deYellow = fal
   return createPortal(
     <div
       ref={ref}
-      style={{ position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999 }}
-      className="w-52 bg-white rounded-xl shadow-xl border border-gray-200 p-3"
+      role="dialog" aria-label="Assign driver"
+      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, maxHeight: 'calc(100dvh - 16px)' }}
+      className="w-52 max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain bg-white rounded-xl shadow-xl border border-gray-200 p-3"
       onClick={(e) => e.stopPropagation()}>
 
       <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Assign Driver</p>

@@ -1,0 +1,51 @@
+// Run with PLAYWRIGHT_MODULE pointing to an installed Playwright index.mjs.
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+import assert from 'node:assert/strict';
+const browser = await chromium.launch({headless:true, executablePath:process.env.PLAYWRIGHT_EXECUTABLE || undefined});
+const page = await browser.newPage({viewport:{width:1280,height:720}});
+const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+const date=new Date().toLocaleDateString('en-CA');
+const customer={id:'10000000-0000-4000-8000-000000000001',name:'Test delivery',street_address:'Original street',active:true};
+const item={id:'10000000-0000-4000-8000-000000000002',name:'Test load',unit_price:100,active:true,is_load_item:true};
+const job={id:'10000000-0000-4000-8000-000000000003',job_type:'delivery',truck_type:'straight_truck',scheduled_date:date,status:'pending',quantity:1,customer_id:customer.id,location_name:customer.name,address:'Job address',loads:[{load_number:1,item_id:item.id,truck_type:'straight_truck',load_configuration:'Test load',yards_collected:20}]};
+const drivers=Array.from({length:35},(_,i)=>({id:`driver-${i}`,name:`Driver ${String(i).padStart(2,'0')}`,active:true,role:'driver',driver_type:'delivery'}));
+await page.addInitScript(()=>{ const jwt=`e30.${btoa(JSON.stringify({exp:Math.floor(Date.now()/1000)+86400,amr:'password',app_role:'admin',sub:'test'}))}.test`;localStorage.setItem('miller_jwt',jwt);localStorage.setItem('miller_driver_role','admin');localStorage.setItem('miller_driver_name','Test office');localStorage.setItem('miller_driver_id','test'); });
+await page.route('**/rest/v1/**',async route=>{
+ const name=new URL(route.request().url()).pathname.split('/').pop();
+ const data=({jobs:[job],customers:[customer,{id:'payer',name:'Billing person',street_address:'Billing street',active:true}],drivers,items:[item],customer_item_prices:[],invoices:[],settings:[],pickup_locations:[],drop_off_locations:[],job_events:[]})[name] || [];
+ await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+});
+await page.route('**/functions/v1/**',r=>r.fulfill({status:200,contentType:'application/json',body:'{}'}));
+await page.goto('http://127.0.0.1:5174/v2');
+await page.getByRole('button',{name:'Assign',exact:true}).first().waitFor();
+// Force the trigger near the bottom to reproduce viewport clipping.
+await page.getByRole('button',{name:'Assign',exact:true}).first().evaluate(el=>{el.style.position='fixed';el.style.bottom='8px';el.style.left='400px';el.style.zIndex='45';});
+await page.getByRole('button',{name:'Assign',exact:true}).first().click();
+const menu=page.getByRole('dialog',{name:'Assign driver'}); await menu.waitFor();
+await page.waitForTimeout(250);
+const box=await menu.boundingBox();assert(box.y>=0 && box.y+box.height<=720,JSON.stringify(box));
+const driverList=menu.locator('.overflow-y-auto');
+await driverList.evaluate(el=>el.scrollTop=el.scrollHeight);
+assert(await driverList.evaluate(el=>el.scrollTop>0));
+await page.keyboard.press('Escape');
+await page.getByRole('button',{name:'New Job',exact:true}).click();
+await page.getByText('Truck Type',{exact:true}).waitFor();
+const truck=await page.getByText('Truck Type',{exact:true}).boundingBox();
+const load=await page.getByText('Load 1',{exact:true}).boundingBox();assert(truck.y<load.y);
+await page.keyboard.press('Escape');
+await page.goto('http://127.0.0.1:5174/v2/reports');
+await page.getByRole('heading',{name:'Reports',exact:true}).waitFor();
+await page.goto('http://127.0.0.1:5174/v2');
+await page.getByRole('button',{name:'Day',exact:true}).click();
+await page.getByRole('button',{name:'Send Invoice',exact:true}).first().click();
+await page.getByLabel('Same as shipping').waitFor();
+await page.getByLabel('Same as shipping').uncheck();
+await page.getByLabel('Add new billing address').check();
+await page.getByLabel('Billing name',{exact:true}).fill('Billing test');
+await page.getByPlaceholder('Billing street address').fill('123 Test St');
+await page.getByRole('button',{name:'Preview',exact:true}).click();
+await page.getByText('Billing test',{exact:true}).waitFor();
+assert.deepEqual(errors,[]);
+
+console.log('PASS: bottom menu scroll/position, truck location, reports route, billing preview; no browser errors');
+await browser.close();

@@ -23,7 +23,7 @@ function formatRangeLabel(range) {
   return `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`;
 }
 
-export default function PickupLocationsFullReport() {
+export default function PickupLocationsFullReport({ v2 = false }) {
   const urlParams = new URLSearchParams(window.location.search);
   const fromParam = urlParams.get('from');
   const toParam = urlParams.get('to');
@@ -246,7 +246,7 @@ export default function PickupLocationsFullReport() {
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <Link to={`/Reports`}>
+            <Link to={v2 ? '/v2/reports' : '/Reports'}>
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="w-5 h-5" />
               </Button>

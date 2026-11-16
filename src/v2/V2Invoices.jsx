@@ -1,3 +1,6 @@
+import { validateContactFields } from '@/lib/contactValidation';
+import InvoiceBilling from './InvoiceBilling';
+import { billingPayload } from '@/lib/invoiceBilling';
 import { validContact } from '@/lib/contactValidation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -731,6 +734,7 @@ function CreateView() {
   const countFor = (d) => (weekJobs || []).filter((j) => j.scheduled_date === d && billable(j)).length;
 
   const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['customer-prices'] });
     queryClient.invalidateQueries({ queryKey: ['inv-week-invoices', weekStart] });
     queryClient.invalidateQueries({ queryKey: ['v2-invoices'] });
   };
@@ -760,7 +764,7 @@ function CreateView() {
 
   const enqueueCreate = (job, payload) => {
     setCreating((m) => new Map(m).set(job.id, 'creating'));
-    queueRef.current = queueRef.current.then(async () => {
+    queueRef.current = queueRef.current.catch(() => {}).then(async () => {
       try {
         const { data: num, error: numErr } = await supabase.rpc('next_invoice_number');
         if (numErr) throw numErr;
@@ -776,7 +780,11 @@ function CreateView() {
           lines: payload.lines,
           source: 'app',
           note: payload.note,
+          billing_address: payload.billing_address,
+          billing_customer_id: payload.billing_customer_id,
+          billing_mode: payload.billing_mode,
         });
+        await queryClient.invalidateQueries({ queryKey: ['customer-prices'] });
         // A pre-save poll must not overwrite the freshly created row.
         await queryClient.cancelQueries({ queryKey: ['inv-week-invoices', mondayOf(job.scheduled_date)], exact: true });
         // Publish the finished row before releasing its pending guard.
@@ -788,8 +796,10 @@ function CreateView() {
       } catch (e) {
         console.error('invoice create failed', e);
         setCreating((m) => new Map(m).set(job.id, 'error'));
+        throw e;
       }
     });
+    return queueRef.current;
   };
 
   const jobLabel = (j) => {
@@ -949,14 +959,14 @@ function CreateView() {
                           {editing && update.isError && <p role="alert" className="px-6 text-sm text-red-600">Could not save. Please try again.</p>}
                           <InvoiceComposer
                             key={editing ? `edit-${inv.id}` : job.id}
-                            saving={editing && update.isPending}
+                            saving={(editing && update.isPending) || creating.get(job.id) === 'creating'}
                             job={job}
                             items={items}
                             initial={editing ? inv : null}
                             isBatch={!!isBatchCurrent}
                             batchInfo={isBatchCurrent ? { index: batch.index, count: batch.ids.length } : null}
                             onCancel={() => { setExpandedId(null); setEditingId(null); setBatch(null); }}
-                            onCreated={(payload) => {
+                            onCreated={async (payload) => {
                               if (editing) {
                                 update.mutate({
                                   id: inv.id,
@@ -964,11 +974,14 @@ function CreateView() {
                                   total: payload.total,
                                   balance: inv.status === 'paid' ? 0 : Math.max(0,payload.total-(Number(inv.total)-Number(inv.balance??inv.total))),
                                   note: payload.note,
+                                  billing_address: payload.billing_address,
+                                  billing_customer_id: payload.billing_customer_id,
+                                  billing_mode: payload.billing_mode,
                                   edited_at: new Date().toISOString(),
                                 }, { onSuccess: () => { setEditingId(null); setExpandedId(null); } });
                                 return;
                               }
-                              enqueueCreate(job, payload);
+                              try { await enqueueCreate(job, payload); } catch { return; }
                               if (isBatchCurrent) {
                                 if (batch.index + 1 >= batch.ids.length) setBatch(null);
                                 else setBatch({ ...batch, index: batch.index + 1 });
@@ -1208,6 +1221,10 @@ function InvoiceDetail({ inv }) {
 /* ---------------------------- Composer ---------------------------------- */
 
 export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCancel, onCreated, hideFooter = false, exposeApi = null, saving = false }) {
+  const [billing, setBilling] = useState({unchanged:!!(initial?.billing_address || initial?.qb_bill_to), mode:initial?.billing_mode || (initial?.qb_bill_to ? 'address' : 'shipping'), customer_id:initial?.billing_customer_id || '', address:initial?.billing_address || initial?.qb_bill_to || {}});
+  const [billingError, setBillingError] = useState('');
+  const { data: billingCustomers = [], isPending: billingLoading } = useQuery({queryKey:['v2-customers'], queryFn:() => base44.entities.Customer.list('name')});
+
   const { data: prices } = useQuery({
     queryKey: ['customer-prices', job.customer_id],
     queryFn: () => base44.entities.CustomerItemPrice.filter({ customer_id: job.customer_id }),
@@ -1286,26 +1303,31 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
       unit_price: Number(l.unit_price) || 0,
       amount: Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * 100) / 100,
     })).filter((l) => l.qty > 0);
+    const billTo = billingPayload(billing, job, billingCustomers);
+    if (billing.mode === 'address' && !billing.unchanged) validateContactFields(billTo.billing_address);
     return {
+      ...billTo,
       lines: finalLines,
       total: Math.round(total * 100) / 100,
       note: note.trim() || null,
     };
   };
-  const create = () => onCreated(buildPayload());
+  const create = () => { try { setBillingError(''); onCreated(buildPayload()); } catch (e) { setBillingError(e.message); } };
 
   // Hosts that embed the composer (the job-card send popup) read the current
   // lines through this instead of the footer buttons.
   useEffect(() => {
-    if (exposeApi) exposeApi({ getPayload: buildPayload, ready: lines !== null, total });
+    if (exposeApi) exposeApi({ getPayload: buildPayload, ready: lines !== null && !billingLoading, total });
   });
 
-  if (lines === null) {
+  if (lines === null || billingLoading) {
     return <div className="border-t border-gray-100 px-6 py-6 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-gray-400" /></div>;
   }
 
   return (
     <div className="border-t border-gray-100 px-6 py-4">
+      <InvoiceBilling value={billing} onChange={(value) => setBilling({...value, unchanged:false})} customers={billingCustomers} shipping={job.address} />
+      {billingError && <p role="alert" className="mb-3 text-sm text-red-600">{billingError}</p>}
       <div className="max-w-[1075px] bg-white border border-gray-200">
       <table className="w-full text-left">
         <thead>
@@ -1374,7 +1396,7 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
                     >
                       <p className="text-sm text-gray-900 group-hover:underline decoration-dotted underline-offset-2">{l.name}</p>
                       {std != null
-                        ? <p className="text-[10px] text-gray-400">standard ${Number(std).toLocaleString()}{custom ? ', this invoice only' : ''}</p>
+                        ? <p className="text-[10px] text-gray-400">standard ${Number(std).toLocaleString()}{custom ? ', saved for this customer on save' : ''}</p>
                         : <p className="text-[10px] text-gray-400">no catalog item. Click to pick one or price it manually</p>}
                     </button>
                   )}

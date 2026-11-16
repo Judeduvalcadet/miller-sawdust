@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 
 const PAGES = [
+  ['/Reports', '/v2/reports'],
   ['/AdminDashboard', '/v2'], ['/Invoicing', '/v2/invoices'],
   ['/CustomerManager', '/v2/customers'], ['/PickupLocationManager', '/v2/pickups'],
   ['/DropOffLocationManager', '/v2/dropoffs'], ['/AppSettings', '/v2/settings'],

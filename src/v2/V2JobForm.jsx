@@ -554,6 +554,33 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
               </div>
             )}
 
+            <div className="col-span-1 md:col-span-2 flex flex-wrap gap-3">
+              {isPickup ? <div className="space-y-2 w-44">
+                <Label>Truck Type</Label>
+                <Select value={formData.truck_type} onValueChange={(v) => set('truck_type', v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{TRUCK_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div> : loads.map((load, i) => <div key={load.load_number}>
+                        <div className="space-y-1 w-44 shrink-0">
+                          <Label className="text-xs text-gray-500">{loads.length > 1 ? `Load ${load.load_number} Truck Type` : 'Truck Type'}</Label>
+                          <Select
+                            value={load.truck_type || ''}
+                            onValueChange={(v) => setLoad(i, { truck_type: v })}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder={load.item_id ? 'Choose truck…' : '-'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {TRUCK_TYPES.map((t) => (
+                                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+              </div>)}
+            </div>
+
             {/* Customer (delivery) or Pickup Location (pickup) */}
             {isPickup ? (
               <div className="space-y-2">
@@ -733,22 +760,6 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                       {/* Truck / yards / config - filled by the item; truck stays
                           open when the item says Any. */}
                       <div className="flex gap-3">
-                        <div className="space-y-1 w-44 shrink-0">
-                          <Label className="text-xs text-gray-500">Truck Type</Label>
-                          <Select
-                            value={load.truck_type || ''}
-                            onValueChange={(v) => setLoad(i, { truck_type: v })}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder={load.item_id ? 'Choose truck…' : '-'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TRUCK_TYPES.map((t) => (
-                                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
                         <div className="space-y-1 w-24 shrink-0">
                           <Label className="text-xs text-gray-500">Yards</Label>
                           <Input

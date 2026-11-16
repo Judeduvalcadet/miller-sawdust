@@ -12,7 +12,7 @@ if (config.API_URL !== 'http://127.0.0.1:54521') throw new Error('Refusing to te
 const client = createClient(config.API_URL, config.SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const all = [];
 for (let start = 0; ; start += 1000) {
-  const { data, error } = await client.from('invoices').select('*,customer:customers(*)').order('id').range(start, start + 999);
+  const { data, error } = await client.from('invoices').select('*,customer:customers!invoices_customer_id_fkey(*)').order('id').range(start, start + 999);
   if (error) throw error;
   all.push(...data);
   if (data.length < 1000) break;

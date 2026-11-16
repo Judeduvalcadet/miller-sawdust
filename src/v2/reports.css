@@ -1,0 +1,6 @@
+/* Reuse V1 reports with V2 neutral accents. */
+body.v2-reports-open [class*="text-amber-"], body.v2-reports-open [class*="text-yellow-"] { color: #374151; }
+body.v2-reports-open [class*="bg-amber-6"], body.v2-reports-open [class*="bg-amber-7"] { background-color: #111827; }
+body.v2-reports-open [class*="bg-amber-1"], body.v2-reports-open [class*="bg-amber-50"] { background-color: #f3f4f6; }
+body.v2-reports-open [class*="border-amber-"] { border-color: #d1d5db; }
+body.v2-reports-open [class*="hover:bg-amber-"]:hover { background-color: #e5e7eb; }

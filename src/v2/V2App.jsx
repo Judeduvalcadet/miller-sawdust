@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, NavLink, useNavigate, useLocation } from 'reac
 import { Truck, FileText, Users, Map, LogOut, Monitor, BookUser, Factory, MapPin, ChevronDown, MessageSquare } from 'lucide-react';
 import { getTokenClaim, logout } from '@/api/authClient';
 import { cn } from '@/lib/utils';
+import V2Reports from './V2Reports';
 import V2Login from './V2Login';
 import V2Settings from './V2Settings';
 import V2Customers from './V2Customers';
@@ -47,6 +48,7 @@ function Placeholder({ title, note }) {
 const NAV_TOP = [
   { to: '/v2', end: true, icon: Truck, label: 'Dispatch' },
   { to: '/v2/invoices', icon: FileText, label: 'Invoices' },
+  { to: '/v2/reports', icon: FileText, label: 'Reports' },
   { to: '/v2/inbox', icon: MessageSquare, label: 'Inbox' },
 ];
 // The Directory: everyone the business deals with - customers we sell to,
@@ -181,6 +183,7 @@ export default function V2App() {
       {/* Driver app: PIN sessions welcome - no office (email+password) gate */}
       <Route path="driver" element={<V2Driver />} />
       <Route path="" element={<RequireOffice><V2Dispatch /></RequireOffice>} />
+      <Route path="reports/*" element={<RequireOffice><V2Reports /></RequireOffice>} />
       <Route path="inbox" element={<RequireOffice><V2Inbox /></RequireOffice>} />
       <Route path="invoices" element={<RequireOffice><V2Invoices /></RequireOffice>} />
       <Route path="customers" element={<RequireOffice><V2Customers /></RequireOffice>} />

@@ -13,7 +13,7 @@ export async function fetchInvoicePage(client, { search = '', status = 'all', fr
 export async function fetchSelectedInvoices(client, ids) {
   const records = new Map();
   for (let start = 0; start < ids.length; start += 100) {
-    const { data, error } = await client.from('invoices').select('*,customer:customers(*)')
+    const { data, error } = await client.from('invoices').select('*,customer:customers!invoices_customer_id_fkey(*)')
       .in('id', ids.slice(start, start + 100)).or('qb_archived.eq.false,qb_archived.is.null');
     if (error) throw error;
     for (const row of data || []) records.set(row.id, row);

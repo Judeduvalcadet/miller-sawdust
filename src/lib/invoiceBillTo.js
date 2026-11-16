@@ -1,5 +1,5 @@
-// A mapped invoice retains the billing address saved in QuickBooks. Drafts
-// without a saved accounting address use the current customer record.
+// App invoices retain their selected billing snapshot. Legacy invoices retain
+// their QuickBooks address, falling back to the customer only without a snapshot.
 export function invoiceBillTo(invoice,customer) {
-  return invoice?.qb_bill_to ?? customer;
+  return invoice?.billing_address ?? invoice?.qb_bill_to ?? customer;
 }
