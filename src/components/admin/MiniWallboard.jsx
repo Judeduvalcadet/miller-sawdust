@@ -82,7 +82,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl, deYellow = fal
           aria-pressed={selectedId === d.id}
           className={cn(
             "w-full flex items-center justify-between gap-2 border border-transparent text-left px-3 py-2 rounded-lg text-sm transition-colors",
-            selectedId === d.id ? (deYellow ? "bg-white border-gray-500 text-gray-950 font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
+            selectedId === d.id ? (deYellow ? "bg-gray-100 border-2 border-gray-500 text-gray-950 font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
           )}>
 
             <span>{d.name}</span>
