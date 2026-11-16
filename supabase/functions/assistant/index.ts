@@ -1,3 +1,4 @@
+import { REPORT_TOOL, reconcileReport } from '../_shared/assistant-report.ts'
 import { checkAnswer, conversationSignals, progressLabel } from '../_shared/assistant-checks.ts'
 import { learningAction, verifiedRules } from '../_shared/assistant-learning.ts'
 import { DATA_FIELDS, validateRecordQuery, recordTable } from '../_shared/assistant-data.ts'
@@ -328,13 +329,14 @@ For job boards and other record lists, use query_records then show_records so or
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string; results?: AssistantResults }
 
-async function runChat(context: ChatMsg[], apiKey: string, progress: (label: string) => void = () => {}, rules = '', trace = {direct:false, toolErrors:0, partial:false}): Promise<{ reply: string; toolsUsed: string[]; results?: AssistantResults } | { error: string }> {
+async function runChat(context: ChatMsg[], apiKey: string, progress: (label: string) => void = () => {}, rules = '', trace = {direct:false, toolErrors:0, partial:false, verification:''}, dev = false): Promise<{ reply: string; toolsUsed: string[]; results?: AssistantResults } | { error: string }> {
   const messages: Array<Record<string, unknown>> = context.map((m) => ({ role: m.role, content: m.content + (m.results ? "\nSaved result table (data): " + JSON.stringify(m.results) : "") }))
   const toolsUsed: string[] = []
   const datasets = new Map<string, {records: Record<string, unknown>[]; fields: string[]; total: number; offset: number}>()
   let outputBudget = 4096
+  let reportRedirected = false
 
-  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+  for (let round = 0; round <= (dev ? 4 : MAX_TOOL_ROUNDS); round++) {
     progress(round === 0 ? 'Understanding your question' : 'Preparing the answer')
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -346,8 +348,8 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
       body: JSON.stringify({
         model: MODEL,
         max_tokens: outputBudget,
-        system: systemPrompt() + rules,
-        tools: TOOLS,
+        system: systemPrompt() + rules + (dev ? '\nFor EVERY numeric count, sum, total or grouped report, use verified_report. It calculates and verifies original source records independently. Never calculate totals yourself or use present_results for numeric data. Do not answer numerical questions from saved history. If the tool cannot represent the requested metric, explain that verification is unavailable; do not substitute a different metric. For completed deliveries use job_type delivery and status completed, with completed_at for when delivery occurred; for scheduled jobs use scheduled_date. Expose scope through the report. For ambiguous definitions ask one short clarification.' : ''),
+        tools: dev ? [...TOOLS,REPORT_TOOL] : TOOLS,
         messages,
       }),
     })
@@ -359,6 +361,20 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
 
     console.info('assistant model response', JSON.stringify({model:MODEL,stop_reason:data.stop_reason,round,usage:data.usage}))
     if (data.stop_reason === 'max_tokens' && outputBudget < 8192) { outputBudget = 8192; continue }
+    const reportCall = dev && (data.content ?? []).find((b: {type:string;name?:string}) => b.type === 'tool_use' && b.name === 'verified_report')
+    if (reportCall) {
+      progress('Calculating from source records')
+      toolsUsed.push('verified_report')
+      const {data:report,error} = await service.rpc('assistant_dev_report',{p_spec:reportCall.input ?? {}})
+      if(error) {trace.toolErrors++;return {reply:'I could not verify this report: '+error.message,toolsUsed}}
+      progress('Reconciling every group and total')
+      try {
+        const verified = reconcileReport(report)
+        trace.verification = verified.verification
+        trace.direct = true; trace.partial = false
+        return {reply:verified.reply,results:verified.results,toolsUsed}
+      } catch(e) {trace.toolErrors++;return {reply:'I withheld the numbers because verification failed. '+(e instanceof Error?e.message:'Please retry later.'),toolsUsed}}
+    }
     const display = (data.content ?? []).find((b: {type:string;name?:string}) => b.type === 'tool_use' && b.name === 'show_records')
     if (display) {
       const source = datasets.get(String(display.input?.result_id))
@@ -367,13 +383,20 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
         trace.direct = true
         progress('Preparing results')
         const page = source.total > source.records.length ? ` Showing ${source.offset + 1}-${source.offset + source.records.length} of ${source.total} matching records.` : ''
-        return {reply:String(display.input.summary || 'Results ready.').slice(0,1000)+page,results:recordTable(String(display.input.title || 'Results'),source.records,fields),toolsUsed}
+        return {reply:(dev ? `Found ${source.total} matching records.` : String(display.input.summary || 'Results ready.').slice(0,1000))+page,results:recordTable(String(display.input.title || 'Results'),source.records,fields),toolsUsed}
       }
     }
     const presentation = (data.content ?? []).find((b: { type: string; name?: string }) => b.type === 'tool_use' && b.name === 'present_results')
     if (presentation) {
       const parsed = parseAssistantResults(presentation.input ?? {})
-      if (parsed && toolsUsed.length > 0) return { ...parsed, toolsUsed }
+      if (parsed && toolsUsed.length > 0 && !dev) return { ...parsed, toolsUsed }
+      if(dev) {
+        if(reportRedirected) return {reply:'I could not independently verify that report, so I have withheld the numbers. Try specifying the metric and date range.',toolsUsed}
+        reportRedirected=true
+        messages.push({role:'assistant',content:data.content})
+        messages.push({role:'user',content:(data.content ?? []).filter((b:{type:string})=>b.type==='tool_use').map((b:{id:string})=>({type:'tool_result',tool_use_id:b.id,content:'Use verified_report for numerical reports. For exact source fields use query_records then show_records. Unverified model-generated tables cannot be displayed.'}))})
+        continue
+      }
     }
     const textParts = (data.content ?? []).filter((b: { type: string }) => b.type === 'text')
       .map((b: { text: string }) => b.text)
@@ -384,9 +407,9 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
       if (source) return {reply:`Found ${source.total} matching records. Showing ${source.records.length} records from position ${source.offset + 1}.`, results:recordTable('Results',source.records,source.fields.slice(0,8)),toolsUsed}
       return {error:'assistant_unavailable'}
     }
-    if (data.stop_reason !== 'tool_use' || toolCalls.length === 0 || round === MAX_TOOL_ROUNDS) {
+    if (data.stop_reason !== 'tool_use' || toolCalls.length === 0 || round === (dev ? 4 : MAX_TOOL_ROUNDS)) {
       return {
-        reply: textParts.join('\n').trim() || 'The lookup did not finish. Please retry; your question does not need to be shortened.',
+        reply: dev && /\d/.test(textParts.join(' ')) ? 'I could not independently verify those figures, so I have withheld them. Please specify the metric and date range for a verified report.' : textParts.join('\n').trim() || 'The lookup did not finish. Please retry; your question does not need to be shortened.',
         toolsUsed,
       }
     }
@@ -495,14 +518,17 @@ Deno.serve(async (req) => {
     const execute = async (progress: (label: string) => void = () => {}) => {
     stored = [...stored, { role: 'user', content: userMessage }]
     const started = Date.now()
-    const trace = {direct:false,toolErrors:0,partial:false}
-    const result = await runChat(stored.slice(-CONTEXT_MESSAGES), apiKey, progress, rules, trace)
+    const trace = {direct:false,toolErrors:0,partial:false,verification:''}
+    const result = await runChat(stored.slice(-CONTEXT_MESSAGES), apiKey, progress, rules, trace, isDev)
     if ('error' in result) {
       if(isDev) await service.from('assistant_dev_runs').insert({user_id:userId,prompt:userMessage,reply:'Request failed',checks:[{name:'Response',status:'warning',detail:result.error}],signals,tools:[],elapsed_ms:Date.now()-started})
       return json(502, { error: result.error })
     }
     progress('Checking results')
     const checks = isDev ? checkAnswer(result.reply,result.results,result.toolsUsed,trace.direct,trace.toolErrors,trace.partial) : undefined
+    if (trace.verification && checks) {
+      for (const check of checks) if (['Source match','Completeness'].includes(check.name)) {check.status='pass';check.detail=trace.verification}
+    }
     const runId = isDev ? crypto.randomUUID() : undefined
     const elapsed = Date.now()-started
     const extra = isDev ? {run_id:runId,checks,elapsed_ms:elapsed} : {}
