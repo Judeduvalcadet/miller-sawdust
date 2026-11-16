@@ -1,7 +1,8 @@
+import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useState } from 'react';
 import { assistantRequest } from '@/api/assistantClient';
 export default function AssistantFeedback({ message }) {
-  const [rating, setRating] = useState(''), [correction, setCorrection] = useState(''), [saved, setSaved] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [rating, setRating] = useState(message.feedback?.rating || ''), [correction, setCorrection] = useState(''), [saved, setSaved] = useState(message.feedback?.rating || ''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const save = async value => {
     setBusy(true); setError('');
     try { await assistantRequest({ action:'feedback', run_id:message.run_id, rating:value, correction:value==='incorrect'?correction:'' }); setSaved(value); }
@@ -9,8 +10,8 @@ export default function AssistantFeedback({ message }) {
   };
   return <div className="mt-3 border-t pt-2 text-xs whitespace-normal">
     <div className="flex gap-3 text-gray-600">
-      <button disabled={busy} onClick={()=>{setRating('helpful');save('helpful');}} className="hover:underline">{saved==='helpful'?'Helpful saved':'Helpful'}</button>
-      <button disabled={busy} onClick={()=>setRating('incorrect')} className="hover:underline">{saved==='incorrect'?'Incorrect saved':'Incorrect'}</button>
+      <button aria-label="Helpful" title="Helpful" aria-pressed={saved==='helpful'} disabled={busy} onClick={()=>{setRating('helpful');save('helpful');}} className={`rounded-md p-2 transition-colors ${saved==='helpful'?'text-emerald-700 bg-emerald-50':'hover:bg-gray-100 text-gray-500'}`}><ThumbsUp className="h-4 w-4" fill={saved==='helpful'?'currentColor':'none'}/></button>
+      <button aria-label="Incorrect" title="Incorrect" aria-pressed={saved==='incorrect'} disabled={busy} onClick={()=>{setRating('incorrect');save('incorrect');}} className={`rounded-md p-2 transition-colors ${saved==='incorrect'?'text-red-700 bg-red-50':'hover:bg-gray-100 text-gray-500'}`}><ThumbsDown className="h-4 w-4" fill={saved==='incorrect'?'currentColor':'none'}/></button>
     </div>
     {rating==='incorrect' && <div className="mt-2 space-y-2"><textarea aria-label="Correction" value={correction} onChange={e=>setCorrection(e.target.value)} placeholder="What should be corrected? (optional)" maxLength={2000} className="w-full border rounded p-2"/><button disabled={busy} onClick={()=>save('incorrect')} className="border rounded px-2 py-1">Save feedback</button><p className="text-gray-500">A correction requires administrator verification before it becomes a rule.</p></div>}
     {error && <p role="alert" className="text-red-700 mt-2">{error}</p>}

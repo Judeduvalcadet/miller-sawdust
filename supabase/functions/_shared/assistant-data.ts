@@ -212,10 +212,10 @@ function formatValue(value: unknown): string {
   return typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value)
 }
 // Original values are formatted by the server, never transcribed by the model.
-export function recordTable(title: string, records: Record<string, unknown>[], fields: string[]) {
+export function recordTable(title: string, records: Record<string, unknown>[], fields: string[], includeTotals = true) {
   const rows = records.map(record => fields.map(field => formatValue(record[field])))
   const additive = new Set(['quantity','pickup_yards','delivery_yards','yards_collected','total','balance'])
-  if (records.length > 1 && fields.slice(1).some(f=>additive.has(f))) {
+  if (includeTotals && records.length > 1 && fields.slice(1).some(f=>additive.has(f))) {
     rows.push(fields.map((field,i)=> i===0 ? 'Total' : additive.has(field) ? String(Math.round(records.reduce((sum,r)=>sum+Number(r[field] || 0),0)*100)/100) : ''))
   }
   return {title,columns:fields.map(label),rows}

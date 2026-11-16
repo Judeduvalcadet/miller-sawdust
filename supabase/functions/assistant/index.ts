@@ -1,3 +1,4 @@
+import { VERIFIED_DATA_TOOL, renderVerifiedData } from '../_shared/assistant-verified-data.ts'
 import { REPORT_TOOL, reconcileReport } from '../_shared/assistant-report.ts'
 import { checkAnswer, conversationSignals, progressLabel } from '../_shared/assistant-checks.ts'
 import { learningAction, verifiedRules } from '../_shared/assistant-learning.ts'
@@ -348,8 +349,8 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
       body: JSON.stringify({
         model: MODEL,
         max_tokens: outputBudget,
-        system: systemPrompt() + rules + (dev ? '\nFor EVERY numeric count, sum, total or grouped report, use verified_report. It calculates and verifies original source records independently. Never calculate totals yourself or use present_results for numeric data. Do not answer numerical questions from saved history. If the tool cannot represent the requested metric, explain that verification is unavailable; do not substitute a different metric. For completed deliveries use job_type delivery and status completed, with completed_at for when delivery occurred; for scheduled jobs use scheduled_date. Expose scope through the report. For ambiguous definitions ask one short clarification.' : ''),
-        tools: dev ? [...TOOLS,REPORT_TOOL] : TOOLS,
+        system: systemPrompt() + rules + (dev ? '\nAll final business answers MUST use verified_data (all data categories and original fields) or verified_report (job/invoice aggregates). No free-text business answers are displayed. For EVERY numeric count, sum, total or grouped report, use verified_report or verified_data. Exact numbers, phone numbers, IDs, dates, nested configuration values and prices must be copied through verified_data records. Use describe_data for available fields. Unsupported calculations must be withheld. Never replace a requested average or percentage with a sum. It calculates and verifies original source records independently. Never calculate totals yourself or use present_results for numeric data. Do not answer numerical questions from saved history. If the tool cannot represent the requested metric, explain that verification is unavailable; do not substitute a different metric. For completed deliveries use job_type delivery and status completed, with completed_at for when delivery occurred; for scheduled jobs use scheduled_date. Expose scope through the report. For ambiguous definitions ask one short clarification.' : ''),
+        tools: dev ? [...TOOLS.filter(t=>!['show_records'].includes(t.name)),REPORT_TOOL,VERIFIED_DATA_TOOL] : TOOLS,
         messages,
       }),
     })
@@ -361,6 +362,14 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
 
     console.info('assistant model response', JSON.stringify({model:MODEL,stop_reason:data.stop_reason,round,usage:data.usage}))
     if (data.stop_reason === 'max_tokens' && outputBudget < 8192) { outputBudget = 8192; continue }
+    const dataCall = dev && (data.content ?? []).find((b: {type:string;name?:string}) => b.type === 'tool_use' && b.name === 'verified_data')
+    if(dataCall){
+      toolsUsed.push('verified_data');progress('Verifying original data')
+      const {data:source,error}=await service.rpc('assistant_dev_data',{p_spec:dataCall.input ?? {}})
+      if(error){trace.toolErrors++;return {reply:'I could not verify the requested data. Please narrow the filters or request the original records.',toolsUsed}}
+      try{const verified=renderVerifiedData(source);trace.direct=true;trace.partial=false;trace.verification=verified.verification;return {reply:verified.reply,results:verified.results,toolsUsed}}
+      catch{trace.toolErrors++;return {reply:'Verification did not pass, so I withheld the answer. Narrow the filters or request the original records.',toolsUsed}}
+    }
     const reportCall = dev && (data.content ?? []).find((b: {type:string;name?:string}) => b.type === 'tool_use' && b.name === 'verified_report')
     if (reportCall) {
       progress('Calculating from source records')
@@ -376,7 +385,7 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
       } catch(e) {trace.toolErrors++;return {reply:'I withheld the numbers because verification failed. '+(e instanceof Error?e.message:'Please retry later.'),toolsUsed}}
     }
     const display = (data.content ?? []).find((b: {type:string;name?:string}) => b.type === 'tool_use' && b.name === 'show_records')
-    if (display) {
+    if (display && !dev) {
       const source = datasets.get(String(display.input?.result_id))
       const fields = display.input?.fields
       if (source && Array.isArray(fields) && fields.length && fields.length <= 12 && fields.every((f: string) => source.fields.includes(f))) {
@@ -403,13 +412,14 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
     const toolCalls = (data.content ?? []).filter((b: { type: string }) => b.type === 'tool_use')
 
     if (data.stop_reason === 'max_tokens') {
+      if(dev)return {reply:'The verified lookup did not finish. Please narrow the request.',toolsUsed}
       const source = [...datasets.values()].at(-1)
       if (source) return {reply:`Found ${source.total} matching records. Showing ${source.records.length} records from position ${source.offset + 1}.`, results:recordTable('Results',source.records,source.fields.slice(0,8)),toolsUsed}
       return {error:'assistant_unavailable'}
     }
     if (data.stop_reason !== 'tool_use' || toolCalls.length === 0 || round === (dev ? 4 : MAX_TOOL_ROUNDS)) {
       return {
-        reply: dev && /\d/.test(textParts.join(' ')) ? 'I could not independently verify those figures, so I have withheld them. Please specify the metric and date range for a verified report.' : textParts.join('\n').trim() || 'The lookup did not finish. Please retry; your question does not need to be shortened.',
+        reply: dev ? 'I could not independently verify those figures, so I have withheld them. Please specify the data, filters and calculation, or request the original records.' : textParts.join('\n').trim() || 'The lookup did not finish. Please retry; your question does not need to be shortened.',
         toolsUsed,
       }
     }
@@ -480,6 +490,11 @@ Deno.serve(async (req) => {
         .select('id, title, messages')
         .eq('id', id).eq('user_id', userId).maybeSingle()
       if (!data) return json(404, { error: 'not_found' })
+      if(isDev){
+        const ids=(data.messages || []).map((m:{run_id?:string})=>m.run_id).filter(Boolean)
+        const {data:votes}=await service.from('assistant_dev_feedback').select('run_id,rating,correction').eq('user_id',userId).in('run_id',ids)
+        data.messages=(data.messages || []).map((m:{run_id?:string})=>({...m,feedback:votes?.find(v=>v.run_id===m.run_id)}))
+      }
       return json(200, data)
     }
 
