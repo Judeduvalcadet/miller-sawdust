@@ -236,14 +236,14 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, onSendI
           <Button variant="outline" size={deYellow ? 'icon' : 'default'} aria-label="Delete job" title="Delete job" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? 'h-8 w-8 text-gray-600 border-gray-300 hover:bg-gray-50' : 'text-red-600 border-red-300 hover:bg-red-50'}>
             <Trash2 className="w-4 h-4" />{!deYellow && 'Delete'}
           </Button>
+          {onSendInvoice && job.job_type === 'delivery' && job.customer_id && job.status !== 'cancelled' && <Button size="sm" variant="outline" className="gap-1 px-2 border-gray-300 bg-transparent text-gray-900 shadow-none hover:bg-gray-200 hover:text-gray-950" onClick={() => {onClose();onSendInvoice(job);}}><FileText className="w-4 h-4" /> Send Invoice</Button>}
           <Button size={deYellow ? "sm" : "default"} variant="outline" className={deYellow ? "gap-1 px-2" : undefined} onClick={() => setShowActivity(v => !v)}>
-            <History className="w-4 h-4" />{showActivity ? 'Hide Detail' : 'More Detail'}
+            <History className="w-4 h-4" />{showActivity ? 'Hide Details' : 'More Details'}
           </Button>
-          <Button size={deYellow ? "sm" : "default"} variant="outline" className={deYellow ? "px-2" : undefined} onClick={onClose}>Close</Button>
+          {!deYellow && <Button variant="outline" onClick={onClose}>Close</Button>}
           <Button size={deYellow ? "sm" : "default"} onClick={() => {onClose();onEdit(job);}} className={cn(deYellow && 'gap-1 px-2', deYellow ? 'bg-gray-950 hover:bg-gray-800' : 'bg-amber-600 hover:bg-amber-700')}>
             <Edit className="w-4 h-4" /> Edit Job
           </Button>
-          {onSendInvoice && job.job_type === 'delivery' && job.customer_id && job.status !== 'cancelled' && <Button size="sm" className="gap-1 px-2 bg-gray-950 hover:bg-gray-800" onClick={() => {onClose();onSendInvoice(job);}}><FileText className="w-4 h-4" /> Send Invoice</Button>}
         </div>
       </DialogContent>
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
