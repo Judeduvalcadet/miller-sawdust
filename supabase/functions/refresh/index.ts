@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
 
     const { data: session } = await service
       .from('driver_sessions')
-      .select('id, driver_id, expires_at, token_hash')
+      .select('id, driver_id, expires_at, token_hash, auth_method')
       .eq('id', sessionId)
       .maybeSingle()
 
@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
       .update({ last_used_at: new Date().toISOString(), expires_at: sessionExpiry() })
       .eq('id', sessionId)
 
-    return json(200, await tokenResponse(driver, refresh_token))
+    return json(200, await tokenResponse(driver, refresh_token, session.auth_method || 'pin'))
   } catch (e) {
     console.error('refresh error', e)
     return json(500, { error: 'server_error' })

@@ -32,6 +32,7 @@ const supabase = createClient(url, key)
 const TABLES = [
   'jobs', 'drivers', 'customers', 'pickup_locations', 'drop_off_locations',
   'driver_sessions', 'driver_notifications', 'settings', 'log_entries',
+  'job_events', 'entity_events',
 ]
 
 const CHUNK = 1000
@@ -54,6 +55,14 @@ for (const table of TABLES) {
   }
   backup.tables[table] = rows
   console.log(`${table}: ${rows.length} rows`)
+}
+
+// Since RLS enforcement, the anon key reads zero rows — an "empty backup"
+// means wrong credentials, not empty tables. Refuse to write it.
+if (!backup.tables.jobs.length && !backup.tables.drivers.length) {
+  console.error('\nABORT: no data returned — run with the service key:')
+  console.error('  SUPABASE_URL=... SUPABASE_KEY=<service_role key> node scripts/export-all.mjs <out.json>')
+  process.exit(1)
 }
 
 writeFileSync(outPath, JSON.stringify(backup, null, 2))

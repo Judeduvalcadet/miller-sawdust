@@ -56,7 +56,7 @@ export function fieldLabel(field) {
 }
 
 export function formatTimestamp(ts) {
-  if (!ts) return '—'
+  if (!ts) return '-'
   try {
     return format(new Date(ts), "EEE, MMM d yyyy 'at' h:mm a")
   } catch {
@@ -65,7 +65,7 @@ export function formatTimestamp(ts) {
 }
 
 export function formatDay(dateStr) {
-  if (!dateStr) return '—'
+  if (!dateStr) return '-'
   try {
     return format(new Date(`${dateStr}T00:00:00`), 'EEE, MMM d yyyy')
   } catch {
@@ -74,14 +74,14 @@ export function formatDay(dateStr) {
 }
 
 export function formatValue(field, value) {
-  if (value === null || value === undefined || value === '') return '—'
+  if (value === null || value === undefined || value === '') return '-'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (field === 'scheduled_date') return formatDay(value)
   if (field.endsWith('_at')) return formatTimestamp(value)
   if (field === 'loads') {
     try {
       const loads = Array.isArray(value) ? value : JSON.parse(value)
-      return loads.map((l) => [l.yards && `${l.yards} yd`, l.configuration || l.load_configuration].filter(Boolean).join(' ')).join(', ') || '—'
+      return loads.map((l) => [l.yards && `${l.yards} yd`, l.configuration || l.load_configuration].filter(Boolean).join(' ')).join(', ') || '-'
     } catch {
       return String(value)
     }

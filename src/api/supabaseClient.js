@@ -10,7 +10,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   accessToken: async () => (await getAccessToken()) ?? supabaseAnonKey,
 })
 
-// Realtime channels authenticate separately — keep their token current,
+// Realtime channels authenticate separately - keep their token current,
 // including on initial page load when the stored token is still valid.
 onTokenChange((token) => supabase.realtime.setAuth(token ?? supabaseAnonKey))
 getAccessToken().then((token) => {

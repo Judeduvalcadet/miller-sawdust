@@ -68,7 +68,7 @@ function jobYards(job) {
   return yards != null && yards !== '' ? `${yards} yd` : null;
 }
 
-export default function EntityHistoryOverlay({ selection, onClose }) {
+export default function EntityHistoryOverlay({ selection, onClose, deYellow = false }) {
   const { type, record } = selection;
   const meta = TYPE_META[type];
   const displayName = type === 'customer' ? (record.company_name || record.name) : record.name;
@@ -100,7 +100,7 @@ export default function EntityHistoryOverlay({ selection, onClose }) {
       <div className="w-40 shrink-0">
         <div className="text-sm font-medium text-gray-900">{formatDay(job.scheduled_date)}</div>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${job.job_type === 'pickup' ? 'border-blue-300 text-blue-700' : 'border-amber-300 text-amber-700'}`}>
+          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${deYellow ? 'border-gray-300 text-gray-700' : job.job_type === 'pickup' ? 'border-blue-300 text-blue-700' : 'border-amber-300 text-amber-700'}`}>
             {job.truck_type === 'spreader' ? 'Spreader' : job.job_type === 'pickup' ? 'Pickup' : 'Delivery'}
           </Badge>
           <Badge variant="outline" className={`text-[10px] px-1.5 py-0 border-0 ${STATUS_STYLES[job.status] || STATUS_STYLES.pending}`}>
@@ -112,8 +112,8 @@ export default function EntityHistoryOverlay({ selection, onClose }) {
       <div className="flex-1 min-w-[180px]">
         <div className="text-sm text-gray-900 truncate">
           {type === 'customer'
-            ? (job.location_name || job.address || job.customer_company_name || '—')
-            : (job.customer_company_name || job.location_name || job.dropoff_location_name || '—')}
+            ? (job.location_name || job.address || job.customer_company_name || '-')
+            : (job.customer_company_name || job.location_name || job.dropoff_location_name || '-')}
         </div>
         <div className="text-xs text-gray-500 truncate">
           {[
@@ -141,8 +141,8 @@ export default function EntityHistoryOverlay({ selection, onClose }) {
       <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-5 pb-4 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2.5">
-            <div className="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center shrink-0">
-              <Icon className="w-5 h-5 text-amber-700" />
+            <div className={deYellow ? "w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center shrink-0" : "w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center shrink-0"}>
+              <Icon className={deYellow ? "w-5 h-5 text-gray-700" : "w-5 h-5 text-amber-700"} />
             </div>
             <div className="min-w-0">
               <div className="truncate">{displayName}</div>
@@ -166,25 +166,25 @@ export default function EntityHistoryOverlay({ selection, onClose }) {
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="flex justify-center py-16">
-              <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
+              <Loader2 className={deYellow ? "w-6 h-6 animate-spin text-gray-600" : "w-6 h-6 animate-spin text-amber-600"} />
             </div>
           ) : jobs.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-16">No records in the system for {displayName}.</p>
           ) : (
             <>
               {upcoming.length > 0 && (
-                <div className="border-b bg-amber-50/60">
+                <div className={deYellow ? "border-b bg-gray-50/60" : "border-b bg-amber-50/60"}>
                   <button
                     type="button"
                     onClick={() => setShowUpcoming((v) => !v)}
-                    className="w-full flex items-center gap-2 px-6 py-2.5 text-left hover:bg-amber-50"
+                    className={deYellow ? "w-full flex items-center gap-2 px-6 py-2.5 text-left hover:bg-gray-50" : "w-full flex items-center gap-2 px-6 py-2.5 text-left hover:bg-amber-50"}
                   >
-                    <ChevronRight className={`w-4 h-4 text-amber-600 transition-transform ${showUpcoming ? 'rotate-90' : ''}`} />
-                    <CalendarClock className="w-4 h-4 text-amber-600" />
-                    <span className="text-sm font-medium text-amber-900">
+                    <ChevronRight className={`w-4 h-4 ${deYellow ? "text-gray-600" : "text-amber-600"} transition-transform ${showUpcoming ? 'rotate-90' : ''}`} />
+                    <CalendarClock className={deYellow ? "w-4 h-4 text-gray-600" : "w-4 h-4 text-amber-600"} />
+                    <span className={deYellow ? "text-sm font-medium text-gray-900" : "text-sm font-medium text-amber-900"}>
                       {upcoming.length} upcoming job{upcoming.length === 1 ? '' : 's'}
                     </span>
-                    <span className="text-xs text-amber-700/80">
+                    <span className={deYellow ? "text-xs text-gray-700/80" : "text-xs text-amber-700/80"}>
                       next: {formatDay(upcoming[0].scheduled_date)}
                     </span>
                   </button>

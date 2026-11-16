@@ -1,3 +1,4 @@
+import { useReportData } from '@/components/hooks/useReportData';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/entities';
@@ -19,11 +20,11 @@ function formatRangeLabel(range) {
   const sameDay = range.from.getTime() === range.to.getTime();
   if (sameDay) return format(range.from, 'MMM d, yyyy');
   const sameYear = range.from.getFullYear() === range.to.getFullYear();
-  if (sameYear) return `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d, yyyy')}`;
-  return `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
+  if (sameYear) return `${format(range.from, 'MMM d')} - ${format(range.to, 'MMM d, yyyy')}`;
+  return `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`;
 }
 
-export default function PickupLocationsFullReport() {
+export default function PickupLocationsFullReport({ v2 = false }) {
   const urlParams = new URLSearchParams(window.location.search);
   const fromParam = urlParams.get('from');
   const toParam = urlParams.get('to');
@@ -52,30 +53,10 @@ export default function PickupLocationsFullReport() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
 
-  const [jobs, setJobs] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [pickupLocations, setPickupLocations] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { jobs, drivers, customers, pickupLocations, isLoading } = useReportData();
   const [expandedLocations, setExpandedLocations] = useState({});
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      const [j, d, c, p] = await Promise.all([
-        base44.entities.Job.list('-scheduled_date', 5000),
-        base44.entities.Driver.list(),
-        base44.entities.Customer.list(undefined, 5000),
-        base44.entities.PickupLocation.list(),
-      ]);
-      setJobs(j);
-      setDrivers(d);
-      setCustomers(c);
-      setPickupLocations(p);
-      setIsLoading(false);
-    };
-    load();
-  }, []);
+
 
   const inDateRangeJobs = useMemo(() => {
     return jobs.filter(j => {
@@ -148,7 +129,7 @@ export default function PickupLocationsFullReport() {
     return Object.entries(map).map(([name, yards]) => ({ name, yards })).sort((a, b) => b.yards - a.yards);
   };
 
-  // Available sets (within date range, ignoring other filters) — for gray-out logic
+  // Available sets (within date range, ignoring other filters) - for gray-out logic
   const availableDriverIds = useMemo(
     () => new Set(inDateRangeJobs.map(j => j.assigned_driver_id).filter(Boolean)),
     [inDateRangeJobs]
@@ -246,7 +227,7 @@ export default function PickupLocationsFullReport() {
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <Link to={`/Reports`}>
+            <Link to={v2 ? '/v2/reports' : '/Reports'}>
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="w-5 h-5" />
               </Button>
@@ -359,7 +340,7 @@ export default function PickupLocationsFullReport() {
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 flex-wrap gap-3">
                   <div className="flex items-center gap-3">
                     <p className="text-sm text-gray-500">
-                      Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, pickupByLocation.length)} of {pickupByLocation.length}
+                      Showing {page * pageSize + 1}-{Math.min((page + 1) * pageSize, pickupByLocation.length)} of {pickupByLocation.length}
                     </p>
                     <div className="flex items-center gap-1.5">
                       <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>

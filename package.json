@@ -5,11 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:sandbox": "node scripts/dev-sandbox.mjs",
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:messaging": "deno test --node-modules-dir=none --allow-env tests/messaging.test.ts tests/messaging-send.test.ts tests/email-template.test.ts",
+    "test:routing": "deno test --node-modules-dir=none --allow-env tests/quickbooks-production-routing.test.ts tests/quickbooks-security.test.ts tests/quickbooks-webhook.test.ts tests/quickbooks-mapping.test.ts tests/resend-routing.test.ts tests/sandbox-environment.test.ts tests/quickbooks-runtime.test.ts",
+    "test:release": "node --test tests/v2-release.test.mjs",
+    "test:email-isolation": "deno test --node-modules-dir=none --allow-run=docker --allow-net=127.0.0.1:54521,127.0.0.1:54621 tests/resend-two-databases.test.ts",
+    "check:messaging": "deno check --node-modules-dir=none supabase/functions/messaging/index.ts supabase/functions/send-invoice/index.ts supabase/functions/messaging-twilio/index.ts supabase/functions/messaging-resend/index.ts"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",

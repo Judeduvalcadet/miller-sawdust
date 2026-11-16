@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, AlertCircle, Trash2, CalendarDays, History } from "lucide-react";
+import { Loader2, AlertCircle, Trash2, CalendarDays, History, X } from "lucide-react";
+import { useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import JobActivityTimeline from "@/components/admin/JobActivityTimeline";
 import { addDays, getDay, format, lastDayOfMonth } from "date-fns";
 import {
@@ -16,6 +18,7 @@ import {
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
+import { JobMapPanel, NewCustomerForm, saveCustomerMapImage } from "@/components/admin/CustomerMapSection";
 
 const TRUCK_TYPES = [
   { value: 'straight_truck', label: 'Straight Truck' },
@@ -51,6 +54,19 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   });
   const [errors, setErrors] = useState({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
+  // Customers created inline, so they're selectable before the list refetches
+  const [extraCustomers, setExtraCustomers] = useState([]);
+  // Right-column map state
+  const [newCustomerPin, setNewCustomerPin] = useState(null);
+  const [newCustomerBlob, setNewCustomerBlob] = useState(null);
+  const [newCustomerInstructions, setNewCustomerInstructions] = useState('');
+  const [newCustomerDirty, setNewCustomerDirty] = useState(false);
+  const [customerMapNote, setCustomerMapNote] = useState('');
+  // Exit guard: the popup only closes through the X, and asks first if
+  // anything was typed.
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const queryClient = useQueryClient();
   const [showActivity, setShowActivity] = useState(false);
   const [scheduleType, setScheduleType] = useState('one_time');
   const [recurringInterval, setRecurringInterval] = useState('');
@@ -60,6 +76,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const [isCreatingRecurring, setIsCreatingRecurring] = useState(false);
   const [recurringProgress, setRecurringProgress] = useState('');
   const [yardPresets, setYardPresets] = useState(DEFAULT_PRESETS);
+  const [loadItems, setLoadItems] = useState([]); // QuickBooks load catalog
   const [yardsMode, setYardsMode] = useState(() => {
     if (job?.delivery_yards) return 'custom';
     return 'preset';
@@ -71,7 +88,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
 
   const initDeliveryLoads = (qty, existingLoads = [], existingJob = null) => {
     const hasLoads = Array.isArray(existingLoads) && existingLoads.length > 0;
-    // Old job without loads array — pre-populate load 1 from single fields
+    // Old job without loads array - pre-populate load 1 from single fields
     if (!hasLoads && existingJob && (existingJob.delivery_yards || existingJob.load_configuration)) {
       const q = parseInt(qty) || 1;
       return Array.from({ length: q }, (_, i) => ({
@@ -90,7 +107,9 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         pickup_location_name: found?.pickup_location_name || '',
         yards_collected: found?.yards_collected ? String(found.yards_collected) : '',
         load_configuration: found?.load_configuration || '',
-        yards_mode: found?.yards_collected ? 'custom' : 'preset',
+        item_id: found?.item_id || '',
+        yards_mode: found?.item_id ? 'preset' : (found?.yards_collected ? 'custom' : 'preset'),
+        config_custom: !found?.item_id && !!found?.load_configuration,
       };
     });
   };
@@ -103,7 +122,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         return Array.from({ length: qty }, (_, i) => {
           const loadNum = i + 1;
           return prev.find(l => l.load_number === loadNum) ||
-            { load_number: loadNum, pickup_location_name: '', yards_collected: '', load_configuration: '', yards_mode: 'preset' };
+            { load_number: loadNum, pickup_location_name: '', yards_collected: '', load_configuration: '', item_id: '', yards_mode: 'preset', config_custom: false };
         });
       });
     }
@@ -125,6 +144,11 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         }
       }
     });
+    // QuickBooks item catalog - the load presets. Falls back to the numeric
+    // yard presets if the catalog is empty or fails to load.
+    base44.entities.Item.filter({ is_load_item: true, active: true }, 'sort_order')
+      .then(list => setLoadItems(list || []))
+      .catch(() => {});
   }, []);
 
   // Calculate recurring dates with weekend push-to-Monday
@@ -167,6 +191,13 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const assignedPickupRole = assignedDriver?.pickup_role || 'none';
   const isSpreader = formData.truck_type === 'spreader';
 
+  // Load presets derived from the QuickBooks item catalog: yard options for
+  // the selected truck type, and the items behind the configuration select.
+  const truckLoadItems = loadItems.filter(it => !it.truck_type || it.truck_type === formData.truck_type);
+  const itemYardOptions = [...new Set(
+    truckLoadItems.filter(it => it.yards != null).map(it => Number(it.yards))
+  )].sort((a, b) => a - b);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const newErrors = {};
@@ -200,7 +231,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
         };
       }
     } else {
-      const customer = customers.find(c => c.id === formData.customer_id);
+      const customer = allCustomers.find(c => c.id === formData.customer_id);
       if (customer) {
         const stateZip = [customer.state, customer.zip_code].filter(Boolean).join(' ');
         const combinedAddress = [customer.street_address, customer.city, stateZip, customer.country]
@@ -222,6 +253,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       pickup_location_name: l.pickup_location_name || null,
       yards_collected: l.yards_collected ? parseFloat(l.yards_collected) : null,
       load_configuration: l.load_configuration || null,
+      item_id: l.item_id || null,
       completed: !!(l.pickup_location_name && l.yards_collected),
     })) : undefined;
 
@@ -247,6 +279,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
       pickup_yards: isPickup ? (parseFloat(formData.pickup_yards) || null) : undefined,
       delivery_yards: !isPickup ? (totalYards || null) : undefined,
       load_configuration: !isPickup ? (joinedConfig || null) : undefined,
+      item_id: !isPickup ? (loadsData?.find(l => l.item_id)?.item_id || null) : undefined,
       loads: loadsData,
       invoice_sent: isPickup ? undefined : (formData.invoice_sent || 'no'),
     };
@@ -284,10 +317,52 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
     onSubmit(jobData);
   };
 
-  const customerOptions = customers.map(c => ({
+  const allCustomers = [
+    ...customers,
+    ...extraCustomers.filter(x => !customers.some(c => c.id === x.id)),
+  ];
+  const selectedCustomer = allCustomers.find(c => c.id === formData.customer_id) || null;
+
+  // Dirty tracking for the exit guard: compare against the first render.
+  const initialSnapRef = useRef();
+  if (initialSnapRef.current === undefined) {
+    initialSnapRef.current = JSON.stringify({ f: formData, l: deliveryLoads });
+  }
+  const isDirty = () =>
+    JSON.stringify({ f: formData, l: deliveryLoads }) !== initialSnapRef.current ||
+    newCustomerDirty || !!newCustomerBlob;
+  const requestClose = () => { isDirty() ? setShowExitConfirm(true) : onCancel(); };
+
+  // What the right-column map shows
+  const selectedPickupLoc = pickupLocations.find(l => l.id === formData.pickup_location_id) || null;
+  let mapPin = null, mapTitle = '', mapWaiting = '', mapMode = 'none';
+  if (!isPickup && showNewCustomer) {
+    mapMode = 'new';
+    mapPin = newCustomerPin;
+    mapTitle = 'New customer';
+    mapWaiting = 'Pick an address suggestion on the left and the pin drops here.';
+  } else if (!isPickup && selectedCustomer) {
+    mapTitle = `${(selectedCustomer.company_name || selectedCustomer.name || '').trim()} - ${[selectedCustomer.street_address, selectedCustomer.city].filter(Boolean).join(', ')}`;
+    if (selectedCustomer.latitude != null) {
+      mapMode = 'customer';
+      mapPin = { lat: selectedCustomer.latitude, lng: selectedCustomer.longitude };
+    } else {
+      mapWaiting = "This customer's address isn't map-verified yet - fix it on the Customers page and the pin appears automatically.";
+    }
+  } else if (isPickup && selectedPickupLoc) {
+    mapTitle = selectedPickupLoc.name;
+    if (selectedPickupLoc.latitude != null) mapPin = { lat: selectedPickupLoc.latitude, lng: selectedPickupLoc.longitude };
+    else mapWaiting = "This location's address isn't map-verified yet.";
+  } else {
+    mapWaiting = isPickup
+      ? 'Choose a pickup location and the map flies to it.'
+      : 'Choose a customer and the map flies to their pin.';
+  }
+
+  const customerOptions = allCustomers.map(c => ({
     value: c.id,
     label: c.name
-      ? (c.company_name ? `${c.name} — ${c.company_name}` : c.name)
+      ? (c.company_name ? `${c.name} - ${c.company_name}` : c.name)
       : (c.company_name || c.business_name || '')
   }));
   const byLabel = (a, b) => (a.label || '').localeCompare(b.label || '');
@@ -295,12 +370,21 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
   const dropOffLocationOptions = dropOffLocations.map(l => ({ value: l.id, label: l.name })).sort(byLabel);
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="border-0 shadow-none">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-2 pt-1 pb-3">
         <CardTitle>{job?.id ? 'Edit Job' : 'Create New Job'}</CardTitle>
+        <button
+          type="button"
+          onClick={requestClose}
+          aria-label="Close"
+          className="w-11 h-11 flex items-center justify-center rounded-xl border border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors shrink-0"
+        >
+          <X className="w-6 h-6" />
+        </button>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <CardContent className="px-2 pb-2">
+        <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+        <form onSubmit={handleSubmit} className="space-y-4 flex-1 min-w-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
             {/* Job Type */}
@@ -377,7 +461,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               {errors.scheduled_date && <p className="text-xs text-red-500">{errors.scheduled_date}</p>}
             </div>
 
-            {/* Recurring options — expands when Recurring is selected */}
+            {/* Recurring options - expands when Recurring is selected */}
             {!job?.id && scheduleType === 'recurring' && (
               <div className="col-span-1 md:col-span-2 bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -405,7 +489,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                     )}
                   </div>
 
-                  {/* Repeat Until — month/year dropdown */}
+                  {/* Repeat Until - month/year dropdown */}
                   <div className="space-y-2">
                     <Label className="text-xs text-gray-500">Through End Of</Label>
                     <Select value={repeatUntilMonth} onValueChange={setRepeatUntilMonth}>
@@ -464,7 +548,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* ── PICKUP LOCATION or CUSTOMER — above driver ── */}
+            {/* ── PICKUP LOCATION or CUSTOMER - above driver ── */}
             {isPickup ? (
               <div className="space-y-2">
                 <Label>Pickup Location</Label>
@@ -479,10 +563,23 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             ) : (
               <div className="space-y-2">
-                <Label>Customer</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Customer</Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewCustomer(v => {
+                      // Opening the new-customer form starts from a clean slate
+                      if (!v) { set('customer_id', ''); setCustomerMapNote(''); }
+                      return !v;
+                    })}
+                    className="text-xs font-medium text-amber-700 hover:text-amber-900"
+                  >
+                    {showNewCustomer ? 'Cancel new customer' : '+ New customer'}
+                  </button>
+                </div>
                 <SearchableSelect
                   value={formData.customer_id}
-                  onValueChange={(v) => { set('customer_id', v); setErrors(p => ({...p, customer_id: ''})); }}
+                  onValueChange={(v) => { set('customer_id', v); setErrors(p => ({...p, customer_id: ''})); setCustomerMapNote(''); }}
                   options={customerOptions}
                   placeholder="Search customer..."
                   error={errors.customer_id}
@@ -491,7 +588,34 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* ── ASSIGN DRIVER — below location ── */}
+            {/* Inline new customer - the map on the right waits for its pin */}
+            {!isPickup && showNewCustomer && (
+              <NewCustomerForm
+                mapBlob={newCustomerBlob}
+                mapInstructions={newCustomerInstructions}
+                onPinChange={setNewCustomerPin}
+                onDirty={() => setNewCustomerDirty(true)}
+                onCancel={() => {
+                  setShowNewCustomer(false);
+                  setNewCustomerPin(null);
+                  setNewCustomerBlob(null);
+                  setNewCustomerInstructions('');
+                  setNewCustomerDirty(false);
+                }}
+                onCreated={(created) => {
+                  setExtraCustomers(prev => [...prev, created]);
+                  set('customer_id', created.id);
+                  setErrors(p => ({ ...p, customer_id: '' }));
+                  setShowNewCustomer(false);
+                  setNewCustomerPin(null);
+                  setNewCustomerBlob(null);
+                  setNewCustomerInstructions('');
+                  setNewCustomerDirty(false);
+                }}
+              />
+            )}
+
+            {/* ── ASSIGN DRIVER - below location ── */}
             {canAssign && (
               <div className="space-y-2">
                 <Label>Assign Driver</Label>
@@ -580,7 +704,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Quantity — shown early for all delivery so load count is set before per-load section */}
+            {/* Quantity - shown early for all delivery so load count is set before per-load section */}
             {!isPickup && (
               <div className="space-y-2">
                 <Label>Number of Loads</Label>
@@ -596,14 +720,14 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               </div>
             )}
 
-            {/* Per-load pre-fill section — all delivery jobs */}
+            {/* Per-load pre-fill section - all delivery jobs */}
             {!isPickup && (
               <div className="col-span-1 md:col-span-2 space-y-3">
                 <div>
                   <Label className="text-amber-700 font-medium">Per-Load Pickup Info</Label>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {isSpreader
-                      ? 'Optional — leave any field empty and the driver will fill it on their dashboard'
+                      ? 'Optional - leave any field empty and the driver will fill it on their dashboard'
                       : 'Set pickup location, yards, and load configuration for each load'}
                   </p>
                 </div>
@@ -628,23 +752,39 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                       <div className="space-y-1">
                         <Label className="text-xs text-gray-500">Yards <span className="text-gray-400">(optional)</span></Label>
                         {load.yards_mode === 'preset' ? (
+                          /* Yardages come from the QuickBooks item catalog for the
+                             selected truck type; the configuration select below then
+                             narrows to the items at that yardage. */
                           <Select
                             value={load.yards_collected !== '' ? String(load.yards_collected) : ''}
                             onValueChange={(v) => {
                               const updated = [...deliveryLoads];
                               if (v === 'custom') {
-                                updated[i] = { ...updated[i], yards_mode: 'custom', yards_collected: '' };
+                                updated[i] = { ...updated[i], yards_mode: 'custom', item_id: '', yards_collected: '', load_configuration: '', config_custom: true };
                               } else {
-                                updated[i] = { ...updated[i], yards_collected: v };
+                                const keepItem = updated[i].item_id &&
+                                  loadItems.some(x => x.id === updated[i].item_id && String(x.yards) === v);
+                                updated[i] = {
+                                  ...updated[i],
+                                  yards_collected: v,
+                                  ...(keepItem ? {} : { item_id: '', load_configuration: '', config_custom: false }),
+                                };
                               }
                               setDeliveryLoads(updated);
                             }}
                           >
                             <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
                             <SelectContent>
-                              {(yardPresets[formData.truck_type] || []).map(y => (
-                                <SelectItem key={y} value={String(y)}>{y} yds</SelectItem>
-                              ))}
+                              {(itemYardOptions.length ? itemYardOptions : (yardPresets[formData.truck_type] || []))
+                                .concat(
+                                  load.yards_collected !== '' &&
+                                  !(itemYardOptions.length ? itemYardOptions : (yardPresets[formData.truck_type] || []))
+                                    .some(y => String(y) === String(load.yards_collected))
+                                    ? [load.yards_collected] : []
+                                )
+                                .map(y => (
+                                  <SelectItem key={y} value={String(y)}>{y} yds</SelectItem>
+                                ))}
                               <SelectItem value="custom">Custom...</SelectItem>
                             </SelectContent>
                           </Select>
@@ -665,7 +805,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                               autoFocus
                             />
                             <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-2 shrink-0"
-                              onClick={() => { const updated = [...deliveryLoads]; updated[i] = { ...updated[i], yards_mode: 'preset', yards_collected: '' }; setDeliveryLoads(updated); }}
+                              onClick={() => { const updated = [...deliveryLoads]; updated[i] = { ...updated[i], yards_mode: 'preset', yards_collected: '', config_custom: false, load_configuration: '', item_id: '' }; setDeliveryLoads(updated); }}
                             >↩</Button>
                           </div>
                         )}
@@ -673,16 +813,84 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-500">Load Configuration <span className="text-gray-400">(optional)</span></Label>
-                      <Input
-                        placeholder="e.g. All dry, ½ pine / ½ dry"
-                        value={load.load_configuration}
-                        onChange={(e) => {
-                          const updated = [...deliveryLoads];
-                          updated[i] = { ...updated[i], load_configuration: e.target.value };
-                          setDeliveryLoads(updated);
-                        }}
-                        className="h-8 text-xs"
-                      />
+                      {loadItems.length && load.yards_mode === 'preset' && !load.config_custom ? (
+                        /* Only the QuickBooks items matching the selected truck +
+                           yardage show up; picking one links the invoice item. */
+                        <>
+                        <Select
+                          value={load.item_id || ''}
+                          onValueChange={(v) => {
+                            const updated = [...deliveryLoads];
+                            if (v === 'custom') {
+                              updated[i] = { ...updated[i], config_custom: true, item_id: '' };
+                            } else {
+                              const it = loadItems.find(x => x.id === v);
+                              updated[i] = {
+                                ...updated[i],
+                                item_id: v,
+                                // The job card shows the friendly label; the item
+                                // link is what pulls pricing into the invoice.
+                                load_configuration: it?.display_label || it?.name || '',
+                                yards_collected: it?.yards != null ? String(it.yards) : updated[i].yards_collected,
+                              };
+                            }
+                            setDeliveryLoads(updated);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder={load.yards_collected !== '' ? 'Select configuration...' : 'Pick yards first...'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {truckLoadItems
+                              .filter(it =>
+                                load.yards_collected === '' ||
+                                String(it.yards) === String(load.yards_collected) ||
+                                it.id === load.item_id)
+                              .map(it => (
+                                <SelectItem key={it.id} value={it.id}>
+                                  {it.display_label || it.name}
+                                  {it.display_label && it.display_label !== it.name ? ` - ${it.name}` : ''}
+                                </SelectItem>
+                              ))}
+                            <SelectItem value="custom">Custom text...</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {load.item_id && (
+                          /* Preview of the job-card text - editable per job; the
+                             invoice still bills from the selected item above. */
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">On job card:</span>
+                            <Input
+                              value={load.load_configuration}
+                              onChange={(e) => {
+                                const updated = [...deliveryLoads];
+                                updated[i] = { ...updated[i], load_configuration: e.target.value };
+                                setDeliveryLoads(updated);
+                              }}
+                              className="h-7 text-xs"
+                            />
+                          </div>
+                        )}
+                        </>
+                      ) : (
+                        <div className="flex gap-1">
+                          <Input
+                            placeholder="e.g. All dry, ½ pine / ½ dry"
+                            value={load.load_configuration}
+                            onChange={(e) => {
+                              const updated = [...deliveryLoads];
+                              updated[i] = { ...updated[i], load_configuration: e.target.value };
+                              setDeliveryLoads(updated);
+                            }}
+                            className="h-8 text-xs"
+                          />
+                          {loadItems.length > 0 && load.yards_mode === 'preset' && (
+                            <Button type="button" variant="outline" size="sm" className="h-8 text-xs px-2 shrink-0"
+                              onClick={() => { const updated = [...deliveryLoads]; updated[i] = { ...updated[i], config_custom: false, load_configuration: '', item_id: '' }; setDeliveryLoads(updated); }}
+                            >↩</Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -752,7 +960,7 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
               {recurringProgress && (
                 <span className="text-xs text-blue-600 font-medium">{recurringProgress}</span>
               )}
-              <Button type="button" variant="outline" onClick={onCancel} disabled={isCreatingRecurring}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={requestClose} disabled={isCreatingRecurring}>Cancel</Button>
               <Button type="submit" disabled={isLoading || isCreatingRecurring} className="bg-amber-600 hover:bg-amber-700">
                 {(isLoading || isCreatingRecurring) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 {job?.id ? 'Update Job' : (scheduleType === 'recurring' ? 'Create Recurring Jobs' : 'Create Job')}
@@ -779,6 +987,48 @@ export default function JobForm({ job, drivers, customers, pickupLocations, drop
             </div>
           )}
         </form>
+
+        {/* Right column: the map, open from the start */}
+        <div className="w-full lg:w-[48%] shrink-0 lg:sticky lg:top-0 self-start">
+          <div className="h-[340px] lg:h-[72vh] lg:min-h-[480px]">
+            <JobMapPanel
+              pin={mapPin}
+              title={mapTitle}
+              waitingText={mapWaiting}
+              canCapture={mapMode === 'new' || mapMode === 'customer'}
+              savedNote={mapMode === 'new'
+                ? (newCustomerBlob ? 'Picture attached - saves with the customer' : '')
+                : customerMapNote}
+              initialInstructions={mapMode === 'new'
+                ? newCustomerInstructions
+                : (selectedCustomer?.delivery_instructions || '')}
+              onSaveImage={async (blob, instructions) => {
+                if (mapMode === 'new') {
+                  setNewCustomerBlob(blob);
+                  setNewCustomerInstructions(instructions || '');
+                } else if (mapMode === 'customer' && selectedCustomer) {
+                  await saveCustomerMapImage(queryClient, selectedCustomer.id, blob, instructions);
+                  setCustomerMapNote("Saved as this customer's map picture");
+                }
+              }}
+            />
+          </div>
+        </div>
+        </div>
+
+        {/* Exit guard */}
+        <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Exit without saving?</AlertDialogTitle>
+              <AlertDialogDescription>Anything you entered here will be lost.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep editing</AlertDialogCancel>
+              <AlertDialogAction onClick={onCancel} className="bg-gray-900 hover:bg-gray-700">Exit</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );

@@ -42,14 +42,14 @@ export default function Wallboard() {
 
   // Determine current user role from local session
   useEffect(() => {
-    // The wallboard needs a login too (e.g. the TV's read-only account) —
+    // The wallboard needs a login too (e.g. the TV's read-only account) -
     // without one the locked-down database returns an empty board.
     ensureAuthenticated();
     const role = localStorage.getItem('miller_driver_role');
     if (role) setUserRole(role);
   }, []);
 
-  // Fetch only jobs scheduled within the visible Mon–Fri window.
+  // Fetch only jobs scheduled within the visible Mon-Fri window.
   // Updates flow primarily from the realtime subscription below; the 60s
   // refetchInterval is a safety net if the websocket drops silently.
   const { data: jobs = [], refetch: refetchJobs } = useQuery({
@@ -143,7 +143,7 @@ export default function Wallboard() {
   const weekLabel = () => {
     if (weekOffset === 0) return 'This Week';
     if (weekOffset === 1) return 'Next Week';
-    return `${format(weekStart, 'MMM d')}–${format(addDays(weekStart, 4), 'MMM d')}`;
+    return `${format(weekStart, 'MMM d')}-${format(addDays(weekStart, 4), 'MMM d')}`;
   };
 
   return (
@@ -155,7 +155,7 @@ export default function Wallboard() {
             <Monitor className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-lg text-white">Miller Sawdust – Wallboard</h1>
+            <h1 className="font-bold text-lg text-white">Miller Sawdust - Wallboard</h1>
             <p className="text-xs text-gray-400">{weekLabel()}</p>
           </div>
         </div>

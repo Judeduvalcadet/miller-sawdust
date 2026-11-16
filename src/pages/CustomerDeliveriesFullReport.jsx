@@ -1,3 +1,4 @@
+import { useReportData } from '@/components/hooks/useReportData';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/entities';
@@ -19,11 +20,11 @@ function formatRangeLabel(range) {
   const sameDay = range.from.getTime() === range.to.getTime();
   if (sameDay) return format(range.from, 'MMM d, yyyy');
   const sameYear = range.from.getFullYear() === range.to.getFullYear();
-  if (sameYear) return `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d, yyyy')}`;
-  return `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
+  if (sameYear) return `${format(range.from, 'MMM d')} - ${format(range.to, 'MMM d, yyyy')}`;
+  return `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`;
 }
 
-export default function CustomerDeliveriesFullReport() {
+export default function CustomerDeliveriesFullReport({ v2 = false }) {
   const urlParams = new URLSearchParams(window.location.search);
   const fromParam = urlParams.get('from');
   const toParam = urlParams.get('to');
@@ -43,7 +44,7 @@ export default function CustomerDeliveriesFullReport() {
     return { from: startOfMonth(today), to: today };
   }, [fromParam, toParam, legacyMonth]);
 
-  // Filter state — initialized from URL, editable on this page
+  // Filter state - initialized from URL, editable on this page
   const initialFilters = useMemo(() => decodeFilterParams(urlParams), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [filterDrivers, setFilterDrivers] = useState(initialFilters.drivers);
   const [filterCustomers, setFilterCustomers] = useState(initialFilters.customers);
@@ -54,30 +55,10 @@ export default function CustomerDeliveriesFullReport() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
 
-  const [jobs, setJobs] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [pickupLocations, setPickupLocations] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { jobs, drivers, customers, pickupLocations, isLoading } = useReportData();
   const [expandedCustomers, setExpandedCustomers] = useState({});
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      const [j, d, c, p] = await Promise.all([
-        base44.entities.Job.list('-scheduled_date', 5000),
-        base44.entities.Driver.list(),
-        base44.entities.Customer.list(undefined, 5000),
-        base44.entities.PickupLocation.list(),
-      ]);
-      setJobs(j);
-      setDrivers(d);
-      setCustomers(c);
-      setPickupLocations(p);
-      setIsLoading(false);
-    };
-    load();
-  }, []);
+
 
   // Jobs in date range (no other filters yet)
   const inDateRangeJobs = useMemo(() => {
@@ -141,7 +122,7 @@ export default function CustomerDeliveriesFullReport() {
     return Object.entries(loadMap).map(([name, loads]) => ({ name, loads, yards: yardMap[name] || 0 })).sort((a, b) => b.loads - a.loads);
   };
 
-  // "Available" sets — derived from the date-filtered jobs (no other filters).
+  // "Available" sets - derived from the date-filtered jobs (no other filters).
   // Used to gray out dropdown options that have no data in the current date window.
   const availableDriverIds = useMemo(
     () => new Set(inDateRangeJobs.map(j => j.assigned_driver_id).filter(Boolean)),
@@ -183,8 +164,9 @@ export default function CustomerDeliveriesFullReport() {
   const customerOptions = customers
     .map(c => ({ value: c.id, label: c.name || c.business_name || 'Unnamed' }))
     .sort((a, b) => a.label.localeCompare(b.label));
+  // Include MS Locations (bases) too - Home Hoop Building alone carries
+  // 1,000+ jobs, so it must stay filterable.
   const pickupLocOptions = pickupLocations
-    .filter(l => !l.location_type || l.location_type === 'supplier')
     .map(l => ({ value: l.id, label: l.name }))
     .sort((a, b) => a.label.localeCompare(b.label));
   const jobTypeOptions = [
@@ -242,7 +224,7 @@ export default function CustomerDeliveriesFullReport() {
         {/* Header */}
         <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <Link to={`/Reports`}>
+            <Link to={v2 ? '/v2/reports' : '/Reports'}>
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="w-5 h-5" />
               </Button>
@@ -273,7 +255,7 @@ export default function CustomerDeliveriesFullReport() {
           ))}
         </div>
 
-        {/* Chip strip — date chip is always shown (it's locked on this page) */}
+        {/* Chip strip - date chip is always shown (it's locked on this page) */}
         <div className="flex items-center gap-2 flex-wrap mb-5">
           <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-1">Showing:</span>
           {rangeLabel && (
@@ -357,7 +339,7 @@ export default function CustomerDeliveriesFullReport() {
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 flex-wrap gap-3">
                   <div className="flex items-center gap-3">
                     <p className="text-sm text-gray-500">
-                      Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, customerStats.length)} of {customerStats.length}
+                      Showing {page * pageSize + 1}-{Math.min((page + 1) * pageSize, customerStats.length)} of {customerStats.length}
                     </p>
                     <div className="flex items-center gap-1.5">
                       <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>

@@ -13,6 +13,7 @@ import JobForm from "@/components/admin/JobForm";
 import GlobalSearch from "@/components/admin/GlobalSearch";
 import MiniWallboard from "@/components/admin/MiniWallboard";
 import SortJobsModal from "@/components/admin/SortJobsModal.jsx";
+import AssistantChat from "@/components/admin/AssistantChat.jsx";
 import { useActivityDetection } from "@/components/hooks/useActivityDetection";
 import { useEntitySubscription } from "@/components/hooks/useEntitySubscription";
 
@@ -123,8 +124,9 @@ export default function AdminDashboard() {
       {/* Header */}
       <div className="bg-white border-b shrink-0 z-20">
         <div className="px-4 py-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
+            {/* Title is redundant below lg - the mobile top bar already says it */}
+            <div className="hidden lg:flex items-center gap-3">
               <div className="w-10 h-10 bg-amber-600 rounded-xl flex items-center justify-center">
                 <Truck className="w-5 h-5 text-white" />
               </div>
@@ -136,7 +138,7 @@ export default function AdminDashboard() {
             <div className="flex-1 md:max-w-xl md:mx-4">
               <GlobalSearch />
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 justify-between lg:justify-start">
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg text-xs text-gray-600">
                 {isSyncing ? (
                   <>
@@ -153,6 +155,16 @@ export default function AdminDashboard() {
               <Button variant="outline" size="icon" onClick={() => refetchJobs()}>
                 <RefreshCw className="w-4 h-4" />
               </Button>
+              {['admin', 'assistant'].includes(window.localStorage.getItem('miller_driver_role')) && (
+                <Button
+                  variant="outline"
+                  onClick={() => { window.location.href = '/v2'; }}
+                  className="font-semibold"
+                  title="Open the V2 interface"
+                >
+                  V2
+                </Button>
+              )}
               <Button 
                 onClick={() => {
                   setEditingJob(null);
@@ -189,6 +201,9 @@ export default function AdminDashboard() {
         />
       </div>
 
+      {/* Dispatch assistant (admin/dispatcher only) */}
+      <AssistantChat />
+
       {/* Sort Jobs Modal */}
       <SortJobsModal
         open={showSortModal}
@@ -199,11 +214,21 @@ export default function AdminDashboard() {
         jobs={jobs}
         drivers={drivers}
         preSelectedDate={sortDate}
+        customers={customers}
+        pickupLocations={pickupLocations}
+        dropOffLocations={dropOffLocations}
       />
 
-      {/* Job Form Dialog */}
-      <Dialog open={showJobForm} onOpenChange={setShowJobForm}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      {/* Job Form Dialog - closes ONLY through the form's own X (with its
+          exit confirmation), never by clicking outside or pressing Escape */}
+      <Dialog open={showJobForm} onOpenChange={() => {}}>
+        <DialogContent
+          className="w-[97vw] max-w-[92rem] max-h-[94vh] overflow-y-auto"
+          hideClose
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <JobForm
             job={editingJob || (defaultJobDate ? { scheduled_date: defaultJobDate } : null)}
             drivers={drivers}

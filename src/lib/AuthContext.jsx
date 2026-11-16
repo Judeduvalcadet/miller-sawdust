@@ -2,7 +2,7 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 
 const AuthContext = createContext();
 
-// Simplified auth provider — Miller Sawdust uses PIN-based auth via localStorage,
+// Simplified auth provider - Miller Sawdust uses PIN-based auth via localStorage,
 // not Supabase Auth. This provider just signals that the app is ready to render.
 export const AuthProvider = ({ children }) => {
   const [isLoadingAuth] = useState(false);

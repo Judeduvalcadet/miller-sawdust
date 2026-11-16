@@ -6,7 +6,7 @@ import EntityHistoryOverlay from './EntityHistoryOverlay';
 
 // System-wide search: customers, drivers, and locations by name. Selecting a
 // result opens the full delivery/pickup history for that entity.
-export default function GlobalSearch() {
+export default function GlobalSearch({ deYellow = false }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [open, setOpen] = useState(false);
@@ -81,7 +81,7 @@ export default function GlobalSearch() {
             key={r.id}
             type="button"
             onClick={() => pick(type, r)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-amber-50"
+            className={deYellow ? "w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50" : "w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-amber-50"}
           >
             <Icon className="w-4 h-4 text-gray-400 shrink-0" />
             <span className="min-w-0">
@@ -108,7 +108,7 @@ export default function GlobalSearch() {
           className="pl-9 pr-9"
         />
         {loading && (
-          <Loader2 className="w-4 h-4 text-amber-500 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
+          <Loader2 className={deYellow ? "w-4 h-4 text-gray-500 animate-spin absolute right-3 top-1/2 -translate-y-1/2" : "w-4 h-4 text-amber-500 animate-spin absolute right-3 top-1/2 -translate-y-1/2"} />
         )}
       </div>
 
@@ -141,6 +141,7 @@ export default function GlobalSearch() {
 
       {selection && (
         <EntityHistoryOverlay
+          deYellow={deYellow}
           key={`${selection.type}-${selection.record.id}`}
           selection={selection}
           onClose={() => setSelection(null)}

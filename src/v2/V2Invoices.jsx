@@ -1,0 +1,1536 @@
+import { invoiceBillingPayload } from '@/lib/invoiceBilling';
+import { validContact } from '@/lib/contactValidation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Loader2, Search, Plus, ChevronLeft, ChevronRight, MoreVertical, Download,
+  Eye, X, CalendarDays, Receipt, StickyNote, CircleDollarSign, Trash2,
+  Mail, MessageSquareText, Check,
+} from 'lucide-react';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Checkbox } from '@/components/ui/checkbox';
+import { base44 } from '@/api/entities';
+import { supabase } from '@/api/supabaseClient';
+import { cn } from '@/lib/utils';
+import InvoicePreview, { ensureInvertedLogo } from './InvoicePreview';
+import { buildInvoicesPdf, buildInvoicePdfBase64 } from './invoicePdf';
+import { assertV2Writable, V2_READ_ONLY } from './guard';
+import { checkSendResult, STATUS_LABELS } from './inbox/api';
+import QuickBooksBadge from './QuickBooksBadge';
+import QuickBooksPaymentDialog from './QuickBooksPaymentDialog';
+import { fetchInvoicePage, fetchSelectedInvoices } from '@/lib/invoiceList';
+
+// V2 Invoices - "All invoices" (the whole system: QuickBooks import +
+// app-created, filterable) and "Create" (a week of delivery jobs as a flat
+// table; expand a row to compose its invoice, batch-wizard for many).
+
+const money = (v) => v == null ? '-' : Number(v).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const fmtDay = (d) => new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-';
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function mondayOf(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dow);
+  return iso(d);
+}
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return iso(d);
+}
+
+export default function V2Invoices() {
+  const [view, setView] = useState('list');
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="bg-white border-b border-gray-200 px-6 pt-5 pb-0">
+        <h1 className="text-xl font-bold text-gray-900">Invoices</h1>
+        <div className="mt-3 flex gap-1 -mb-px">
+          {[['list', 'All invoices', Receipt], ['create', 'Create', Plus]].map(([key, label, Icon]) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors',
+                view === key ? 'border-gray-900 text-gray-900 bg-gray-50' : 'border-transparent text-gray-500 hover:text-gray-800'
+              )}
+            >
+              <Icon className="w-4 h-4" /> {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {view === 'list' ? <InvoiceList /> : <CreateView />}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------- Date range picker ---------------------------
+   One calendar. First click anchors the start; while moving, the days under
+   the cursor highlight from the anchor. A second click completes the range.
+   Any click after a complete range starts a new one at that day.           */
+
+function DateRangePicker({ from, to, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState(from ? new Date(from + 'T00:00:00') : null);
+  const [end, setEnd] = useState(to ? new Date(to + 'T00:00:00') : null);
+  const [hovered, setHovered] = useState(null);
+
+  const preview = anchor && !end && hovered
+    ? (hovered < anchor ? { from: hovered, to: anchor } : { from: anchor, to: hovered })
+    : null;
+  const selected = end && anchor
+    ? { from: anchor, to: end }
+    : preview || (anchor ? { from: anchor, to: anchor } : undefined);
+
+  const commit = (a, e) => {
+    const lo = a && e && e < a ? e : a;
+    const hi = a && e && e < a ? a : e;
+    onChange(lo ? iso(lo) : '', hi ? iso(hi) : '');
+  };
+
+  const onDayClick = (day) => {
+    if (!anchor || (anchor && end)) {
+      // fresh start (also the "click again after a range" reset)
+      setAnchor(day);
+      setEnd(null);
+      onChange('', '');
+    } else {
+      setEnd(day);
+      commit(anchor, day);
+      setOpen(false);
+    }
+  };
+
+  const label = from && to
+    ? `${fmtDay(from)} - ${fmtDay(to)}${to.slice(0, 4) !== String(new Date().getFullYear()) ? ', ' + to.slice(0, 4) : ''}`
+    : from ? `${fmtDay(from)} → …` : 'Any date';
+
+  return (
+    <div className="flex items-center gap-1">
+      <Popover open={open} onOpenChange={(o) => { setOpen(o); setHovered(null); }}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-9 text-xs font-normal bg-white text-gray-700">
+            <CalendarDays className="w-3.5 h-3.5 mr-1.5 text-gray-400" /> {label}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-2" align="start">
+          <Calendar
+            mode="range"
+            selected={selected}
+            onDayClick={onDayClick}
+            onDayMouseEnter={(d) => setHovered(d)}
+            onDayMouseLeave={() => setHovered(null)}
+            defaultMonth={anchor || new Date()}
+          />
+          <p className="text-[10px] text-gray-400 px-2 pb-1">
+            {anchor && !end ? 'Now pick the end date.' : 'Pick a start date.'}
+          </p>
+        </PopoverContent>
+      </Popover>
+      {(from || to) && (
+        <button
+          onClick={() => { setAnchor(null); setEnd(null); onChange('', ''); }}
+          className="text-gray-400 hover:text-gray-700 p-1"
+          title="Clear dates"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ============================== LIST VIEW =============================== */
+
+const PAGE_SIZES = [25, 50, 100];
+
+function InvoiceList() {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [status, setStatus] = useState('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [pageSize, setPageSize] = useState(50);
+  const [page, setPage] = useState(1);
+  const [previewInv, setPreviewInv] = useState(null);
+  const [noteInv, setNoteInv] = useState(null);
+  const [noteText, setNoteText] = useState('');
+  const [statusInv, setStatusInv] = useState(null);
+  const [paymentInv,setPaymentInv]=useState(null);
+  const [sendReq, setSendReq] = useState(null); // { inv, mode: 'email' | 'sms' }
+  const [checked, setChecked] = useState(new Map());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkError, setBulkError] = useState('');
+  const [printQueue, setPrintQueue] = useState(null);
+  useEffect(() => { setChecked(new Map()); }, [searchTerm, status, from, to]);
+
+  useEffect(() => {
+    if (search.trim() === searchTerm) return;
+    const timer = setTimeout(() => { setSearchTerm(search.trim()); setPage(1); }, 250);
+    return () => clearTimeout(timer);
+  }, [search, searchTerm]);
+  const { data: invoicePage, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ['v2-invoices', 'page', searchTerm, status, from, to, page, pageSize],
+    refetchInterval: !V2_READ_ONLY?3000:false,
+    staleTime: 3000,
+    queryFn: ({ signal }) => fetchInvoicePage(supabase, { search: searchTerm, status, from, to, page, pageSize }, signal),
+  });
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => (await base44.entities.Settings.list())[0] || null,
+    staleTime: 60000,
+  });
+  const rows = invoicePage?.rows || [];
+  const total = invoicePage?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  useEffect(() => {
+    if (invoicePage && page > totalPages) setPage(totalPages);
+  }, [invoicePage, page, totalPages]);
+  const custById = useMemo(() => new Map(
+    [...checked.values(), ...(invoicePage?.rows || []), previewInv, sendReq?.inv]
+      .filter(inv => inv?.customer).map(inv => [inv.customer.id, inv.customer])
+  ), [checked, invoicePage, previewInv, sendReq]);
+  const custName = (inv) => {
+    const c = custById.get(inv.customer_id);
+    return c ? (c.company_name || c.name || '').trim() : '(not matched)';
+  };
+
+  const update = useMutation({
+    mutationFn: ({ id, ...patch }) => base44.entities.Invoice.update(id, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['v2-invoices'] }),
+  });
+
+  const toggle = (inv) => setChecked((p) => {
+    const n = new Map(p);
+    n.has(inv.id) ? n.delete(inv.id) : n.set(inv.id, inv);
+    return n;
+  });
+  const openBulkPdf = async () => {
+    setBulkLoading(true); setBulkError('');
+    try {
+      const selected = await fetchSelectedInvoices(supabase, [...checked.keys()]);
+      setChecked(new Map(selected.map(inv => [inv.id, inv])));
+      setPrintQueue(selected);
+    } catch (error) { setBulkError(error.message || 'Could not load selected invoices. Please try again.'); }
+    finally { setBulkLoading(false); }
+  };
+
+  const markSent = (list) => {
+    const now = new Date().toISOString();
+    list.forEach((inv) => update.mutate({ id: inv.id, sent_at: now }));
+  };
+
+  const summary = (inv) => {
+    const names = (inv.lines || []).map((l) => l.name).filter(Boolean);
+    return names.slice(0, 2).join(', ') + (names.length > 2 ? ` +${names.length - 2}` : '');
+  };
+
+  return (
+    <div className="p-6 flex flex-col min-h-0" style={{ height: '100%' }}>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Input
+            placeholder="Search customer, invoice #…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 w-64 bg-white"
+          />
+        </div>
+        <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
+          <SelectTrigger className="h-9 w-[130px] text-xs bg-white"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="open">Unpaid</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+          </SelectContent>
+        </Select>
+        <DateRangePicker from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); setPage(1); }} />
+        <span className="ml-auto text-[11px] text-gray-400">{isLoading ? 'Loading…' : `${total.toLocaleString()} invoices`}</span>
+      </div>
+
+      {/* Bulk bar */}
+      {checked.size > 0 && (
+        <div className="mb-2 inline-flex w-fit items-center gap-3 bg-gray-950 text-white rounded-xl px-4 py-2 text-sm">
+          <span>{checked.size} selected</span>
+          <Button size="sm" variant="secondary" className="h-7 text-xs" disabled={bulkLoading} onClick={openBulkPdf}>
+            <Download className="w-3.5 h-3.5 mr-1.5" /> Send (save PDF)
+          </Button>
+          <button disabled={bulkLoading} onClick={() => { setChecked(new Map()); setBulkError(''); }} className="text-gray-400 hover:text-white text-xs">Clear</button>
+        </div>
+      )}
+      {bulkError && <p role="alert" className="mb-2 text-sm text-red-700">{bulkError}</p>}
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-auto flex-1 min-h-0">
+        {error ? <div role="alert" className="p-8 text-center text-sm text-red-700">Could not load invoices. <button className="underline" onClick={() => refetch()}>Try again</button></div> : isLoading ? (
+          <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+        ) : (
+          <table className="w-full text-left">
+            <thead className="sticky top-0 bg-white shadow-[0_1px_0_0_#f3f4f6] z-10">
+              <tr className="text-[11px] uppercase tracking-wide text-gray-400">
+                <th className="py-3 pl-4 pr-1 w-8">
+                  <Checkbox
+                    aria-label="Select all invoices on this page"
+                    checked={rows.length > 0 && rows.every((r) => checked.has(r.id))}
+                    onCheckedChange={(v) => setChecked((p) => {
+                      const n = new Map(p);
+                      rows.forEach((r) => v ? n.set(r.id, r) : n.delete(r.id));
+                      return n;
+                    })}
+                  />
+                </th>
+                <th className="py-3 px-3 font-medium">Invoice #</th>
+                <th className="py-3 px-3 font-medium">Date</th>
+                <th className="py-3 px-3 font-medium">Customer</th>
+                <th className="py-3 px-3 font-medium">Items</th>
+                <th className="py-3 px-3 font-medium text-right">Total</th>
+                <th className="py-3 px-3 font-medium">Status</th>
+                <th className="py-3 px-3 pr-4 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((inv) => (
+                <tr key={inv.id} className="border-t border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 pl-4 pr-1"><Checkbox aria-label={`Select invoice ${inv.doc_number || inv.id}`} checked={checked.has(inv.id)} onCheckedChange={() => toggle(inv)} /></td>
+                  <td className="py-3 px-3 text-sm font-medium text-gray-900 whitespace-nowrap cursor-pointer" onClick={() => setPreviewInv(inv)}>
+                    {inv.doc_number || '-'}
+                    {inv.source === 'quickbooks' && (
+                      <span className="ml-1.5 text-[9px] font-medium bg-green-50 text-green-700 border border-green-200 rounded px-1 py-0.5 align-middle" title="Imported invoice">Imported</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-3 text-sm text-gray-700 whitespace-nowrap">{fmtDate(inv.txn_date)}</td>
+                  <td className="py-3 px-3 text-sm text-gray-900 max-w-[240px] truncate">{custName(inv)}</td>
+                  <td className="py-3 px-3 text-sm text-gray-500 max-w-[320px] truncate">
+                    {summary(inv) || '-'}
+                    {inv.note && <span className="ml-1.5 text-[10px] text-amber-600" title={inv.note}>📝</span>}
+                  </td>
+                  <td className="py-3 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{money(inv.total)}</td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-1.5">
+                      <StatusChip inv={inv} />
+                      <QuickBooksBadge record={inv} />
+                      <EditedBadge inv={inv} />
+                    </div>
+                  </td>
+                  <td className="py-3 px-3 pr-4 text-right">
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <button className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100"><MoreVertical className="w-4 h-4" /></button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setPreviewInv(inv)}><Eye className="w-4 h-4 mr-2" /> Preview</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setPrintQueue([inv])}><Download className="w-4 h-4 mr-2" /> Send (PDF)</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSendReq({ inv, mode: 'email' })}><Mail className="w-4 h-4 mr-2" /> Email invoice…</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSendReq({ inv, mode: 'sms' })}><MessageSquareText className="w-4 h-4 mr-2" /> Text invoice…</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setStatusInv(inv)}>
+                          <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled={!inv.qb_id||inv.qb_sync_status!=='synced'||Number(inv.balance)<=0} onClick={()=>setPaymentInv(inv)}><CircleDollarSign className="w-4 h-4 mr-2" /> Record payment</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setNoteInv(inv); setNoteText(inv.note || ''); }}>
+                          <StickyNote className="w-4 h-4 mr-2" /> {inv.note ? 'Edit note' : 'Add note'}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr><td colSpan={8} className="py-10 text-center text-sm text-gray-400 italic">No invoices match.</td></tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Footer pager */}
+      <div className="pt-2 flex items-center justify-between text-xs text-gray-500">
+        <span className="flex items-center gap-1.5 text-[11px] text-gray-400">
+          Show
+          <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+            <SelectTrigger className="h-6 w-[58px] px-2 text-xs text-gray-700 rounded-lg border-gray-200 bg-white"><SelectValue /></SelectTrigger>
+            <SelectContent>{PAGE_SIZES.map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}</SelectContent>
+          </Select>
+        </span>
+        <span className="flex items-center gap-0.5">
+          <button onClick={() => setPage(safePage - 1)} disabled={isFetching || safePage <= 1} className="p-1 rounded hover:bg-gray-200 disabled:opacity-30" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button>
+          <span className="tabular-nums text-[11px] px-0.5">{safePage} / {totalPages}</span>
+          <button onClick={() => setPage(safePage + 1)} disabled={isFetching || safePage >= totalPages} className="p-1 rounded hover:bg-gray-200 disabled:opacity-30" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button>
+        </span>
+      </div>
+
+      <InvoicePreview
+        open={!!previewInv}
+        onClose={() => setPreviewInv(null)}
+        invoice={previewInv}
+        customer={previewInv ? custById.get(previewInv.customer_id) : null}
+        company={settings?.company_profile}
+        onPrint={() => { const inv = previewInv; setPreviewInv(null); setPrintQueue([inv]); }}
+      />
+
+      {statusInv && (
+        <UpdateStatusDialog
+          key={statusInv.id}
+          inv={statusInv}
+          onClose={() => setStatusInv(null)}
+          onSave={(patch) => update.mutate({ id: statusInv.id, ...patch })}
+        />
+      )}
+
+      {paymentInv&&<QuickBooksPaymentDialog invoice={paymentInv} onClose={()=>setPaymentInv(null)} />}
+
+      {sendReq && (
+        <SendInvoiceDialog
+          key={sendReq.inv.id + sendReq.mode}
+          inv={sendReq.inv}
+          mode={sendReq.mode}
+          customer={custById.get(sendReq.inv.customer_id) || null}
+          company={settings?.company_profile}
+          onClose={() => setSendReq(null)}
+          onSent={() => queryClient.invalidateQueries({ queryKey: ['v2-invoices'] })}
+        />
+      )}
+
+      <Dialog open={!!noteInv} onOpenChange={(o) => { if (!o) setNoteInv(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Invoice note</DialogTitle></DialogHeader>
+          <Textarea rows={3} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="e.g. picked up by John, leave at the barn…" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoteInv(null)}>Cancel</Button>
+            <Button className="bg-gray-950 hover:bg-gray-800" onClick={() => { update.mutate({ id: noteInv.id, note: noteText.trim() || null }); setNoteInv(null); }}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {printQueue && (
+        <SaveInvoicesPdf
+          invoices={printQueue}
+          custById={custById}
+          company={settings?.company_profile}
+          onDone={(printed) => { if (printed) markSent(printQueue); setPrintQueue(null); setChecked(new Map()); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ Status ----------------------------------
+   Display status is derived: QB's "open" just means created-and-unpaid, so
+   we show Created → Sent (printed) → Paid instead. The list will grow when
+   the real status set is decided.                                          */
+
+const STATUS_OPTIONS = [
+  { key: 'created', label: 'Created', hint: 'The invoice exists but hasn’t gone out yet.' },
+  { key: 'sent', label: 'Sent', hint: 'Printed / delivered to the customer, awaiting payment.' },
+  { key: 'paid', label: 'Paid', hint: 'Payment received. The balance goes to zero.' },
+];
+const invStatusKey = (inv) => inv.status === 'paid' ? 'paid' : inv.sent_at ? 'sent' : 'created';
+const statusPatch = (inv, key) => {
+  if (key === 'paid') return { status: 'paid', balance: 0 };
+  const balance=inv.status==='paid'?inv.total:(inv.balance??inv.total);
+  if (key === 'sent') return { status: 'open', balance, sent_at: inv.sent_at || new Date().toISOString() };
+  return { status: 'open', balance, sent_at: null };
+};
+
+// Badges "Edited" when an invoice was changed after it went out.
+const editedAfterSend = (inv) =>
+  inv.sent_at && inv.edited_at && new Date(inv.edited_at) > new Date(inv.sent_at);
+
+function EditedBadge({ inv }) {
+  if (!editedAfterSend(inv)) return null;
+  return (
+    <span
+      className="text-[10px] font-medium text-gray-500 border border-gray-300 rounded-full px-1.5 py-0.5 whitespace-nowrap"
+      title={`Edited ${new Date(inv.edited_at).toLocaleString()}`}
+    >
+      Edited
+    </span>
+  );
+}
+
+function StatusChip({ inv }) {
+  const key = invStatusKey(inv);
+  const partial=Number(inv.balance)>0&&Number(inv.balance)<Number(inv.total);
+  return (
+    <span
+      className={cn(
+        'text-[11px] font-medium border rounded-full px-2 py-0.5 whitespace-nowrap',
+        key === 'paid' && 'bg-green-50 text-green-700 border-green-200',
+        key === 'sent' && 'bg-gray-950 text-white border-gray-950',
+        key === 'created' && 'bg-gray-100 text-gray-600 border-gray-200'
+      )}
+      title={partial?`Remaining balance ${money(inv.balance)}`:key === 'sent' && inv.sent_at ? `Sent ${new Date(inv.sent_at).toLocaleString()}` : undefined}
+    >
+      {partial?'Partially paid':STATUS_OPTIONS.find((o) => o.key === key)?.label}
+    </span>
+  );
+}
+
+/* --------------------------- Send by email / SMS ------------------------
+   Renders the letterhead PDF, hands it to the send-invoice edge function
+   (Resend for email, Twilio for SMS), which stores the sent copy and stamps
+   the invoice. In the sandbox the function runs in dry-run mode.           */
+
+function SendInvoiceDialog({ inv, mode, customer, company, onClose, onSent }) {
+  const sendRequests = useRef({});
+  const isEmail = mode === 'email';
+  const [to, setTo] = useState(isEmail ? (customer?.email || '') : (customer?.phone || ''));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(null); // { dry_run }
+
+  const send = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      assertV2Writable();
+      const logo = await ensureInvertedLogo();
+      const pdf_base64 = await buildInvoicePdfBase64({ invoice: inv, customer, company, logo });
+      const { data, error: fnErr } = await supabase.functions.invoke('send-invoice', {
+        body: {
+          invoice_id: inv.id,
+          request_id: sendRequests.current[to.trim()] ||= crypto.randomUUID(),
+          mode,
+          to: to.trim(),
+          pdf_base64,
+          filename: `Invoice ${inv.doc_number || ''}.pdf`.replace('  ', ' '),
+        },
+      });
+      if (fnErr) {
+        let msg = fnErr.message || 'Send failed';
+        try {
+          const j = await fnErr.context.json();
+          if (j?.error === 'not_configured') msg = `Sending isn\u2019t configured yet (missing: ${(j.missing || []).join(', ')})`;
+          else if (j?.error) msg = j.detail ? `${j.error}: ${j.detail}` : j.error;
+          else if (j?.message) msg = j.message;
+        } catch { /* keep generic */ }
+        throw new Error(msg);
+      }
+      checkSendResult(data);
+      setDone({ dry_run: !!data?.dry_run, status: data.message.status, conversation_id: data.message.conversation_id });
+      onSent?.();
+    } catch (e) {
+      setError(e.message || 'Send failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{isEmail ? 'Email' : 'Text'} invoice #{inv.doc_number}</DialogTitle>
+        </DialogHeader>
+        {done ? (
+          <div className="py-2">
+            <p className="text-sm text-gray-800 flex items-center gap-2">
+              <span className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center shrink-0"><Check className="w-4 h-4 text-white" /></span>
+              {STATUS_LABELS[done.status] || 'Queued'} · {to.trim()}.
+            </p>
+            {done.dry_run && (
+              <p className="text-xs text-gray-500 mt-2">
+                Simulation only. No message was sent and the invoice was not marked sent.
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <p className="text-xs text-gray-500">{isEmail ? 'Email address' : 'Phone number'}</p>
+              <Input
+                autoFocus
+                type={isEmail ? 'email' : 'tel'}
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                placeholder={isEmail ? 'customer@example.com' : '(330) 555-0123'}
+              />
+              <p className="text-xs text-gray-400">
+                {isEmail
+                  ? 'The invoice PDF is attached, with a backup link that works for 30 days.'
+                  : 'They receive the invoice PDF itself by MMS, with a short \u201cMiller Sawdust invoice\u201d caption.'}
+              </p>
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+          </>
+        )}
+        <DialogFooter>
+          {done ? (
+            <Button className="bg-gray-950 hover:bg-gray-800" onClick={onClose}>Close</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+              <Button className="bg-gray-950 hover:bg-gray-800" onClick={send} disabled={busy || !validContact(isEmail ? 'email' : 'tel', to)}>
+                {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Send
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UpdateStatusDialog({ inv, onClose, onSave }) {
+  const [sel, setSel] = useState(invStatusKey(inv));
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-[300px]">
+        <DialogHeader><DialogTitle className="text-base">Invoice #{inv.doc_number} status</DialogTitle></DialogHeader>
+        <div className="space-y-1.5">
+          {STATUS_OPTIONS.map((o) => (
+            <button
+              key={o.key}
+              onClick={() => setSel(o.key)}
+              className={cn(
+                'w-full flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors',
+                sel === o.key ? 'border-gray-950 bg-gray-50' : 'border-gray-200 hover:border-gray-400'
+              )}
+            >
+              <span className={cn(
+                'w-3.5 h-3.5 rounded-full border-2 shrink-0',
+                sel === o.key ? 'border-gray-950 bg-gray-950' : 'border-gray-300'
+              )} />
+              <span className="text-sm font-medium text-gray-900">{o.label}</span>
+            </button>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button className="bg-gray-950 hover:bg-gray-800" onClick={() => { onSave(statusPatch(inv, sel)); onClose(); }}>
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ============================= CREATE VIEW ============================== */
+
+function CreateView() {
+  const queryClient = useQueryClient();
+  // Fast batch: Next advances immediately; creations run through this queue
+  // one at a time while the finished rows show a "Creating invoice" chip.
+  const queueRef = useRef(Promise.resolve());
+  const [creating, setCreating] = useState(new Map()); // job id -> 'creating' | 'error'
+  const today = iso(new Date());
+  const [weekStart, setWeekStart] = useState(mondayOf(today));
+  const [day, setDay] = useState(today);
+  const [checked, setChecked] = useState(new Set());
+  const [expandedId, setExpandedId] = useState(null); // job id whose row is open
+  const [editingId, setEditingId] = useState(null); // job id whose invoice is being edited
+  const [batch, setBatch] = useState(null);
+  const [previewInv, setPreviewInv] = useState(null);
+  const [printQueue, setPrintQueue] = useState(null);
+  const [deleteInv, setDeleteInv] = useState(null); // invoice pending delete confirmation
+  const [statusInv, setStatusInv] = useState(null); // invoice whose status is being updated
+  const [sendReq, setSendReq] = useState(null); // { inv, mode: 'email' | 'sms' }
+  const [jumpOpen, setJumpOpen] = useState(false); // jump-to-date calendar popover
+
+  const weekDays = Array.from({ length: 6 }, (_, i) => addDays(weekStart, i));
+  const weekEnd = addDays(weekStart, 6);
+
+  const { data: weekJobs, isLoading } = useQuery({
+    queryKey: ['inv-week-jobs', weekStart],
+    refetchInterval:!V2_READ_ONLY?3000:false,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('jobs').select('*')
+        .eq('job_type', 'delivery').is('deleted_at', null)
+        .gte('scheduled_date', weekStart).lte('scheduled_date', weekEnd)
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+  });
+  const { data: weekInvoices } = useQuery({
+    queryKey: ['inv-week-invoices', weekStart],
+    refetchInterval:!V2_READ_ONLY?3000:false,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('invoices').select('*')
+        .not('job_id', 'is', null)
+        .gte('txn_date', weekStart).lte('txn_date', weekEnd);
+      if (error) throw error;
+      return data;
+    },
+  });
+  const { data: customers } = useQuery({
+    queryKey: ['v2-customers'],
+    refetchInterval:!V2_READ_ONLY?10000:false,
+    queryFn: () => base44.entities.Customer.list('name', 5000),
+    staleTime: 300000,
+  });
+  const { data: items } = useQuery({
+    queryKey: ['items'],
+    queryFn: () => base44.entities.Item.list('sort_order'),
+    staleTime: 300000,
+  });
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: async () => (await base44.entities.Settings.list())[0] || null,
+    staleTime: 300000,
+  });
+
+  // Pre-warm every price book the week's jobs will need, in ONE query, so
+  // opening any composer (single or batch Next) is instant - no per-customer
+  // fetch at click time.
+  const weekCustIds = useMemo(
+    () => [...new Set((weekJobs || []).map((j) => j.customer_id).filter(Boolean))],
+    [weekJobs]
+  );
+  useQuery({
+    queryKey: ['prices-prefetch', weekStart, weekCustIds.length],
+    enabled: weekCustIds.length > 0,
+    staleTime: 60000,
+    queryFn: async () => {
+      const rows = [];
+      for (let i = 0; i < weekCustIds.length; i += 100) {
+        const { data, error } = await supabase.from('customer_item_prices').select('*')
+          .in('customer_id', weekCustIds.slice(i, i + 100));
+        if (error) throw error;
+        rows.push(...(data || []));
+      }
+      const byCust = new Map(weekCustIds.map((id) => [id, []]));
+      for (const r of rows) byCust.get(r.customer_id)?.push(r);
+      for (const [cid, list] of byCust) {
+        queryClient.setQueryData(['customer-prices', cid], list);
+      }
+      return true;
+    },
+  });
+
+  const custById = useMemo(() => new Map((customers || []).map((c) => [c.id, c])), [customers]);
+  const invByJob = useMemo(() => new Map((weekInvoices || []).map((i) => [i.job_id, i])), [weekInvoices]);
+  // Only completed jobs are billable; a job that somehow already has an
+  // invoice stays visible so its invoice can still be managed.
+  const billable = (j) => j.status === 'completed' || invByJob.has(j.id);
+  const dayJobs = (weekJobs || []).filter((j) => j.scheduled_date === day && billable(j));
+  const uninvoicedDay = dayJobs.filter((j) => !invByJob.has(j.id));
+  const countFor = (d) => (weekJobs || []).filter((j) => j.scheduled_date === d && billable(j)).length;
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['customer-prices'] });
+    queryClient.invalidateQueries({ queryKey: ['inv-week-invoices', weekStart] });
+    queryClient.invalidateQueries({ queryKey: ['v2-invoices'] });
+  };
+
+  const update = useMutation({
+    mutationFn: ({ id, ...patch }) => base44.entities.Invoice.update(id, patch),
+    onSuccess: refresh,
+  });
+  const del = useMutation({
+    mutationFn: (id) => base44.entities.Invoice.delete(id),
+    onSuccess: refresh,
+  });
+  const markSent = (list) => {
+    const now = new Date().toISOString();
+    list.forEach((inv) => update.mutate({ id: inv.id, sent_at: now }));
+  };
+
+  const selectedPending = [...checked].some((id) => creating.get(id) === 'creating');
+  const uninvoicedChecked = [...checked].filter((id) => !invByJob.has(id) && creating.get(id) !== 'creating');
+  const invoicedChecked = dayJobs.filter((j) => checked.has(j.id) && invByJob.has(j.id)).map((j) => invByJob.get(j.id));
+  const startBatch = () => {
+    const ids = dayJobs.filter((j) => checked.has(j.id) && !invByJob.has(j.id) && creating.get(j.id) !== 'creating').map((j) => j.id);
+    if (!ids.length) return;
+    setExpandedId(null);
+    setBatch({ ids, index: 0 });
+  };
+
+  const enqueueCreate = (job, payload) => {
+    setCreating((m) => new Map(m).set(job.id, 'creating'));
+    queueRef.current = queueRef.current.catch(() => {}).then(async () => {
+      try {
+        const { data: num, error: numErr } = await supabase.rpc('next_invoice_number');
+        if (numErr) throw numErr;
+        const createdInvoice = await base44.entities.Invoice.create({
+          customer_id: job.customer_id,
+          job_id: job.id,
+          doc_number: num,
+          txn_date: job.scheduled_date,
+          due_date: addDays(job.scheduled_date, 30),
+          total: payload.total,
+          balance: payload.total,
+          status: 'open',
+          lines: payload.lines,
+          source: 'app',
+          note: payload.note,
+          billing_address: payload.billing_address,
+          billing_customer_id: payload.billing_customer_id,
+          billing_mode: payload.billing_mode,
+        });
+        await queryClient.invalidateQueries({ queryKey: ['customer-prices'] });
+        // A pre-save poll must not overwrite the freshly created row.
+        await queryClient.cancelQueries({ queryKey: ['inv-week-invoices', mondayOf(job.scheduled_date)], exact: true });
+        // Publish the finished row before releasing its pending guard.
+        queryClient.setQueryData(['inv-week-invoices', mondayOf(job.scheduled_date)], (rows = []) =>
+          [...rows.filter((inv) => inv.id !== createdInvoice.id), createdInvoice]);
+        setCreating((m) => { const n = new Map(m); n.delete(job.id); return n; });
+        queryClient.invalidateQueries({ queryKey: ['inv-week-invoices'] });
+        queryClient.invalidateQueries({ queryKey: ['v2-invoices'] });
+      } catch (e) {
+        console.error('invoice create failed', e);
+        setCreating((m) => new Map(m).set(job.id, 'error'));
+        throw e;
+      }
+    });
+    return queueRef.current;
+  };
+
+  const jobLabel = (j) => {
+    const c = custById.get(j.customer_id);
+    return (c?.company_name || c?.name || j.location_name || '').trim();
+  };
+  const loadText = (j) =>
+    (j.loads || []).map((l) => l.load_configuration).filter(Boolean).join(', ') || j.load_configuration || '-';
+
+  const changeDay = (d) => { setDay(d); setChecked(new Set()); setExpandedId(null); setBatch(null); };
+
+  return (
+    <div className="p-6">
+      {/* Week strip and actions for the selected jobs. */}
+      <div className="flex items-center gap-2 mb-4">
+        <button onClick={() => { const w = addDays(weekStart, -7); setWeekStart(w); changeDay(w); }} className="p-1.5 rounded-lg hover:bg-gray-200" aria-label="Previous week">
+          <ChevronLeft className="w-4 h-4 text-gray-500" />
+        </button>
+        <div className="flex gap-1.5">
+          {weekDays.map((d) => {
+            const dt = new Date(d + 'T00:00:00');
+            return (
+              <button
+                key={d}
+                onClick={() => changeDay(d)}
+                className={cn(
+                  'rounded-xl border px-3 py-2 text-center transition-colors min-w-[88px]',
+                  day === d ? 'bg-gray-950 text-white border-gray-950' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                )}
+              >
+                <p className="text-[10px] uppercase tracking-wide opacity-70">{dt.toLocaleDateString('en-US', { weekday: 'short' })}</p>
+                <p className="text-sm font-semibold">{fmtDay(d)}</p>
+                <p className={cn('text-[10px]', day === d ? 'text-gray-300' : 'text-gray-400')}>{countFor(d)} jobs</p>
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={() => { const w = addDays(weekStart, 7); setWeekStart(w); changeDay(w); }} className="p-1.5 rounded-lg hover:bg-gray-200" aria-label="Next week">
+          <ChevronRight className="w-4 h-4 text-gray-500" />
+        </button>
+        <Popover open={jumpOpen} onOpenChange={setJumpOpen}>
+          <PopoverTrigger asChild>
+            <button className="p-1.5 rounded-lg hover:bg-gray-200" title="Jump to a date">
+              <CalendarDays className="w-4 h-4 text-gray-500" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-3 rounded-2xl border-gray-200 shadow-lg">
+            <Calendar
+              mode="single"
+              selected={new Date(day + 'T00:00:00')}
+              defaultMonth={new Date(day + 'T00:00:00')}
+              onSelect={(d) => {
+                if (!d) return;
+                const v = iso(d);
+                setWeekStart(mondayOf(v));
+                changeDay(v);
+                setJumpOpen(false);
+              }}
+              classNames={{
+                caption_label: 'text-sm font-semibold text-gray-900',
+                head_cell: 'w-10 pb-1 font-medium text-[10px] uppercase tracking-wide text-gray-400',
+                cell: 'p-0.5 text-center',
+                day: 'inline-flex items-center justify-center h-9 w-9 rounded-lg text-sm font-normal text-gray-700 transition-colors hover:bg-gray-100 aria-selected:opacity-100',
+                day_selected: 'bg-gray-950 text-white font-semibold hover:bg-gray-950 hover:text-white focus:bg-gray-950 focus:text-white',
+                day_today: 'font-bold text-gray-950 underline underline-offset-4 decoration-2',
+                day_outside: 'text-gray-300',
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+        {checked.size > 0 && !batch && (
+          <span className="inline-flex items-center gap-1 bg-gray-950 rounded-xl p-1.5 ml-1">
+            {uninvoicedChecked.length > 0 && (
+              <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={startBatch}>
+                Create {uninvoicedChecked.length} invoice{uninvoicedChecked.length !== 1 ? 's' : ''}
+              </Button>
+            )}
+            {invoicedChecked.length > 0 && (
+              <Button size="sm" variant="secondary" className="h-8 text-xs" disabled={selectedPending} onClick={() => setPrintQueue(invoicedChecked)}>
+                <Download className="w-3.5 h-3.5 mr-1.5" /> Send {invoicedChecked.length} invoice{invoicedChecked.length !== 1 ? 's' : ''}
+              </Button>
+            )}
+            {selectedPending && <span className="px-2 text-xs text-white" role="status">Creating invoices…</span>}
+            <button onClick={() => setChecked(new Set())} className="text-gray-400 hover:text-white text-xs px-2">Cancel</button>
+          </span>
+        )}
+
+      </div>
+
+
+      {/* Day jobs - flat table */}
+      {isLoading ? (
+        <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+      ) : dayJobs.length === 0 ? (
+        <p className="text-sm text-gray-400 italic py-8">No jobs marked as completed on {fmtDate(day)}.</p>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wide text-gray-400">
+                <th className="py-3 pl-4 pr-1 w-8">
+                  <Checkbox
+                    checked={dayJobs.length > 0 && dayJobs.every((j) => checked.has(j.id))}
+                    onCheckedChange={(v) => setChecked(v ? new Set(dayJobs.map((j) => j.id)) : new Set())}
+                    disabled={!!batch || dayJobs.length === 0}
+                    title="Select all"
+                  />
+                </th>
+                <th className="py-3 px-3 font-medium">Customer</th>
+                <th className="py-3 px-3 font-medium w-16">Yds</th>
+                <th className="py-3 px-3 font-medium">Load</th>
+                <th className="py-3 px-3 font-medium w-16">Loads</th>
+                <th className="py-3 px-3 font-medium">Driver</th>
+                <th className="py-3 px-3 font-medium w-24">Invoice #</th>
+                <th className="py-3 px-3 font-medium text-right w-24">Total</th>
+                <th className="py-3 px-3 font-medium w-[150px]">Status</th>
+                <th className="py-3 px-3 pr-4 w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {dayJobs.map((job) => {
+                const inv = invByJob.get(job.id);
+                const isBatchCurrent = batch && batch.ids[batch.index] === job.id;
+                const editing = !!inv && editingId === job.id;
+                const open = isBatchCurrent || expandedId === job.id;
+                return (
+                  <JobRow
+                    key={job.id}
+                    job={job} inv={inv} open={open} editing={editing}
+                    creating={creating.get(job.id)}
+                    label={jobLabel(job)} loadText={loadText(job)}
+                    checkedSet={checked} batch={batch}
+                    onToggleCheck={() => setChecked((p) => { const n = new Set(p); n.has(job.id) ? n.delete(job.id) : n.add(job.id); return n; })}
+                    onToggleOpen={() => {
+                      if (batch || creating.get(job.id) === 'creating') return;
+                      if (creating.get(job.id) === 'error') setCreating((m) => { const n = new Map(m); n.delete(job.id); return n; });
+                      if (open) setEditingId(null);
+                      setExpandedId(open ? null : job.id);
+                    }}
+                    onPreview={() => setPreviewInv(inv)}
+                    onSend={() => setPrintQueue([inv])}
+                    onEdit={() => { update.reset(); setEditingId(job.id); setExpandedId(job.id); }}
+                    onUpdateStatus={() => setStatusInv(inv)}
+                    onEmail={() => setSendReq({ inv, mode: 'email' })}
+                    onText={() => setSendReq({ inv, mode: 'sms' })}
+                    onDelete={() => setDeleteInv(inv)}
+                    composer={open && (!inv || editing) && customers && items ? (
+                      <Dialog open onOpenChange={(open) => { if (!open && !update.isPending) { setExpandedId(null); setEditingId(null); setBatch(null); } }}>
+                        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-5xl max-h-[90dvh] overflow-y-auto p-0" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
+                          <DialogHeader className="px-6 pt-6 pb-2 pr-12">
+                            <div className="flex items-center justify-between gap-4">
+                              <DialogTitle>Invoice for {jobLabel(job)}</DialogTitle>
+                              {isBatchCurrent && <span className="text-sm text-gray-500 shrink-0" aria-live="polite">{batch.index + 1} of {batch.ids.length}</span>}
+                            </div>
+                            {editing && <p className="text-sm text-gray-500">#{inv.doc_number}</p>}
+                          </DialogHeader>
+                          {editing && update.isError && <p role="alert" className="px-6 text-sm text-red-600">Could not save. Please try again.</p>}
+                          <InvoiceComposer
+                            key={editing ? `edit-${inv.id}` : job.id}
+                            saving={(editing && update.isPending) || creating.get(job.id) === 'creating'}
+                            job={job}
+                            items={items}
+                            initial={editing ? inv : null}
+                            isBatch={!!isBatchCurrent}
+                            batchInfo={isBatchCurrent ? { index: batch.index, count: batch.ids.length } : null}
+                            onCancel={() => { setExpandedId(null); setEditingId(null); setBatch(null); }}
+                            onCreated={async (payload) => {
+                              if (editing) {
+                                update.mutate({
+                                  id: inv.id,
+                                  lines: payload.lines,
+                                  total: payload.total,
+                                  balance: inv.status === 'paid' ? 0 : Math.max(0,payload.total-(Number(inv.total)-Number(inv.balance??inv.total))),
+                                  note: payload.note,
+                                  billing_address: payload.billing_address,
+                                  billing_customer_id: payload.billing_customer_id,
+                                  billing_mode: payload.billing_mode,
+                                  edited_at: new Date().toISOString(),
+                                }, { onSuccess: () => { setEditingId(null); setExpandedId(null); } });
+                                return;
+                              }
+                              try { await enqueueCreate(job, payload); } catch { return; }
+                              if (isBatchCurrent) {
+                                if (batch.index + 1 >= batch.ids.length) setBatch(null);
+                                else setBatch({ ...batch, index: batch.index + 1 });
+                              } else {
+                                setExpandedId(null);
+                              }
+                            }}
+                          />
+                        </DialogContent>
+                      </Dialog>
+                    ) : null}
+                  />
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <InvoicePreview
+        open={!!previewInv}
+        onClose={() => setPreviewInv(null)}
+        invoice={previewInv}
+        customer={previewInv ? custById.get(previewInv.customer_id) : null}
+        company={settings?.company_profile}
+        onPrint={() => { const inv = previewInv; setPreviewInv(null); setPrintQueue([inv]); }}
+      />
+
+      {printQueue && (
+        <SaveInvoicesPdf
+          invoices={printQueue}
+          custById={custById}
+          company={settings?.company_profile}
+          onDone={(printed) => { if (printed) markSent(printQueue); setPrintQueue(null); setChecked(new Set()); }}
+        />
+      )}
+
+      {statusInv && (
+        <UpdateStatusDialog
+          key={statusInv.id}
+          inv={statusInv}
+          onClose={() => setStatusInv(null)}
+          onSave={(patch) => update.mutate({ id: statusInv.id, ...patch })}
+        />
+      )}
+
+      {sendReq && (
+        <SendInvoiceDialog
+          key={sendReq.inv.id + sendReq.mode}
+          inv={sendReq.inv}
+          mode={sendReq.mode}
+          customer={custById.get(sendReq.inv.customer_id) || null}
+          company={settings?.company_profile}
+          onClose={() => setSendReq(null)}
+          onSent={refresh}
+        />
+      )}
+
+      <Dialog open={!!deleteInv} onOpenChange={(o) => { if (!o) setDeleteInv(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Delete invoice {deleteInv?.doc_number ? `#${deleteInv.doc_number}` : ''}</DialogTitle></DialogHeader>
+          <p className="text-sm text-gray-600">
+            Are you sure? The job will not be deleted. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteInv(null)}>Cancel</Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={del.isPending}
+              onClick={() => {
+                const inv = deleteInv;
+                setDeleteInv(null);
+                setExpandedId(null);
+                setEditingId(null);
+                setChecked((p) => { const n = new Set(p); n.delete(inv.job_id); return n; });
+                del.mutate(inv.id);
+              }}
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" /> Delete invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function JobRow({ job, inv, open, editing, label, loadText, checkedSet, batch, creating, onToggleCheck, onToggleOpen, onPreview, onSend, onEdit, onUpdateStatus, onEmail, onText, onDelete, composer }) {
+  const [showNote, setShowNote] = useState(false);
+  const notes = [job.dispatcher_notes, job.driver_notes].map((n) => (n || '').trim()).filter(Boolean);
+  const yards = job.delivery_yards
+    ?? ((job.loads || []).reduce((s2, l) => s2 + (Number(l.yards_collected) || 0), 0) || null);
+  return (
+    <>
+      <tr
+        className={cn('border-t border-gray-100 cursor-pointer', open ? 'bg-gray-50' : 'hover:bg-gray-50')}
+        onClick={onToggleOpen}
+      >
+        <td className="py-3.5 pl-4 pr-1" onClick={(e) => e.stopPropagation()}>
+          <Checkbox checked={checkedSet.has(job.id)} onCheckedChange={onToggleCheck} disabled={!!batch} />
+        </td>
+        <td className="py-3.5 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5">
+            {label}
+            {notes.length > 0 && (
+              <Popover open={showNote} onOpenChange={setShowNote}>
+                <PopoverTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-0.5 bg-black text-white text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                  >
+                    <StickyNote className="w-2.5 h-2.5" /> NOTE
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-72 p-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">Job notes</p>
+                    <button onClick={() => setShowNote(false)} className="text-gray-300 hover:text-gray-700 -mt-1 -mr-1 p-1">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  {notes.map((n, i) => (
+                    <p key={i} className="text-sm text-gray-800 whitespace-pre-wrap mt-1">{n}</p>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            )}
+          </span>
+        </td>
+        <td className="py-3.5 px-3 text-sm text-gray-600 whitespace-nowrap">{yards ?? '-'}</td>
+        <td className="py-3.5 px-3 text-sm text-gray-600 max-w-[280px] truncate">{loadText}</td>
+        <td className="py-3.5 px-3 text-sm text-gray-600 whitespace-nowrap">{job.quantity || 1}</td>
+        <td className="py-3.5 px-3 text-sm text-gray-500 whitespace-nowrap">{job.assigned_driver_name || '-'}</td>
+        <td className="py-3.5 px-3 text-sm font-medium text-gray-900 whitespace-nowrap">{inv?.doc_number || '-'}</td>
+        <td className="py-3.5 px-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">{inv ? money(inv.total) : '-'}</td>
+        <td className="py-3.5 px-3 whitespace-nowrap w-[150px]">
+          {inv ? (
+            <div className="flex items-center gap-1.5">
+              <StatusChip inv={inv} />
+              <QuickBooksBadge record={inv} />
+              <EditedBadge inv={inv} />
+            </div>
+          ) : creating === 'creating' ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
+              <Loader2 className="w-3 h-3 animate-spin" /> Creating invoice…
+            </span>
+          ) : creating === 'error' ? (
+            <span className="text-[11px] font-medium border border-red-200 bg-red-50 text-red-600 rounded-full px-2 py-0.5">Failed. Open to retry</span>
+          ) : (
+            <span className="text-[11px] font-medium border border-gray-200 bg-gray-50 text-gray-500 rounded-full px-2 py-0.5">Not invoiced</span>
+          )}
+        </td>
+        <td className="py-3.5 px-3 pr-4" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-end gap-1">
+            {inv && (
+              <>
+                <button onClick={onPreview} className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="Preview invoice">
+                  <Eye className="w-4 h-4" />
+                </button>
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <button className="text-gray-300 hover:text-gray-700 p-1 rounded hover:bg-gray-100" title="Invoice actions">
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={onEdit}><Receipt className="w-4 h-4 mr-2" /> Edit invoice</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onSend}><Download className="w-4 h-4 mr-2" /> Send (PDF)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onEmail}><Mail className="w-4 h-4 mr-2" /> Email invoice…</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onText}><MessageSquareText className="w-4 h-4 mr-2" /> Text invoice…</DropdownMenuItem>
+                    <DropdownMenuItem onClick={onUpdateStatus}>
+                      <CircleDollarSign className="w-4 h-4 mr-2" /> Update status
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-600">
+                      <Trash2 className="w-4 h-4 mr-2" /> Delete invoice
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+          </div>
+        </td>
+      </tr>
+      {composer}
+      {open && inv && !editing && (
+        <tr className="bg-gray-50/60">
+          <td colSpan={10} className="p-0">
+            <InvoiceDetail inv={inv} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// Read-only expansion for an already-created invoice.
+function InvoiceDetail({ inv }) {
+  return (
+    <div className="px-6 py-4 border-t border-gray-100">
+      <div className="max-w-[1075px] bg-white border border-gray-200">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="py-2.5 pl-4 pr-3 font-medium min-w-[320px]">Item</th>
+              <th className="py-2.5 px-3 font-medium text-right w-20">Qty</th>
+              <th className="py-2.5 px-3 font-medium text-right w-28">Price</th>
+              <th className="py-2.5 px-3 font-medium text-right w-28">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(inv.lines || []).map((l, i) => (
+              <tr key={i} className="border-b border-gray-100">
+                <td className="py-2.5 pl-4 pr-3 text-sm text-gray-900">{l.name}</td>
+                <td className="py-2.5 px-3 text-sm text-gray-700 text-right">{l.qty ?? 1}</td>
+                <td className="py-2.5 px-3 text-sm text-gray-700 text-right">{money(l.unit_price)}</td>
+                <td className="py-2.5 px-3 text-sm font-medium text-gray-900 text-right">{money(l.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-gray-200 bg-gray-50/60">
+              <td colSpan={2}></td>
+              <td className="py-2.5 px-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total:</td>
+              <td className="py-2.5 px-3 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{money(inv.total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {inv.note && (
+        <p className="text-xs text-gray-500 mt-2"><span className="text-gray-400">Note:</span> {inv.note}</p>
+      )}
+
+    </div>
+  );
+}
+
+/* ---------------------------- Composer ---------------------------------- */
+
+export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCancel, onCreated, hideFooter = false, exposeApi = null, saving = false }) {
+  const [billingError, setBillingError] = useState('');
+  const { data: billingCustomers = [], isPending: billingLoading, isError: billingLoadError, refetch: reloadBilling } = useQuery({queryKey:['v2-customers'], queryFn:() => base44.entities.Customer.list('name')});
+
+  const { data: prices } = useQuery({
+    queryKey: ['customer-prices', job.customer_id],
+    queryFn: () => base44.entities.CustomerItemPrice.filter({ customer_id: job.customer_id }),
+    enabled: !!job.customer_id,
+    staleTime: 60000, // primed by the Create tab's prefetch - no fetch on open
+  });
+
+  const itemById = useMemo(() => new Map((items || []).map((i) => [i.id, i])), [items]);
+  const priceFor = (itemId) => {
+    const row = (prices || []).find((p) => p.item_id === itemId);
+    if (row) return Number(row.price);
+    const it = itemById.get(itemId);
+    return it?.unit_price != null ? Number(it.unit_price) : 0;
+  };
+
+  // Editing an existing invoice starts from ITS lines, not the job's loads.
+  const [lines, setLines] = useState(initial
+    ? (initial.lines || []).map((l) => ({
+        item_id: l.item_id || null, item_qb_id: l.item_qb_id || null,
+        name: l.name, description: l.description || null,
+        qty: l.qty ?? 1, unit_price: l.unit_price ?? 0,
+      }))
+    : null);
+  const [note, setNote] = useState(initial?.note || '');
+  const [showNote, setShowNote] = useState(false);
+  const [picking, setPicking] = useState(null); // { idx, query } - inline item search
+
+  useEffect(() => {
+    if (lines !== null || (job.customer_id && prices === undefined)) return;
+    const loads = (job.loads || []).length
+      ? job.loads
+      : [{ item_id: job.item_id, load_configuration: job.load_configuration }];
+    const groups = new Map();
+    for (const l of loads) {
+      const key = l.item_id || `custom:${l.load_configuration || 'Load'}`;
+      const g = groups.get(key) || { item_id: l.item_id || null, label: l.load_configuration || '', qty: 0 };
+      g.qty += 1;
+      groups.set(key, g);
+    }
+    const out = [];
+    for (const g of groups.values()) {
+      if (g.item_id && itemById.has(g.item_id)) {
+        const it = itemById.get(g.item_id);
+        out.push({ item_id: it.id, item_qb_id: it.qb_id, name: it.name, description: it.description, qty: g.qty, unit_price: priceFor(it.id) });
+      } else {
+        out.push({ item_id: null, item_qb_id: null, name: g.label || 'Load', description: null, qty: g.qty, unit_price: 0 });
+      }
+    }
+    const fuel = (items || []).find((i) => /fuel/i.test(i.name));
+    if (fuel) {
+      out.push({ item_id: fuel.id, item_qb_id: fuel.qb_id, name: fuel.name, description: fuel.description, qty: loads.length, unit_price: priceFor(fuel.id) });
+    }
+    setLines(out);
+  }, [prices, lines, job, items, itemById]);
+
+  const total = (lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0);
+  const setLine = (i, patch) => setLines((p) => p.map((l, idx) => idx === i ? { ...l, ...patch } : l));
+  const removeLine = (i) => setLines((p) => p.filter((_, idx) => idx !== i));
+  // "+ Add item": a blank row appears in the table with its search already open.
+  // Abandoning the search (blur/Escape without picking) drops the blank row.
+  const addBlankLine = () => {
+    setPicking({ idx: (lines || []).length, query: '' });
+    setLines((p) => [...(p || []), { item_id: null, item_qb_id: null, name: '', description: null, qty: 1, unit_price: 0 }]);
+  };
+  const closePicking = () => {
+    setPicking(null);
+    setLines((p) => (p || []).filter((l) => l.item_id || (l.name || '').trim()));
+  };
+
+  // Hand the finished lines up - the parent queues the actual creation so
+  // batch Next can move on instantly.
+  const buildPayload = ({ includeBilling = true } = {}) => {
+    const finalLines = (lines || []).map((l) => ({
+      ...l,
+      qty: Number(l.qty) || 0,
+      unit_price: Number(l.unit_price) || 0,
+      amount: Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * 100) / 100,
+    })).filter((l) => l.qty > 0);
+    const billTo = includeBilling ? invoiceBillingPayload(initial, job, billingCustomers) : {};
+    return {
+      ...billTo,
+      lines: finalLines,
+      total: Math.round(total * 100) / 100,
+      note: note.trim() || null,
+    };
+  };
+  const create = () => { try { setBillingError(''); onCreated(buildPayload()); } catch (e) { setBillingError(e.message); } };
+
+  // Hosts that embed the composer (the job-card send popup) read the current
+  // lines through this instead of the footer buttons.
+  useEffect(() => {
+    if (exposeApi) exposeApi({ getPayload: buildPayload, ready: lines !== null && !billingLoading && !billingLoadError, total });
+  });
+
+  if (billingLoadError) return <div className="px-6 py-4" role="alert">
+    <p className="text-sm text-red-600">Could not load the customer’s billing preference.</p>
+    <Button variant="outline" className="mt-2" onClick={() => reloadBilling()}>Retry</Button>
+  </div>;
+
+  if (lines === null || billingLoading) {
+    return <div className="border-t border-gray-100 px-6 py-6 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-gray-400" /></div>;
+  }
+
+  return (
+    <div className="border-t border-gray-100 px-6 py-4">
+      {billingError && <p role="alert" className="mb-3 text-sm text-red-600">{billingError}</p>}
+      <div className="max-w-[1075px] bg-white border border-gray-200">
+      <table className="w-full text-left">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase tracking-wide text-gray-400">
+            <th className="py-2.5 pl-4 pr-3 font-medium min-w-[320px]">Item</th>
+            <th className="py-2.5 px-3 font-medium w-14 text-right">Yds</th>
+            <th className="py-2.5 px-3 font-medium w-20 text-right">Qty</th>
+            <th className="py-2.5 px-3 font-medium w-28 text-right">Price</th>
+            <th className="py-2.5 px-3 font-medium w-28 text-right">Amount</th>
+            <th className="py-2.5 pr-3 w-8"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l, i) => {
+            const std = l.item_id ? itemById.get(l.item_id)?.unit_price : null;
+            const custom = std != null && Math.abs(Number(std) - Number(l.unit_price)) > 0.004;
+            return (
+              <tr key={i} className="border-b border-gray-100">
+                <td className="py-2 pl-4 pr-3">
+                  {picking?.idx === i ? (
+                    <div className="relative">
+                      <Input
+                        autoFocus
+                        value={picking.query}
+                        placeholder="Type to search items…"
+                        onChange={(e) => setPicking({ idx: i, query: e.target.value })}
+                        onBlur={() => setTimeout(closePicking, 150)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') closePicking(); }}
+                        className="h-8 text-sm bg-white"
+                      />
+                      <div className="absolute z-50 mt-1 w-[460px] max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg">
+                        {(items || [])
+                          .filter((it) => it.active)
+                          .filter((it) => {
+                            const q = picking.query.trim().toLowerCase();
+                            return !q || `${it.name} ${it.display_label || ''}`.toLowerCase().includes(q);
+                          })
+                          .slice(0, 12)
+                          .map((it) => (
+                            <button
+                              key={it.id}
+                              onMouseDown={() => {
+                                setLine(i, {
+                                  item_id: it.id,
+                                  item_qb_id: it.qb_id,
+                                  name: it.name,
+                                  description: it.description,
+                                  unit_price: priceFor(it.id),
+                                });
+                                setPicking(null);
+                              }}
+                              className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-baseline gap-2"
+                            >
+                              <span className="text-sm text-gray-900 flex-1 min-w-0 truncate">{it.name}</span>
+                              {it.yards != null && <span className="text-[10px] text-gray-400 shrink-0">{it.yards} yds</span>}
+                              <span className="text-xs font-medium text-gray-600 shrink-0">${priceFor(it.id)}</span>
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="text-left w-full group"
+                      onClick={() => setPicking({ idx: i, query: '' })}
+                      title="Click to change the item"
+                    >
+                      <p className="text-sm text-gray-900 group-hover:underline decoration-dotted underline-offset-2">{l.name}</p>
+                      {std != null
+                        ? <p className="text-[10px] text-gray-400">standard ${Number(std).toLocaleString()}{custom ? ', saved for this customer on save' : ''}</p>
+                        : <p className="text-[10px] text-gray-400">no catalog item. Click to pick one or price it manually</p>}
+                    </button>
+                  )}
+                </td>
+                <td className="py-2 px-3 text-xs text-gray-500 text-right whitespace-nowrap">
+                  {l.item_id && itemById.get(l.item_id)?.yards != null ? itemById.get(l.item_id).yards : '-'}
+                </td>
+                <td className="py-2 px-3">
+                  <Input type="number" min="0" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} className="no-spin h-8 text-sm text-right bg-white" />
+                </td>
+                <td className="py-2 px-3">
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-400 text-xs">$</span>
+                    <Input type="number" step="0.01" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} className={cn('no-spin h-8 text-sm text-right bg-white', custom && 'border-amber-300 bg-amber-50/50')} />
+                  </div>
+                </td>
+                <td className="py-2 px-3 text-sm font-medium text-gray-900 text-right whitespace-nowrap">
+                  {money((Number(l.qty) || 0) * (Number(l.unit_price) || 0))}
+                </td>
+                <td className="py-2 pr-3 text-right">
+                  <button onClick={() => removeLine(i)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-gray-200 bg-gray-50/60">
+            <td colSpan={3} className="py-2.5 pl-4 pr-3">
+              <div className="flex items-center gap-4">
+                <button onClick={addBlankLine} className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1">
+                  <Plus className="w-3.5 h-3.5" /> Add item
+                </button>
+                <button onClick={() => setShowNote((v) => !v)} className="text-xs text-gray-400 hover:text-gray-700 flex items-center gap-1">
+                  {note.trim()
+                    ? <><StickyNote className="w-3.5 h-3.5" /> Invoice note ✓</>
+                    : <><Plus className="w-3.5 h-3.5" /> Invoice note</>}
+                </button>
+              </div>
+            </td>
+            <td className="py-2.5 px-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total:</td>
+            <td className="py-2.5 px-3 text-right text-sm font-bold text-gray-900 whitespace-nowrap">{money(total)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+
+      {showNote && (
+        <div className="mt-2.5 max-w-[1075px]">
+          <Textarea
+            rows={2}
+            autoFocus
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. picked up by John, leave at the barn…"
+            className="text-xs bg-white"
+          />
+          <Button size="sm" variant="outline" className="h-7 text-xs mt-1.5" onClick={() => setShowNote(false)}>Done</Button>
+        </div>
+      )}
+
+      {!hideFooter && (
+      <div className="flex items-center gap-2 mt-3">
+        <Button size="sm" className="h-8 bg-gray-950 hover:bg-gray-800" onClick={create} disabled={saving || total <= 0 || !Number.isFinite(total)}>
+          {saving ? 'Saving…' : isBatch && batchInfo.index + 1 < batchInfo.count ? 'Create and next' : 'Save and close'}
+        </Button>
+        <Button size="sm" variant="outline" className="h-8" disabled={saving} onClick={onCancel}>Cancel</Button>
+      </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------- Save as PDF --------------------------------
+   "Send" renders each invoice on the letterhead template off-screen, captures
+   every page, and compiles them into one PDF (one invoice per page). The file
+   is named with the day, the date, and the invoice numbers it holds.         */
+
+function pdfFilename(invoices) {
+  const dates = [...new Set(invoices.map((i) => i.txn_date).filter(Boolean))].sort();
+  const dayLabel = (d) => new Date(d + 'T00:00:00')
+    .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    .replace(/,/g, '');
+  const when = dates.length === 0
+    ? dayLabel(iso(new Date()))
+    : dates.length === 1
+      ? dayLabel(dates[0])
+      : `${dayLabel(dates[0])} to ${dayLabel(dates[dates.length - 1])}`;
+  const nums = invoices.map((i) => Number(i.doc_number)).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
+  const which = invoices.length === 1
+    ? `Invoice ${invoices[0].doc_number || ''}`.trim()
+    : nums.length
+      ? `Invoices ${nums[0]}-${nums[nums.length - 1]}`
+      : `Invoices (${invoices.length})`;
+  return `${which} - ${when}.pdf`;
+}
+
+function SaveInvoicesPdf({ invoices, custById, company, onDone }) {
+  const [progress, setProgress] = useState(0);
+  const ranRef = useRef(false);
+
+  useEffect(() => {
+    if (ranRef.current) return;
+    ranRef.current = true;
+    (async () => {
+      try {
+        const logo = await ensureInvertedLogo();
+        await buildInvoicesPdf({
+          invoices,
+          custById,
+          company,
+          logo,
+          filename: pdfFilename(invoices),
+          onProgress: setProgress,
+        });
+        onDone(true);
+      } catch (e) {
+        console.error('PDF save failed', e);
+        onDone(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center">
+        <div className="bg-white rounded-xl shadow-xl px-6 py-4 text-sm text-gray-700 flex items-center gap-3">
+          <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+          Saving PDF… {progress} of {invoices.length}
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+}

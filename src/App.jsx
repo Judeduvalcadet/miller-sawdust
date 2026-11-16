@@ -11,6 +11,8 @@ import BackupRestore from './pages/BackupRestore';
 import CustomerDeliveriesFullReport from './pages/CustomerDeliveriesFullReport';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import V2App from './v2/V2App';
+import QBCallback from './v2/QBCallback';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -65,6 +67,10 @@ const AuthenticatedApp = () => {
       <Route path="/PickupLocationsFullReport" element={<LayoutWrapper currentPageName="PickupLocationsFullReport"><PickupLocationsFullReport /></LayoutWrapper>} />
       <Route path="/CustomerDeliveriesFullReport" element={<LayoutWrapper currentPageName="CustomerDeliveriesFullReport"><CustomerDeliveriesFullReport /></LayoutWrapper>} />
       <Route path="/BackupRestore" element={<LayoutWrapper currentPageName="BackupRestore"><BackupRestore /></LayoutWrapper>} />
+
+      {/* V2 - parallel interface, own shell and login; V1 untouched */}
+      <Route path="/v2/*" element={<V2App />} />
+      <Route path="/QBCallback" element={<QBCallback />} />
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>

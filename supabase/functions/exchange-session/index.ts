@@ -1,6 +1,6 @@
 // One-time upgrade path: a device holding a legacy session id (created by the
 // pre-JWT client) trades it for a refresh token + JWT without re-entering a
-// PIN. Works exactly once per session — the session id was only ever stored on
+// PIN. Works exactly once per session - the session id was only ever stored on
 // the device that created it, and claiming it sets token_hash so it can't be
 // replayed.
 import {

@@ -1,4 +1,7 @@
+import { DETAIL_ROWS } from '@/lib/detailLayout';
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { directionsDestination, directionsLinks } from '@/lib/driverDirections';
 import { base44 } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -146,7 +149,7 @@ function PickupLoadRow({ load, onChange, disabled, yardPresets, truckType }) {
 }
 
 // Per-load row for Josh (delivery jobs)
-function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocations }) {
+function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocations, deYellow = false, yardOptions = [] }) {
   const [error, setError] = useState('');
   const locationPreFilled = !!initialLoad?.pickup_location_name;
   const yardsPreFilled = !!initialLoad?.yards_collected;
@@ -192,7 +195,7 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
 
       <div className="space-y-3">
         <div>
-          <Label className="text-xs text-amber-700 font-medium mb-1">
+          <Label className={cn("text-xs font-medium mb-1", deYellow ? "text-gray-500" : "text-amber-700")}>
             Pickup Location {locationPreFilled ? <span className="text-green-600 font-normal">(pre-filled)</span> : <span className="text-red-500">*</span>}
           </Label>
           <SearchableSelect
@@ -204,10 +207,37 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
           />
         </div>
         <div>
-          <Label className="text-xs text-amber-700 font-medium mb-1">
+          <Label className={cn("text-xs font-medium mb-1", deYellow ? "text-gray-500" : "text-amber-700")}>
             Yards Collected (yds) {yardsPreFilled ? <span className="text-green-600 font-normal">(pre-filled)</span> : <span className="text-red-500">*</span>}
           </Label>
-          {yardsPreFilled && load.completed ? (
+          {yardOptions.length > 0 ? (
+            <div className="flex gap-2">
+              {yardOptions.map((o) => {
+                const selected = String(load.yards_collected) === String(o.yards);
+                return (
+                  <button
+                    key={o.itemId}
+                    type="button"
+                    disabled={disabled || load.completed}
+                    onClick={() => {
+                      setError('');
+                      onChange({ ...load, yards_collected: String(o.yards), item_id: o.itemId });
+                    }}
+                    className={cn(
+                      "h-9 px-5 rounded-lg text-sm font-semibold transition-colors",
+                      // Completed loads gray out like the rest of the card; the
+                      // thick border still marks which size was chosen.
+                      (disabled || load.completed)
+                        ? cn('bg-gray-50 text-gray-400', selected ? 'border-[3px] border-gray-300' : 'border border-gray-200')
+                        : cn('bg-white', selected ? 'border-[3px] border-gray-700 text-gray-900' : 'border border-gray-300 text-gray-700')
+                    )}
+                  >
+                    {o.yards} yds
+                  </button>
+                );
+              })}
+            </div>
+          ) : yardsPreFilled && load.completed ? (
             <div className="h-9 flex items-center px-3 rounded-md border border-green-200 bg-green-50 text-sm text-green-800 font-medium">
               {load.yards_collected} yds
             </div>
@@ -243,7 +273,21 @@ function JoshLoadRow({ load, initialLoad, onChange, disabled, joshPickupLocation
   );
 }
 
-export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLocations = [], driverName = '', customer = null }) {
+export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLocations = [], driverName = '', customer = null, deYellow = false, items = [] }) {
+  const destinationId = job.job_type === 'pickup' ? job.pickup_location_id : job.customer_id;
+  const { data: currentDestination, isFetching: loadingDestination, isError: destinationError, refetch: refreshDestination } = useQuery({
+    queryKey: ['driver-directions-destination', job.job_type, destinationId],
+    enabled: !!destinationId,
+    queryFn: async () => {
+      const entity = job.job_type === 'pickup' ? base44.entities.PickupLocation : base44.entities.Customer;
+      return (await entity.filter({ id: destinationId }, undefined, 1))[0] || null;
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
+  const destination = directionsDestination(job, currentDestination);
+  const directions = directionsLinks(destination, navigator.userAgent, navigator.maxTouchPoints);
+  const directionsReady = !!directions && !loadingDestination && !destinationError;
   const [driverNotes, setDriverNotes] = useState(job.driver_notes || '');
   const [paymentCollected, setPaymentCollected] = useState(job.payment_collected || false);
   const [loads, setLoads] = useState(() => initLoads(job));
@@ -306,6 +350,20 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
   // (previously filtered to the legacy 'josh' assigned_drivers subset).
   const joshPickupLocations = [...pickupLocations].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
+  // Spreader yardage selectors: an item-linked load offers every catalog
+  // item in the same family (spreader + same config label); choosing one
+  // swaps the load's invoice item so billing always matches QuickBooks.
+  const yardOptionsFor = (load) => {
+    if (!items.length || !load.item_id) return [];
+    const it = items.find(x => x.id === load.item_id);
+    if (!it || it.truck_type !== 'spreader') return [];
+    const label = it.display_label || it.name;
+    return items
+      .filter(x => x.active && x.is_load_item && x.truck_type === 'spreader' && (x.display_label || x.name) === label && x.yards != null)
+      .sort((a, b) => b.yards - a.yards)
+      .map(x => ({ yards: Number(x.yards), itemId: x.id }));
+  };
+
   const completedLoadsCount = loads.filter(l => l.completed).length;
   const allLoadsCompleted = completedLoadsCount === loads.length && loads.length > 0;
 
@@ -319,15 +377,6 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
       next[index] = updatedLoad;
       return next;
     });
-  };
-
-  const handleGetDirections = () => {
-    const encodedAddress = encodeURIComponent(job.address);
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const url = isIOS
-      ? `maps://maps.apple.com/?daddr=${encodedAddress}`
-      : `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`;
-    window.open(url, '_blank');
   };
 
   const handleCall = () => {
@@ -372,6 +421,10 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
     if (isLoadBased) {
       updates.loads = normalizedLoads;
       if (isPickupJob) updates.yards_collected = totalYards;
+      if (isJoshDelivery && items.length) {
+        updates.delivery_yards = totalYards || null;
+        updates.item_id = normalizedLoads.find(l => l.item_id)?.item_id || job.item_id || null;
+      }
     }
 
     onUpdate(updates).then(() => onBack());
@@ -430,7 +483,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
             )}>
               {job.job_type}
             </span>
-            <Badge className={cn(
+            <Badge variant={deYellow ? "outline" : "default"} className={cn(
               (job.status === 'pending' || job.status === 'in_progress') && "bg-red-200 text-red-800",
               job.status === 'completed' && "bg-green-200 text-green-800"
             )}>
@@ -465,33 +518,41 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
       <div className="p-4 space-y-4">
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3">
-          <Button variant="outline" className="h-14 text-base font-medium" onClick={handleGetDirections}>
-            <Navigation className="w-5 h-5 mr-2 text-blue-600" />
-            Get Directions
-          </Button>
+          {directionsReady ? <Button asChild variant="outline" className="h-14 text-base font-medium">
+            <a href={directions.href} target={directions.mobile ? undefined : '_blank'} rel="noopener noreferrer">
+              <Navigation className="w-5 h-5 mr-2 text-blue-600" />Get Directions
+            </a>
+          </Button> : <Button variant="outline" className="h-14 text-base font-medium" disabled>
+            {loadingDestination ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Navigation className="w-5 h-5 mr-2 text-blue-600" />}Get Directions
+          </Button>}
           <Button variant="outline" className="h-14 text-base font-medium" onClick={handleCall} disabled={!job.phone}>
             <Phone className="w-5 h-5 mr-2 text-green-600" />
             Call
           </Button>
         </div>
 
+        {destinationError ? <p className="text-sm text-red-700">Could not load the current destination. <button type="button" className="underline" onClick={() => refreshDestination()}>Try again</button></p> : !loadingDestination && !destination ? <p className="text-sm text-gray-600">Ask the office to confirm a street address or map pin for this stop.</p> : directionsReady ? <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+          {directions.mobile && <a href={directions.web} target="_blank" rel="noopener noreferrer" className="underline">Open in browser instead</a>}
+          {!destination.pinned && <span>No verified map pin. Confirm the destination before driving.</span>}
+        </div> : null}
+
         {/* Job Info */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Job Details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className={deYellow ? cn(DETAIL_ROWS, "[&>div:last-child]:pb-3") : "space-y-4"}>
             <div className="flex items-start gap-3">
               <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
               <div>
                 <p className="text-sm text-gray-500">{isPickupJob ? 'Pickup Location' : 'Address'}</p>
-                <p className="font-medium">{job.location_name || job.address}</p>
-                {job.address && job.location_name && <p className="text-sm text-gray-500">{job.address}</p>}
+                <p className="font-medium">{job.location_name || destination?.address || job.address}</p>
+                {(destination?.address || job.address) && job.location_name && <p className="text-sm text-gray-500">{destination?.address || job.address}</p>}
               </div>
             </div>
             {isPickupJob && job.dropoff_location_name && (
               <div className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-amber-500 mt-0.5" />
+                <MapPin className={cn("w-5 h-5 mt-0.5", deYellow ? "text-gray-400" : "text-amber-500")} />
                 <div>
                   <p className="text-sm text-gray-500">Drop-Off Location</p>
                   <p className="font-medium">{job.dropoff_location_name}</p>
@@ -531,20 +592,35 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
               <div>
                 <p className="text-sm text-gray-500">Quantity</p>
                 <p className="font-medium text-lg">
-                  {job.load_configuration || `${job.quantity} truckload${job.quantity !== 1 ? 's' : ''}`}
+                  {deYellow
+                    ? `${job.quantity || 1} load${(job.quantity || 1) !== 1 ? 's' : ''}`
+                    : (job.load_configuration || `${job.quantity} truckload${job.quantity !== 1 ? 's' : ''}`)}
                 </p>
               </div>
             </div>
             {/* Yards + Load Configuration for regular delivery jobs */}
             {job.job_type === 'delivery' && (job.delivery_yards || job.load_configuration) && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 flex items-start gap-3">
-                <Package className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+              <div className={cn("rounded-lg border p-3 flex items-start gap-3", deYellow ? "bg-gray-50 border-gray-200" : "bg-amber-50 border-amber-200")}>
+                <Package className={cn("w-5 h-5 mt-0.5 shrink-0", deYellow ? "text-gray-500" : "text-amber-600")} />
                 <div>
-                  {job.delivery_yards && (
-                    <p className="font-bold text-amber-900 text-lg leading-tight">{job.delivery_yards} yds</p>
-                  )}
-                  {job.load_configuration && (
-                    <p className="text-amber-800 font-medium text-sm mt-0.5">{job.load_configuration}</p>
+                  {deYellow && loads.length > 0 ? (
+                    <>
+                      <p className="font-bold text-base leading-tight text-gray-900">
+                        {loads.map((l, i) => `L${l.load_number || i + 1}: ${l.yards_collected || '-'}`).join(' · ')} yds
+                      </p>
+                      <p className="font-medium text-sm mt-0.5 text-gray-600">
+                        {loads.map((l, i) => `L${l.load_number || i + 1}: ${l.load_configuration || '-'}`).join(' · ')}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      {job.delivery_yards && (
+                        <p className={cn("font-bold text-lg leading-tight", deYellow ? "text-gray-900" : "text-amber-900")}>{job.delivery_yards} yds</p>
+                      )}
+                      {job.load_configuration && (
+                        <p className={cn("font-medium text-sm mt-0.5", deYellow ? "text-gray-600" : "text-amber-800")}>{job.load_configuration}</p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -584,7 +660,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           </div>
         )}
 
-        {/* Dispatcher Notes — styled to match the yards / load configuration block */}
+        {/* Dispatcher Notes - styled to match the yards / load configuration block */}
         {job.dispatcher_notes && (
           <div
             ref={dispatcherNotesRef}
@@ -606,8 +682,8 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <Package className="w-4 h-4 text-amber-600" />
-                Loads — Enter Yards Per Load
+                <Package className={cn("w-4 h-4", deYellow ? "text-gray-500" : "text-amber-600")} />
+                Loads - Enter Yards Per Load
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -637,8 +713,8 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <Package className="w-4 h-4 text-amber-600" />
-                Loads — Pickup Info Per Load
+                <Package className={cn("w-4 h-4", deYellow ? "text-gray-500" : "text-amber-600")} />
+                Loads - Pickup Info Per Load
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -646,6 +722,8 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
                 {loads.map((load, i) => (
                   <JoshLoadRow
                     key={load.load_number}
+                    deYellow={deYellow}
+                    yardOptions={yardOptionsFor(load)}
                     load={load}
                     initialLoad={initialLoads[i]}
                     onChange={(updated) => handleUpdateLoad(i, updated)}
@@ -736,16 +814,16 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
         {/* Invoice status info (delivery jobs) */}
         {isDelivery && (
           <Card className={cn(
-            invoiceSet ? (job.invoice_sent === 'yes' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200") : "bg-amber-50 border-amber-300"
+            invoiceSet ? (job.invoice_sent === 'yes' ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200") : (deYellow ? "bg-gray-50 border-gray-300" : "bg-amber-50 border-amber-300")
           )}>
             <CardContent className="py-4">
               <div className="flex items-center gap-3">
-                <FileText className={cn("w-5 h-5", invoiceSet ? (job.invoice_sent === 'yes' ? "text-green-600" : "text-gray-500") : "text-amber-600")} />
+                <FileText className={cn("w-5 h-5", invoiceSet ? (job.invoice_sent === 'yes' ? "text-green-600" : "text-gray-500") : (deYellow ? "text-gray-500" : "text-amber-600"))} />
                 <div>
                   <p className="text-sm font-medium">Invoice Status</p>
                   {invoiceSet
-                    ? <p className="text-xs text-gray-500">{job.invoice_sent === 'yes' ? 'Invoice sent to customer' : 'No invoice — not billed'}</p>
-                    : <p className="text-xs text-amber-700 font-medium">Invoice status must be set by dispatcher before completing</p>
+                    ? <p className="text-xs text-gray-500">{job.invoice_sent === 'yes' ? 'Invoice sent to customer' : 'No invoice - not billed'}</p>
+                    : <p className={cn("text-xs font-medium", deYellow ? "text-gray-500" : "text-amber-700")}>Invoice status must be set by dispatcher before completing</p>
                   }
                 </div>
               </div>
@@ -753,7 +831,7 @@ export default function JobDetail({ job, onBack, onUpdate, isUpdating, pickupLoc
           </Card>
         )}
 
-        {/* Payment Toggle — only for delivery jobs where invoice was sent */}
+        {/* Payment Toggle - only for delivery jobs where invoice was sent */}
         {isDelivery && job.invoice_sent === 'yes' && (
           <Card className={cn(paymentCollected && "bg-green-50 border-green-200")}>
             <CardContent className="py-4">

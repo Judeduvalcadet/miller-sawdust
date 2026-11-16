@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,7 +18,30 @@ import CsvImportModal from "@/components/admin/CsvImportModal";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
-export default function DriverManager() {
+
+// Driver photos: resized client-side to a small data URL stored on the row.
+// Upload is sandbox-only until the avatar column ships to production.
+const AVATARS_ENABLED = import.meta.env.MODE === 'sandbox';
+async function fileToAvatarDataUrl(file) {
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = URL.createObjectURL(file);
+  });
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const s = Math.min(img.width, img.height);
+  ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+  URL.revokeObjectURL(img.src);
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
+// `embedded` renders it as a section (no page header/back link) - used by the
+// V2 Settings "Team" tab. V1 renders it as its own page, unchanged.
+export default function DriverManager({ embedded = false } = {}) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -64,7 +87,8 @@ export default function DriverManager() {
     role: 'driver',
     driver_type: 'delivery',
     pickup_role: 'none',
-    active: true
+    active: true,
+    avatar_url: ''
   });
 
   const { data: drivers = [], isLoading } = useQuery({
@@ -117,7 +141,8 @@ export default function DriverManager() {
       role: 'driver',
       driver_type: 'delivery',
       pickup_role: 'none',
-      active: true
+      active: true,
+      avatar_url: ''
     });
   };
 
@@ -133,6 +158,8 @@ export default function DriverManager() {
       pickup_role: formData.pickup_role || 'none',
       active: formData.active
     };
+    // only send the avatar field where the column exists (sandbox)
+    if (AVATARS_ENABLED) data.avatar_url = formData.avatar_url || null;
 
     if (editingDriver) {
       updateMutation.mutate({ id: editingDriver.id, data, pin: formData.pin });
@@ -151,7 +178,8 @@ export default function DriverManager() {
       role: driver.role,
       driver_type: driver.driver_type || 'delivery',
       pickup_role: driver.pickup_role || 'none',
-      active: driver.active
+      active: driver.active,
+      avatar_url: driver.avatar_url || ''
     });
     setShowForm(true);
   };
@@ -177,20 +205,22 @@ export default function DriverManager() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4">
+    <div className={embedded ? '' : 'min-h-screen bg-gray-50'}>
+      <div className={embedded ? '' : 'bg-white border-b sticky top-0 z-10'}>
+        <div className={embedded ? 'max-w-4xl px-6 pt-6' : 'max-w-4xl mx-auto px-4 py-4'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Link to={createPageUrl('AdminDashboard')}>
-                <Button variant="ghost" size="icon">
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-              </Link>
-              <h1 className="font-bold text-xl">User Manager</h1>
+              {!embedded && (
+                <Link to={createPageUrl('AdminDashboard')}>
+                  <Button variant="ghost" size="icon">
+                    <ArrowLeft className="w-5 h-5" />
+                  </Button>
+                </Link>
+              )}
+              <h1 className={embedded ? 'font-semibold text-sm text-gray-900' : 'font-bold text-xl'}>{embedded ? 'Team' : 'User Manager'}</h1>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowCsvImport(true)}>
+              <Button variant="outline" className={embedded ? 'bg-gray-950 text-white hover:bg-gray-800 hover:text-white' : undefined} onClick={() => setShowCsvImport(true)}>
                 <Upload className="w-4 h-4 mr-2" />
                 Import CSV
               </Button>
@@ -200,7 +230,7 @@ export default function DriverManager() {
                   resetForm();
                   setShowForm(true);
                 }}
-                className="bg-amber-600 hover:bg-amber-700"
+                className={embedded ? 'bg-gray-950 hover:bg-gray-800' : 'bg-amber-600 hover:bg-amber-700'}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add User
@@ -210,7 +240,7 @@ export default function DriverManager() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className={embedded ? 'max-w-4xl px-6 py-6' : 'max-w-4xl mx-auto px-4 py-6'}>
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
@@ -222,11 +252,15 @@ export default function DriverManager() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
+                      {driver.avatar_url ? (
+                        <img src={driver.avatar_url} alt="" className={`w-12 h-12 rounded-full object-cover ${driver.active ? '' : 'opacity-50 grayscale'}`} />
+                      ) : (
                       <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                        driver.active ? 'bg-amber-100' : 'bg-gray-100'
+                        embedded ? 'bg-gray-950' : driver.active ? 'bg-amber-100' : 'bg-gray-100'
                       }`}>
-                        <User className={`w-6 h-6 ${driver.active ? 'text-amber-600' : 'text-gray-400'}`} />
+                        <User className={`w-6 h-6 ${embedded ? 'text-white' : driver.active ? 'text-amber-600' : 'text-gray-400'}`} />
                       </div>
+                      )}
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="font-semibold">{driver.name}</h3>
@@ -268,6 +302,7 @@ export default function DriverManager() {
                           setResetPinDriver(driver);
                           setShowPinReset(true);
                         }}
+                        className={embedded ? 'text-gray-950 hover:bg-gray-200' : undefined}
                         title="Reset PIN"
                       >
                         <Key className="w-4 h-4" />
@@ -279,7 +314,7 @@ export default function DriverManager() {
                         title={driver.active ? 'Deactivate' : 'Activate'}
                       >
                         {driver.active ? (
-                          <UserCheck className="w-4 h-4 text-green-600" />
+                          <UserCheck className={embedded ? 'w-4 h-4 text-gray-950' : 'w-4 h-4 text-green-600'} />
                         ) : (
                           <UserX className="w-4 h-4 text-gray-400" />
                         )}
@@ -295,7 +330,7 @@ export default function DriverManager() {
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(driver)}
-                        className="text-red-600 hover:text-red-700"
+                        className={embedded ? 'text-gray-950 hover:bg-gray-200' : 'text-red-600 hover:text-red-700'}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -331,6 +366,34 @@ export default function DriverManager() {
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
+              {AVATARS_ENABLED && (
+                <div className="space-y-2">
+                  <Label>Photo</Label>
+                  <div className="flex items-center gap-3">
+                    {formData.avatar_url ? (
+                      <img src={formData.avatar_url} alt="" className="w-14 h-14 rounded-full object-cover border" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center border">
+                        <User className="w-6 h-6 text-gray-400" />
+                      </div>
+                    )}
+                    <label className="text-sm text-amber-700 cursor-pointer hover:underline">
+                      {formData.avatar_url ? 'Change photo' : 'Upload photo'}
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          const url = await fileToAvatarDataUrl(f);
+                          setFormData((p) => ({ ...p, avatar_url: url }));
+                        }} />
+                    </label>
+                    {formData.avatar_url && (
+                      <button type="button" className="text-xs text-gray-400 hover:text-red-500"
+                        onClick={() => setFormData((p) => ({ ...p, avatar_url: '' }))}>Remove</button>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Username</Label>
                 <Input
@@ -353,7 +416,7 @@ export default function DriverManager() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Phone</Label>
-                <Input
+                <Input type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   placeholder="555-123-4567"
@@ -443,7 +506,8 @@ export default function DriverManager() {
                 Cancel
               </Button>
               <Button 
-                type="submit" 
+                type="submit"
+                className={embedded ? 'bg-gray-950 hover:bg-gray-800' : undefined}
                 disabled={createMutation.isPending || updateMutation.isPending}
               >
                 {(createMutation.isPending || updateMutation.isPending) && (

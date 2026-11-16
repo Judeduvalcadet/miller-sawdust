@@ -2,12 +2,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { GripVertical, Truck, Package, Loader2 } from "lucide-react";
+import { GripVertical, Truck, Package, Loader2, Route } from "lucide-react";
 import { format, addDays } from "date-fns";
 import { base44 } from "@/api/entities";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import StopsMap from "@/components/admin/StopsMap";
 
 function JobCardContent({ job, index, isGhost }) {
   return (
@@ -28,12 +29,17 @@ function JobCardContent({ job, index, isGhost }) {
   );
 }
 
-export default function SortJobsModal({ open, onClose, jobs, drivers, preSelectedDate = null }) {
+export default function SortJobsModal({ open, onClose, jobs, drivers, preSelectedDate = null, preSelectedDriverId = null, customers = [], pickupLocations = [], dropOffLocations = [] }) {
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [selectedDate, setSelectedDate] = useState(preSelectedDate || format(new Date(), 'yyyy-MM-dd'));
   const [orderedJobs, setOrderedJobs] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [driverDropdownOpen, setDriverDropdownOpen] = useState(false);
+  // Route check (admin/dispatcher only - the edge function enforces it too)
+  const [routeCheck, setRouteCheck] = useState(null);
+  const canCheckRoute = ['admin', 'dispatcher'].includes(
+    typeof window !== 'undefined' ? window.localStorage.getItem('miller_driver_role') : ''
+  );
 
   // drag state: null or { index, offsetY, currentY, cardHeight }
   const [dragState, setDragState] = useState(null);
@@ -55,9 +61,15 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
   useEffect(() => {
     if (open && preSelectedDate) {
       setSelectedDate(preSelectedDate);
-      setDriverDropdownOpen(true);
+      // With a preselected driver (V2 day view rows) skip the driver step.
+      if (preSelectedDriverId) {
+        setSelectedDriverId(preSelectedDriverId);
+        setDriverDropdownOpen(false);
+      } else {
+        setDriverDropdownOpen(true);
+      }
     }
-  }, [open, preSelectedDate]);
+  }, [open, preSelectedDate, preSelectedDriverId]);
 
   useEffect(() => {
     if (!selectedDriverId || !selectedDate) { setOrderedJobs([]); return; }
@@ -74,7 +86,104 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
         return 0;
       });
     setOrderedJobs(filtered);
+    setRouteCheck(null);
   }, [selectedDriverId, selectedDate, jobs]);
+
+  const handleCheckRoute = async () => {
+    setRouteCheck({ status: 'loading' });
+    try {
+      const { data } = await base44.functions.invoke('optimize-route', {
+        driver_id: selectedDriverId,
+        date: selectedDate,
+      });
+      setRouteCheck({ status: 'done', data });
+    } catch {
+      setRouteCheck({ status: 'error' });
+    }
+  };
+
+  // Map pins: the day's TRUE sequence - each job's load pickup (blue "P"
+  // square) followed by its delivery/drop-off (numbered circle), starting and
+  // ending at home. Loads picked up at the home base draw no extra pin.
+  const homeBase = pickupLocations.find(p => p.location_type === 'my_building' && /home hoop/i.test(p.name || ''));
+  const home = homeBase?.latitude != null ? { lat: homeBase.latitude, lng: homeBase.longitude } : null;
+  const custById = new Map(customers.map(c => [c.id, c]));
+  const pickById = new Map(pickupLocations.map(p => [p.id, p]));
+  const dropById = new Map(dropOffLocations.map(d => [d.id, d]));
+  const key5 = (p) => p.lat.toFixed(5) + ',' + p.lng.toFixed(5);
+
+  const mapStops = [];
+  const seqPoints = [];  // for the road path: home -> P -> stop -> ... -> home
+  const pushPoint = (p) => {
+    if (p && (seqPoints.length === 0 || key5(seqPoints[seqPoints.length - 1]) !== key5(p))) {
+      seqPoints.push({ lat: p.lat, lng: p.lng });
+    }
+  };
+  let unmappedCount = 0;
+  let jobNum = 0;
+  pushPoint(home);
+  for (const j of orderedJobs) {
+    jobNum += 1;
+    const label = (j.customer_company_name || j.location_name || '').trim();
+    const loads = parseInt(j.quantity) || 1;
+
+    // Load source: the job's pickup location, or the home base when none set
+    const entryRec = j.pickup_location_id ? pickById.get(j.pickup_location_id) : null;
+    const entry = entryRec?.latitude != null
+      ? { lat: entryRec.latitude, lng: entryRec.longitude, name: (entryRec.name || '').trim() }
+      : (!j.pickup_location_id && j.job_type !== 'pickup' ? home : null);
+    if (entry) {
+      pushPoint(entry);
+      if (home && key5(entry) !== key5(home)) {
+        mapStops.push({ kind: 'pickup', label: entry.name, lat: entry.lat, lng: entry.lng });
+      }
+    }
+
+    // End point: the customer (deliveries) or the drop-off building (pickups)
+    const rec = j.job_type === 'pickup' ? dropById.get(j.dropoff_location_id) : custById.get(j.customer_id);
+    if (rec?.latitude != null) {
+      pushPoint({ lat: rec.latitude, lng: rec.longitude });
+      mapStops.push({ kind: 'delivery', num: jobNum, label, loads, lat: rec.latitude, lng: rec.longitude });
+    } else {
+      unmappedCount++;
+    }
+  }
+  pushPoint(home);
+  // The road-path endpoint accepts up to 16 points; on an over-long day fall
+  // back to the delivery chain only.
+  const roadPoints = seqPoints.length > 16 && home
+    ? [home, ...mapStops.filter(s => s.kind === 'delivery').map(s => ({ lat: s.lat, lng: s.lng })), home]
+    : seqPoints;
+
+  // Real road geometry for the current order (cached server-side per leg)
+  const [roadLegs, setRoadLegs] = useState(null);
+  const roadReqRef = useRef(0);
+  const pointsKey = home && mapStops.length > 0 && roadPoints.length >= 2
+    ? JSON.stringify(roadPoints)
+    : '';
+  useEffect(() => {
+    setRoadLegs(null);
+    if (!pointsKey) return;
+    const reqId = ++roadReqRef.current;
+    base44.functions.invoke('route-path', { points: JSON.parse(pointsKey) })
+      .then(({ data }) => {
+        if (roadReqRef.current === reqId && Array.isArray(data?.legs)) setRoadLegs(data.legs);
+      })
+      .catch(() => { /* straight-line fallback stays */ });
+  }, [pointsKey]);
+
+  const handleUseSuggestedOrder = () => {
+    const suggested = routeCheck?.data?.suggested?.order;
+    if (!suggested) return;
+    setOrderedJobs(prev => {
+      const byId = new Map(prev.map(j => [j.id, j]));
+      const reordered = suggested.map(s => byId.get(s.job_id)).filter(Boolean);
+      // Jobs the check couldn't place (unpinned addresses) keep their spot at the end
+      const placed = new Set(reordered.map(j => j.id));
+      return [...reordered, ...prev.filter(j => !placed.has(j.id))];
+    });
+    setRouteCheck(rc => ({ ...rc, applied: true }));
+  };
 
   const handleMouseDown = useCallback((e, fromIndex) => {
     e.preventDefault();
@@ -171,7 +280,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="w-[95vw] max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <GripVertical className="w-5 h-5 text-amber-600" />
@@ -179,7 +288,8 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="flex flex-col md:flex-row gap-5 items-stretch">
+        <div className="flex-1 min-w-0 space-y-3">
           {/* Driver selector */}
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-2">Select Driver</label>
@@ -254,7 +364,7 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
                 );
               })}
 
-              {/* Floating ghost card — stays inside container via overflow:hidden */}
+              {/* Floating ghost card - stays inside container via overflow:hidden */}
               {dragState && orderedJobs[dragState.index] && (
                 <div
                   className="absolute left-0 right-0 flex items-center gap-3 p-3 rounded-lg border border-amber-400 bg-white shadow-xl pointer-events-none z-50"
@@ -270,17 +380,121 @@ export default function SortJobsModal({ open, onClose, jobs, drivers, preSelecte
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button
-              onClick={handleSave}
-              disabled={orderedJobs.length === 0 || isSaving}
-              className="bg-amber-600 hover:bg-amber-700"
-            >
-              {isSaving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              Save Order
-            </Button>
+          {/* Route check result */}
+          {routeCheck?.status === 'loading' && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              Checking this route against real road times...
+            </div>
+          )}
+          {routeCheck?.status === 'error' && (
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+              The route check couldn't run. Try again in a moment.
+            </div>
+          )}
+          {routeCheck?.status === 'done' && (() => {
+            const d = routeCheck.data;
+            if (!d?.enough) {
+              return (
+                <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  Not enough mapped jobs on this day to compare orders.
+                </div>
+              );
+            }
+            const savedMin = Math.round(d.savings_seconds / 60);
+            const savedMi = (d.savings_meters / 1609.34).toFixed(1);
+            const unpinnedNote = d.unpinned?.length > 0 && (
+              <p className="text-xs text-gray-500 mt-2">
+                Not included (address not verified yet): {d.unpinned.join(', ')}
+              </p>
+            );
+            if (d.savings_seconds < 300) {
+              return (
+                <div className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
+                  <span className="font-semibold">This order is already good</span> - the best
+                  order found would save less than 5 minutes.
+                  {unpinnedNote}
+                </div>
+              );
+            }
+            return (
+              <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p className="font-semibold text-amber-900">
+                  A better order could save about {savedMin} min · {savedMi} mi
+                </p>
+                <ol className="mt-2 space-y-1 text-amber-900">
+                  {d.suggested.order.map((s, i) => (
+                    <li key={s.job_id} className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <span className="truncate">{s.label}</span>
+                    </li>
+                  ))}
+                </ol>
+                {unpinnedNote}
+                <div className="mt-3">
+                  {routeCheck.applied ? (
+                    <p className="text-xs font-medium text-amber-800">
+                      List reordered - press Save Order to make it the driver's order.
+                    </p>
+                  ) : (
+                    <Button size="sm" variant="outline" className="border-amber-400 text-amber-900 hover:bg-amber-100" onClick={handleUseSuggestedOrder}>
+                      Use this order
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button
+                onClick={handleSave}
+                disabled={orderedJobs.length === 0 || isSaving}
+                className="bg-amber-600 hover:bg-amber-700"
+              >
+                {isSaving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                Save Order
+              </Button>
+            </div>
           </div>
+        </div>
+
+        {/* Right column: the route map, stretching to the popup's height -
+            pins and route line follow the list order on the left */}
+        <div className="w-full md:w-[45%] shrink-0 flex flex-col gap-1">
+          <div className="relative flex-1 min-h-[300px]">
+            <div className="absolute inset-0 z-0">
+              <StopsMap stops={mapStops} home={home} roadLegs={roadLegs} height="100%" />
+            </div>
+            {/* Check route - always visible at the top of the map */}
+            {canCheckRoute && orderedJobs.length >= 2 && (
+              <button
+                type="button"
+                onClick={handleCheckRoute}
+                disabled={routeCheck?.status === 'loading'}
+                className="absolute top-2.5 right-2.5 z-10 flex items-center gap-2 h-10 px-4 rounded-full bg-white shadow-md border border-gray-200 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                style={{ transform: 'translateZ(0)' }}
+              >
+                {routeCheck?.status === 'loading'
+                  ? <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                  : <Route className="w-4 h-4 text-amber-600" />}
+                Check route
+              </button>
+            )}
+            {mapStops.length === 0 && (
+              <div className="absolute inset-x-3 top-3 z-10 bg-white/95 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600 shadow-sm pointer-events-none" style={{ transform: 'translateZ(0)' }}>
+                {selectedDriverId ? 'No mapped stops for this day yet.' : "Pick a driver and the day's route appears here."}
+              </div>
+            )}
+          </div>
+          {unmappedCount > 0 && (
+            <p className="text-[11px] text-gray-400">
+              {unmappedCount} stop{unmappedCount !== 1 ? 's' : ''} not shown (address not map-verified yet)
+            </p>
+          )}
+        </div>
         </div>
       </DialogContent>
     </Dialog>

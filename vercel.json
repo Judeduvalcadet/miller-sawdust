@@ -18,18 +18,10 @@
     {
       "source": "/((?!assets/).*)",
       "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-store"
-        },
-        {
-          "key": "CDN-Cache-Control",
-          "value": "no-store"
-        },
-        {
-          "key": "Cloudflare-CDN-Cache-Control",
-          "value": "no-store"
-        }
+        { "key": "Cache-Control", "value": "no-store, no-cache" },
+        { "key": "CDN-Cache-Control", "value": "no-store" },
+        { "key": "Cloudflare-CDN-Cache-Control", "value": "no-store" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
       ]
     },
     {

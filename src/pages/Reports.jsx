@@ -1,3 +1,4 @@
+import { useReportData } from '@/components/hooks/useReportData';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/entities';
@@ -52,8 +53,8 @@ function formatRangeLabel(range) {
   const sameDay = range.from.getTime() === range.to.getTime();
   if (sameDay) return format(range.from, 'MMM d, yyyy');
   const sameYear = range.from.getFullYear() === range.to.getFullYear();
-  if (sameYear) return `${format(range.from, 'MMM d')} – ${format(range.to, 'MMM d, yyyy')}`;
-  return `${format(range.from, 'MMM d, yyyy')} – ${format(range.to, 'MMM d, yyyy')}`;
+  if (sameYear) return `${format(range.from, 'MMM d')} - ${format(range.to, 'MMM d, yyyy')}`;
+  return `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`;
 }
 
 // ─── Date Range Picker ────────────────────────────────────────────────────
@@ -208,14 +209,10 @@ function KPICard({ icon: Icon, label, value, suffix, color }) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-export default function Reports() {
-  const [jobs, setJobs] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [pickupLocations, setPickupLocations] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+export default function Reports({ v2 = false }) {
+  const { jobs, drivers, customers, pickupLocations, isLoading } = useReportData();
 
-  // Date range — initialized to MTD on load
+  // Date range - initialized to MTD on load
   const [dateRange, setDateRange] = useState(() => computePreset('mtd', new Date(), null));
 
   // Filter state
@@ -237,24 +234,9 @@ export default function Reports() {
   const PREVIEW_COUNT = 3;
   const EXPANDED_COUNT = 15;
 
-  useEffect(() => {
-    const load = async () => {
-      const [j, d, c, p] = await Promise.all([
-        base44.entities.Job.list('-scheduled_date', 5000),
-        base44.entities.Driver.list(),
-        base44.entities.Customer.list(undefined, 5000),
-        base44.entities.PickupLocation.list(),
-      ]);
-      setJobs(j);
-      setDrivers(d);
-      setCustomers(c);
-      setPickupLocations(p);
-      setIsLoading(false);
-    };
-    load();
-  }, []);
 
-  // Earliest job date — used for "All Time" preset
+
+  // Earliest job date - used for "All Time" preset
   const earliestJobDate = useMemo(() => {
     if (jobs.length === 0) return null;
     const dates = jobs.map(j => j.scheduled_date).filter(Boolean).sort();
@@ -426,7 +408,7 @@ export default function Reports() {
     { value: 'spreader',       label: 'Spreader' },
   ];
 
-  // Filter button row config — drives the buttons + active chip strip
+  // Filter button row config - drives the buttons + active chip strip
   const FILTERS = [
     { key: 'driver',    label: 'Driver',          icon: Users,    options: driverOptions,    selected: filterDrivers,    setter: setFilterDrivers,    color: 'amber' },
     { key: 'customer',  label: 'Customer',        icon: Building2, options: customerOptions, selected: filterCustomers,  setter: setFilterCustomers,  color: 'blue'  },
@@ -451,7 +433,7 @@ export default function Reports() {
     return `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`;
   };
 
-  // URL params for full-report links — includes date range AND all filters
+  // URL params for full-report links - includes date range AND all filters
   const fullReportQueryString = useMemo(() => {
     const parts = [];
     if (dateRange?.from && dateRange?.to) {
@@ -495,7 +477,7 @@ export default function Reports() {
           </div>
         </div>
 
-        {/* Filter button row — date + all filters on one line */}
+        {/* Filter button row - date + all filters on one line */}
         <div className="flex items-center gap-2 flex-wrap mb-3">
           <DateRangePicker
             value={dateRange}
@@ -516,7 +498,7 @@ export default function Reports() {
           ))}
         </div>
 
-        {/* Active filter chip strip — only when non-date filters are active */}
+        {/* Active filter chip strip - only when non-date filters are active */}
         {anyFilterActive && (
           <div className="flex items-center gap-2 flex-wrap mb-5">
             <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-1">Showing:</span>
@@ -559,7 +541,7 @@ export default function Reports() {
 
         {filteredJobs.length > 0 && (
         <>
-        <div className="grid md:grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-6 mb-6">
           {/* Yards by Pickup Location */}
           <Card>
             <CardHeader className="pb-2">
@@ -578,14 +560,14 @@ export default function Reports() {
                       <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} />
                       <Tooltip formatter={(v) => [`${v} yds`, 'Yards']} />
-                      <Bar dataKey="yards" fill="#d97706" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="yards" fill={v2 ? "#374151" : "#d97706"} radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                   <table className="w-full mt-3 text-sm">
                     <thead>
                       <tr className="border-b border-gray-100">
                         <th className="text-left text-xs text-gray-500 font-medium pb-1">Location</th>
-                        <th className="text-right text-xs text-gray-500 font-medium pb-1">Yards Collected</th>
+                        <th className="w-px whitespace-nowrap pl-4 text-right text-xs text-gray-500 font-medium pb-1">Yards Collected</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -599,16 +581,16 @@ export default function Reports() {
                               className={cn("cursor-pointer", idx % 2 === 0 ? 'bg-gray-50' : 'bg-white', 'hover:bg-amber-50 transition-colors')}
                               onClick={() => setExpandedLocations(p => ({ ...p, [loc.name]: !p[loc.name] }))}
                             >
-                              <td className="py-2 px-1 text-gray-700 flex items-center gap-1">
+                              <td className="py-2 px-1 text-gray-700"><div className="flex items-center gap-1">
                                 {isExpanded ? <ChevronUp className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
-                                {loc.name}
-                              </td>
-                              <td className="py-2 px-1 text-right font-semibold text-amber-700">{loc.yards.toLocaleString()} yds</td>
+                                <span className="break-words">{loc.name}</span>
+                              </div></td>
+                              <td className="py-2 px-1 pl-4 whitespace-nowrap text-right font-semibold text-amber-700">{loc.yards.toLocaleString()} yds</td>
                             </tr>
                             {isExpanded && breakdown.map((b) => (
                               <tr key={b.name} className="bg-amber-50/50">
                                 <td className="py-1.5 pl-6 pr-1 text-gray-600 text-xs">↳ {b.name}</td>
-                                <td className="py-1.5 px-1 text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
+                                <td className="py-1.5 px-1 pl-4 whitespace-nowrap text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
                               </tr>
                             ))}
                           </React.Fragment>
@@ -637,7 +619,7 @@ export default function Reports() {
                         )}
                       </Button>
                       {pickupByLocation.length > EXPANDED_COUNT && (
-                        <Link to={`/PickupLocationsFullReport?${fullReportQueryString}`}>
+                        <Link to={`${v2 ? '/v2/reports/pickups' : '/PickupLocationsFullReport'}?${fullReportQueryString}`}>
                           <Button variant="outline" size="sm" className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50">
                             <ExternalLink className="w-3.5 h-3.5" />
                             View full report ({pickupByLocation.length} locations)
@@ -676,8 +658,8 @@ export default function Reports() {
                     <thead>
                       <tr className="border-b border-gray-100">
                         <th className="text-left text-xs text-gray-500 font-medium pb-1">Customer</th>
-                        <th className="text-right text-xs text-gray-500 font-medium pb-1">Loads</th>
-                        <th className="text-right text-xs text-gray-500 font-medium pb-1">Yards</th>
+                        <th className="w-px whitespace-nowrap pl-4 text-right text-xs text-gray-500 font-medium pb-1">Loads</th>
+                        <th className="w-px whitespace-nowrap pl-4 text-right text-xs text-gray-500 font-medium pb-1">Yards</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -690,18 +672,18 @@ export default function Reports() {
                               className={cn("cursor-pointer", idx % 2 === 0 ? 'bg-gray-50' : 'bg-white', 'hover:bg-blue-50 transition-colors')}
                               onClick={() => setExpandedCustomers(p => ({ ...p, [c.name]: !p[c.name] }))}
                             >
-                              <td className="py-2 px-1 text-gray-700 flex items-center gap-1 truncate max-w-[120px]">
+                              <td className="py-2 px-1 text-gray-700"><div className="flex items-center gap-1">
                                 {isExpanded ? <ChevronUp className="w-3 h-3 text-gray-400 shrink-0" /> : <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" />}
-                                {c.name}
-                              </td>
-                              <td className="py-2 px-1 text-right font-semibold text-blue-700">{c.loads}</td>
-                              <td className="py-2 px-1 text-right font-semibold text-amber-700">{c.yards.toLocaleString()}</td>
+                                <span className="break-words">{c.name}</span>
+                              </div></td>
+                              <td className="py-2 px-1 pl-4 whitespace-nowrap text-right font-semibold text-blue-700">{c.loads}</td>
+                              <td className="py-2 px-1 pl-4 whitespace-nowrap text-right font-semibold text-amber-700">{c.yards.toLocaleString()}</td>
                             </tr>
                             {isExpanded && breakdown.map((b) => (
                               <tr key={b.name} className="bg-blue-50/50">
                                 <td className="py-1.5 pl-6 pr-1 text-gray-600 text-xs">↳ {b.name}</td>
-                                <td className="py-1.5 px-1 text-right text-xs font-semibold text-blue-600">{b.loads} load{b.loads !== 1 ? 's' : ''}</td>
-                                <td className="py-1.5 px-1 text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
+                                <td className="py-1.5 px-1 pl-4 whitespace-nowrap text-right text-xs font-semibold text-blue-600">{b.loads} load{b.loads !== 1 ? 's' : ''}</td>
+                                <td className="py-1.5 px-1 pl-4 whitespace-nowrap text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
                               </tr>
                             ))}
                           </React.Fragment>
@@ -730,7 +712,7 @@ export default function Reports() {
                         )}
                       </Button>
                       {customerStats.length > EXPANDED_COUNT && (
-                        <Link to={`/CustomerDeliveriesFullReport?${fullReportQueryString}`}>
+                        <Link to={`${v2 ? '/v2/reports/customers' : '/CustomerDeliveriesFullReport'}?${fullReportQueryString}`}>
                           <Button variant="outline" size="sm" className="gap-2 text-blue-700 border-blue-300 hover:bg-blue-50">
                             <ExternalLink className="w-3.5 h-3.5" />
                             View full report ({customerStats.length} customers)
@@ -794,7 +776,7 @@ export default function Reports() {
                       {isExpanded && (
                         <div className="border-t px-4 py-3 bg-white">
                           <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
-                            {d.name} — {d.totalLoads} loads
+                            {d.name} - {d.totalLoads} loads
                           </p>
                           {breakdown.length === 0 ? (
                             <p className="text-xs text-gray-400">No breakdown available</p>

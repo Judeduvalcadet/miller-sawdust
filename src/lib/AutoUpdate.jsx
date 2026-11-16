@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 // Saved home-screen web apps resume from memory with whatever bundle they
-// loaded last — sometimes days old. This checks the deployed build id and
+// loaded last - sometimes days old. This checks the deployed build id and
 // reloads once when a newer build is live. To never interrupt someone
 // mid-form, regular pages only check when the app returns to the
 // foreground; the wallboard (an unattended TV) also checks on a timer.
@@ -30,7 +30,7 @@ export default function AutoUpdate() {
           }
         }
       } catch {
-        // offline or dev server (no version.json) — ignore
+        // offline or dev server (no version.json) - ignore
       } finally {
         checking = false;
       }

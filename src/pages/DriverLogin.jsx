@@ -22,7 +22,7 @@ export default function DriverLogin() {
   useEffect(() => {
     checkExistingSession();
     loadDrivers();
-    // Fail-safe: never leave the user staring at the session-check spinner —
+    // Fail-safe: never leave the user staring at the session-check spinner -
     // if anything hangs, show the login form and let them log in normally.
     const failSafe = setTimeout(() => setIsLoading(false), 8000);
     return () => clearTimeout(failSafe);
@@ -46,12 +46,12 @@ export default function DriverLogin() {
       let token = await getAccessToken();
       if (token && !localStorage.getItem('miller_driver_id')) {
         // Half-cleared device (old logout bug): token exists but identity is
-        // gone — a redirect would loop. Force a refresh, which re-stores the
+        // gone - a redirect would loop. Force a refresh, which re-stores the
         // driver info alongside the new token.
         localStorage.removeItem('miller_jwt');
         token = await getAccessToken();
         if (token && !localStorage.getItem('miller_driver_id')) {
-          // Still no identity — drop the broken tokens and show the form.
+          // Still no identity - drop the broken tokens and show the form.
           localStorage.removeItem('miller_jwt');
           localStorage.removeItem('miller_refresh_token');
           localStorage.removeItem('miller_session_id');

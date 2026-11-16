@@ -1,16 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { DETAIL_ROWS, DETAIL_FOOTER } from '@/lib/detailLayout';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'framer-motion';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote, History } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Package, Truck, MapPin, User, Calendar, Edit, Check, X, UserPlus, Filter, FileText, ArrowUpDown, Trash2, CheckSquare, Move, CalendarDays, Warehouse, Search, StickyNote, History, Receipt, DollarSign, CircleCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import CalendarPicker from "@/components/driver/CalendarPicker";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format, startOfWeek, addDays, addWeeks, isToday, isSameDay } from "date-fns";
+import { format, startOfWeek, addDays, addWeeks, isToday } from "date-fns";
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/entities";
@@ -20,28 +20,36 @@ import JobActivityTimeline from "@/components/admin/JobActivityTimeline";
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const TRUCK_LABELS = { straight_truck: 'Straight', semi: 'Semi', spreader: 'Spreader' };
 
-// Quick assign dropdown — rendered as a portal to avoid clipping
-function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
+// Quick assign dropdown - rendered as a portal to avoid clipping
+function AssignPopup({ job, drivers, onAssign, onClose, anchorEl, deYellow = false }) {
   const [selectedId, setSelectedId] = useState(job.assigned_driver_id || '');
   const ref = useRef(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
-  useEffect(() => {
-    if (anchorEl) {
+  useLayoutEffect(() => {
+    const place = () => {
+      if (!anchorEl || !ref.current) return;
       const rect = anchorEl.getBoundingClientRect();
-      setPos({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX
-      });
-    }
-  }, [anchorEl]);
+      const height = Math.min(ref.current.scrollHeight, window.innerHeight - 16);
+      const width = ref.current.offsetWidth;
+      const below = window.innerHeight - rect.bottom - 8;
+      const top = below >= height ? rect.bottom + 4 : rect.top - height - 4;
+      setPos({ top: Math.max(8, Math.min(top, window.innerHeight - height - 8)), left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
+  }, [anchorEl, drivers.length]);
 
   useEffect(() => {
     const handler = (e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     };
+    const escape = (e) => { if (e.key === 'Escape') { onClose(); anchorEl?.focus(); } };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('mousedown', handler); document.removeEventListener('keydown', escape); };
   }, [onClose]);
 
   const availableDrivers = drivers.filter((d) => d.active && d.role === 'driver');
@@ -49,38 +57,43 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
   return createPortal(
     <div
       ref={ref}
-      style={{ position: 'absolute', top: pos.top, left: pos.left, zIndex: 9999 }}
-      className="w-52 bg-white rounded-xl shadow-xl border border-gray-200 p-3"
+      role="dialog" aria-label="Assign driver"
+      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999, maxHeight: 'calc(100dvh - 16px)' }}
+      className="w-72 max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain bg-white rounded-xl shadow-xl border border-gray-200 p-3"
       onClick={(e) => e.stopPropagation()}>
 
       <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Assign Driver</p>
       <div className="space-y-1 max-h-48 overflow-y-auto mb-3">
         <button
           onClick={() => setSelectedId('')}
+          aria-pressed={selectedId === ''}
           className={cn(
-            "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-            selectedId === '' ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-100 text-gray-700"
+            "w-full flex items-center justify-between gap-2 border border-transparent text-left px-3 py-2 rounded-lg text-sm transition-colors",
+            selectedId === '' ? (deYellow ? "bg-gray-100 border-2 border-gray-500 text-gray-950 font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
           )}>
 
-          Unassigned
+          <span>Unassigned</span>
+          {deYellow && selectedId === '' && <CircleCheck className="w-4 h-4 shrink-0" aria-hidden="true" />}
         </button>
         {availableDrivers.map((d) =>
         <button
           key={d.id}
           onClick={() => setSelectedId(d.id)}
+          aria-pressed={selectedId === d.id}
           className={cn(
-            "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-            selectedId === d.id ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-100 text-gray-700"
+            "w-full flex items-center justify-between gap-2 border border-transparent text-left px-3 py-2 rounded-lg text-sm transition-colors",
+            selectedId === d.id ? (deYellow ? "bg-gray-100 border-2 border-gray-500 text-gray-950 font-medium" : "bg-amber-100 text-amber-800 font-medium") : "hover:bg-gray-100 text-gray-700"
           )}>
 
-            {d.name}
+            <span>{d.name}</span>
+            {deYellow && selectedId === d.id && <CircleCheck className="w-4 h-4 shrink-0" aria-hidden="true" />}
           </button>
         )}
       </div>
       <div className="flex gap-2">
         <button
           onClick={() => onAssign(selectedId)}
-          className="flex-1 flex items-center justify-center gap-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg py-2 transition-colors">
+          className={cn("flex-1 flex items-center justify-center gap-1 text-white text-xs font-semibold rounded-lg py-2 transition-colors", deYellow ? "bg-gray-950 hover:bg-gray-800" : "bg-green-600 hover:bg-green-700")}>
 
           <Check className="w-3.5 h-3.5" /> Confirm
         </button>
@@ -96,7 +109,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl }) {
   );
 }
 
-function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocations = [] }) {
+export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, onSendInvoice, pickupLocations = [], deYellow = false }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   // Per-load pickup details (all delivery truck types)
@@ -105,28 +118,14 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
   job.loads.filter((l) => l.pickup_location_name || l.yards_collected) :
   [];
 
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className={cn(
-        "max-h-[85vh] overflow-y-auto overflow-x-hidden",
-        showActivity ? "sm:max-w-2xl" : "sm:max-w-xl"
-      )}>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {job.job_type === 'pickup' ?
-            <Package className="w-5 h-5 text-amber-600" /> :
-            <Truck className="w-5 h-5 text-blue-600" />
-            }
-            {job.job_type === 'pickup' ? 'Pickup Job' : 'Delivery Job'}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3 py-2">
-          <div className="flex items-center justify-between">
-            <Badge className={cn(
-              job.status === 'completed' && "bg-green-100 text-green-700",
-              job.status === 'pending' && "bg-red-100 text-red-700",
-              job.status === 'in_progress' && "bg-yellow-100 text-yellow-700",
-              job.status === 'cancelled' && "bg-gray-100 text-gray-600"
+  const statusDetails = (
+          <div className={deYellow ? "ml-auto flex items-center gap-2 shrink-0" : "flex items-center justify-between"}>
+            <Badge variant={deYellow ? "outline" : "default"} className={cn(
+              deYellow && "border-transparent bg-gray-100 text-gray-700 hover:bg-gray-100 hover:text-gray-700",
+              !deYellow && job.status === 'completed' && "bg-green-100 text-green-700",
+              !deYellow && job.status === 'pending' && "bg-red-100 text-red-700",
+              !deYellow && job.status === 'in_progress' && "bg-yellow-100 text-yellow-700",
+              !deYellow && job.status === 'cancelled' && "bg-gray-100 text-gray-600"
             )}>
               {job.status}
             </Badge>
@@ -134,7 +133,29 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             <span className="text-xs text-gray-500">{TRUCK_LABELS[job.truck_type] || job.truck_type}</span>
             }
           </div>
-          <div className="space-y-2 text-sm">
+  );
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className={cn(
+        "max-h-[85vh] overflow-y-auto overflow-x-hidden",
+        showActivity ? "sm:max-w-2xl" : "sm:max-w-xl"
+      )}>
+        <DialogHeader className={deYellow ? "flex-row flex-wrap items-center justify-between gap-3 space-y-0 pr-7" : undefined}>
+          <DialogTitle className="flex items-center gap-2">
+            {job.job_type === 'pickup' ?
+            <Package className={deYellow ? "w-5 h-5 text-gray-600" : "w-5 h-5 text-amber-600"} /> :
+            <Truck className={deYellow ? "w-5 h-5 text-gray-600" : "w-5 h-5 text-blue-600"} />
+            }
+            {job.job_type === 'pickup' ? 'Pickup Job' : 'Delivery Job'}
+          </DialogTitle>
+          {deYellow && statusDetails}
+        </DialogHeader>
+        <div className={deYellow ? "space-y-3" : "space-y-3 py-2"}>
+          {!deYellow && statusDetails}
+          <div className={deYellow
+            ? cn("text-sm", DETAIL_ROWS)
+            : "space-y-2 text-sm"}>
             <div className="flex items-start gap-2">
               <MapPin className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
               <div>
@@ -145,7 +166,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             </div>
             {job.job_type === 'pickup' && job.dropoff_location_name && (
               <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                <MapPin className={deYellow ? "w-4 h-4 text-gray-500 mt-0.5 shrink-0" : "w-4 h-4 text-amber-500 mt-0.5 shrink-0"} />
                 <div>
                   <p className="text-xs text-gray-400">Drop-Off Location</p>
                   <p className="font-semibold text-gray-900">{job.dropoff_location_name}</p>
@@ -174,23 +195,23 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             </div>
             <div className="text-gray-700">
               <span className="font-medium">{job.quantity} load{job.quantity !== 1 ? 's' : ''}</span>
-              {job.load_configuration && <span className="text-gray-500 ml-1">— {job.load_configuration}</span>}
+              {job.load_configuration && <span className="text-gray-500 ml-1">- {job.load_configuration}</span>}
             </div>
             {job.dispatcher_notes &&
-            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
-                <p className="text-xs text-amber-800 font-medium mb-1">Notes</p>
-                <p className="text-sm text-amber-900">{job.dispatcher_notes}</p>
+            <div className={deYellow ? "bg-gray-50 border border-gray-100 rounded-lg p-3" : "bg-amber-50 border border-amber-100 rounded-lg p-3"}>
+                <p className={deYellow ? "text-xs text-gray-800 font-medium mb-1" : "text-xs text-amber-800 font-medium mb-1"}>Notes</p>
+                <p className={deYellow ? "text-sm text-gray-900" : "text-sm text-amber-900"}>{job.dispatcher_notes}</p>
               </div>
             }
             {/* Josh per-load pickup details */}
             {perLoadDetails.length > 0 &&
-            <div className="border border-blue-100 rounded-lg overflow-hidden max-w-full overflow-x-auto">
-                <div className="bg-blue-50 px-3 py-2">
-                  <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Load Pickup Details</p>
+            <div className={deYellow ? "border border-gray-100 rounded-lg overflow-hidden max-w-full overflow-x-auto" : "border border-blue-100 rounded-lg overflow-hidden max-w-full overflow-x-auto"}>
+                <div className={deYellow ? "bg-gray-50 px-3 py-2" : "bg-blue-50 px-3 py-2"}>
+                  <p className={deYellow ? "text-xs font-semibold text-gray-800 uppercase tracking-wide" : "text-xs font-semibold text-blue-800 uppercase tracking-wide"}>Load Pickup Details</p>
                 </div>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-blue-100">
+                    <tr className={deYellow ? "border-b border-gray-100" : "border-b border-blue-100"}>
                       <th className="text-left px-3 py-1.5 text-gray-500 font-medium">Load</th>
                       <th className="text-left px-3 py-1.5 text-gray-500 font-medium">Pickup Location</th>
                       <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Yards</th>
@@ -200,8 +221,8 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
                     {perLoadDetails.map((l, idx) =>
                   <tr key={l.load_number} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                         <td className="px-3 py-2 font-medium text-gray-700">Load {l.load_number}</td>
-                        <td className="px-3 py-2 text-gray-700">{l.pickup_location_name || '—'}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-amber-700">{l.yards_collected ? `${l.yards_collected} yds` : '—'}</td>
+                        <td className="px-3 py-2 text-gray-700">{l.pickup_location_name || '-'}</td>
+                        <td className={deYellow ? "px-3 py-2 text-right font-semibold text-gray-700" : "px-3 py-2 text-right font-semibold text-amber-700"}>{l.yards_collected ? `${l.yards_collected} yds` : '-'}</td>
                       </tr>
                   )}
                   </tbody>
@@ -215,19 +236,17 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
             <JobActivityTimeline job={job} />
           </div>
         }
-        <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
-          <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className="text-red-600 border-red-300 hover:bg-red-50">
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete
+        <div className={cn('flex flex-wrap items-center justify-end pt-2', deYellow ? 'gap-1.5' : 'gap-3', deYellow && DETAIL_FOOTER)}>
+          <Button variant="outline" size={deYellow ? 'sm' : 'default'} aria-label="Delete job" title="Delete job" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? 'mr-auto gap-1 px-2 text-gray-600 border-gray-300 hover:bg-transparent hover:text-red-600 hover:border-red-600' : 'text-red-600 border-red-300 hover:bg-red-50'}>
+            <Trash2 className="w-4 h-4" />Delete
           </Button>
-          <Button variant="outline" onClick={() => setShowActivity((v) => !v)}>
-            <History className="w-4 h-4 mr-2" />
-            {showActivity ? 'Hide Detail' : 'More Detail'}
+          {onSendInvoice && job.job_type === 'delivery' && job.customer_id && job.status !== 'cancelled' && <Button size="sm" variant="outline" className="gap-1 px-2 border-gray-300 bg-transparent text-gray-900 shadow-none hover:bg-gray-200 hover:text-gray-950" onClick={() => {onClose();onSendInvoice(job);}}><DollarSign className="w-4 h-4" /> Send Invoice</Button>}
+          <Button size={deYellow ? "sm" : "default"} variant="outline" className={deYellow ? "gap-1 px-2" : undefined} onClick={() => setShowActivity(v => !v)}>
+            <History className="w-4 h-4" />{showActivity ? 'Hide Details' : 'More Details'}
           </Button>
-          <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button onClick={() => {onClose();onEdit(job);}} className="bg-amber-600 hover:bg-amber-700">
-            <Edit className="w-4 h-4 mr-2" />
-            Edit Job
+          {!deYellow && <Button variant="outline" onClick={onClose}>Close</Button>}
+          <Button size={deYellow ? "sm" : "default"} onClick={() => {onClose();onEdit(job);}} className={cn(deYellow && 'gap-1 px-2', deYellow ? 'bg-gray-950 hover:bg-gray-800' : 'bg-amber-600 hover:bg-amber-700')}>
+            <Edit className="w-4 h-4" /> Edit Job
           </Button>
         </div>
       </DialogContent>
@@ -239,7 +258,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={onDelete} className="bg-red-600 hover:bg-red-700">Confirm Delete</AlertDialogAction>
+            <AlertDialogAction onClick={onDelete} className={deYellow ? "bg-gray-600 hover:bg-gray-700" : "bg-red-600 hover:bg-red-700"}>Confirm Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -248,7 +267,7 @@ function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocation
 }
 
 // Individual job card in the weekly grid
-function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, onAssigned, editMode = false, isSelected = false, onToggleSelect }) {
+function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, onAssigned, editMode = false, isSelected = false, onToggleSelect, deYellow = false, invoiced = false, onSendInvoice }) {
   const [showAssign, setShowAssign] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -277,7 +296,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
   };
 
   const handleInvoice = async (value) => {
-    // Clicking the currently-selected button is a no-op — every delivery job
+    // Clicking the currently-selected button is a no-op - every delivery job
     // must always be either 'yes' or 'no', never null.
     if (job.invoice_sent === value) return;
     const markerName =
@@ -308,7 +327,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
             "bg-green-50 border-green-200 text-green-800" :
             job.status === 'in_progress' ?
             "bg-yellow-50 border-yellow-200 text-yellow-900" :
-            "bg-gray-50 border-gray-200 text-gray-800",
+            deYellow ? "bg-gray-100 border-gray-200 text-gray-800" : "bg-gray-50 border-gray-200 text-gray-800",
             isAdmin && "cursor-pointer hover:shadow-md transition-shadow",
             editMode && isSelected && "ring-2 ring-blue-500 ring-offset-1"
           )}>
@@ -329,8 +348,8 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
           {/* Type row */}
           <div className="flex items-center gap-1 mb-1">
             {job.job_type === 'pickup' ?
-            <Package className="w-2.5 h-2.5 text-amber-600 shrink-0" /> :
-            <Truck className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+            <Package className={cn("w-2.5 h-2.5 shrink-0", "text-amber-600")} /> :
+            <Truck className={cn("w-2.5 h-2.5 shrink-0", "text-blue-600")} />
             }
             <span className={cn(
               "font-bold uppercase text-[9px]",
@@ -338,6 +357,11 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
             )}>
               {job.job_type}
             </span>
+            {deYellow && hasNotes && (
+              <span className="inline-flex items-center gap-0.5 bg-black text-white text-[8px] px-1 py-0.5 rounded font-semibold">
+                <StickyNote className="w-2 h-2" /> NOTE
+              </span>
+            )}
             {job.truck_type &&
             <span className="text-gray-400 text-[9px] ml-auto">{TRUCK_LABELS[job.truck_type]}</span>
             }
@@ -379,8 +403,9 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 
 
-          {/* Notes pill + Invoice toggle row */}
-          {isAdmin && !editMode && (hasNotes || job.job_type === 'delivery') &&
+          {/* Notes pill + Invoice toggle row (V1 only - V2 moves NOTE to the
+              type row and shows the INVOICED badge instead of Yes/No) */}
+          {!deYellow && isAdmin && !editMode && (hasNotes || job.job_type === 'delivery') &&
           <div
             className="mt-1.5 flex items-center justify-between border-t pt-1.5"
             onClick={(e) => e.stopPropagation()}>
@@ -427,26 +452,51 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
             </div>
           }
 
-          {/* Assign button */}
-          {isAdmin && !editMode && job.status !== 'cancelled' && job.status !== 'completed' &&
-          <button
-            onClick={(e) => {e.stopPropagation();setAnchorEl(e.currentTarget);setShowAssign((v) => !v);}}
-            className={cn(
-              "mt-1.5 w-full flex items-center justify-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold transition-colors",
-              driver ?
-              "bg-gray-100 hover:bg-gray-200 text-gray-600" :
-              "bg-amber-100 hover:bg-amber-200 text-amber-800"
-            )}>
-
-              <UserPlus className="w-2.5 h-2.5" />
-              {driver ? 'Reassign' : 'Assign'}
-            </button>
-          }
+          {/* Bottom row. V1: the full-width Assign button. V2 (deYellow):
+              Assign/Reassign on the left, INVOICED badge on the right. */}
+          {deYellow ? (
+            (((isAdmin && !editMode && job.status !== 'cancelled' && job.status !== 'completed')) || invoiced) && (
+              <div className="mt-1.5 flex items-center justify-between gap-1" onClick={(e) => e.stopPropagation()}>
+                {isAdmin && !editMode && job.status !== 'cancelled' && job.status !== 'completed' ? (
+                  <button
+                    onClick={(e) => {e.stopPropagation();setAnchorEl(e.currentTarget);setShowAssign((v) => !v);}}
+                    className={cn(
+                      "flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold transition-colors",
+                      driver ?
+                      "bg-gray-200 hover:bg-gray-300 text-gray-600" :
+                      "bg-blue-200 hover:bg-blue-300 text-blue-700"
+                    )}>
+                    <UserPlus className="w-2.5 h-2.5" />
+                    {driver ? 'Reassign' : 'Assign'}
+                  </button>
+                ) : <span />}
+                {invoiced && (
+                  <span className={cn("inline-flex items-center gap-0.5 text-white text-[9px] px-1.5 py-0.5 rounded font-semibold", "bg-green-600")}>
+                    <Receipt className="w-2.5 h-2.5" /> INVOICED
+                  </span>
+                )}
+              </div>
+            )
+          ) : (
+            isAdmin && !editMode && job.status !== 'cancelled' && job.status !== 'completed' &&
+            <button
+              onClick={(e) => {e.stopPropagation();setAnchorEl(e.currentTarget);setShowAssign((v) => !v);}}
+              className={cn(
+                "mt-1.5 w-full flex items-center justify-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold transition-colors",
+                driver ?
+                "bg-gray-100 hover:bg-gray-200 text-gray-600" :
+                "bg-amber-100 hover:bg-amber-200 text-amber-800"
+              )}>
+                <UserPlus className="w-2.5 h-2.5" />
+                {driver ? 'Reassign' : 'Assign'}
+              </button>
+          )}
         </div>
 
-        {/* Assign popup — rendered via portal */}
+        {/* Assign popup - rendered via portal */}
         {showAssign &&
         <AssignPopup
+          deYellow={deYellow}
           job={job}
           drivers={drivers}
           onAssign={handleAssign}
@@ -459,11 +509,13 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
       {/* Detail popup */}
       {showDetail && isAdmin &&
       <JobDetailPopup
+        deYellow={deYellow}
         job={job}
         driver={driver}
         pickupLocations={pickupLocations}
         onClose={() => setShowDetail(false)}
         onEdit={(j) => {setShowDetail(false);onEditJob(j);}}
+        onSendInvoice={onSendInvoice}
         onDelete={handleDelete} />
 
       }
@@ -471,7 +523,11 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 
 }
 
-export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin }) {
+// `weekAnchor` (optional, 'yyyy-MM-dd'): a parent-controlled week - the board
+// follows it while its own internal nav keeps working. Absent = V1 behavior.
+// `deYellow` (optional): V2 boards pass it to swap the amber accents for
+// gray/blue; V1 renders exactly as before without it.
+export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin, weekAnchor = null, deYellow = false, invoicedIds = null, onSendInvoice }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [filterDriver, setFilterDriver] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -479,6 +535,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const [editMode, setEditMode] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [mobileSelectedDate, setMobileSelectedDate] = useState(new Date());
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState(new Set());
   const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [deleteProgress, setDeleteProgress] = useState(null); // null | { current, total, done }
@@ -486,6 +543,13 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const [moveToDate, setMoveToDate] = useState('');
   const [dragOverDay, setDragOverDay] = useState(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!weekAnchor) return;
+    const target = startOfWeek(new Date(weekAnchor + 'T00:00:00'), { weekStartsOn: 1 });
+    const current = startOfWeek(new Date(), { weekStartsOn: 1 });
+    setWeekOffset(Math.round((target - current) / (7 * 86400000)));
+  }, [weekAnchor]);
 
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const weekDays = DAYS.map((_, i) => addDays(weekStart, i));
@@ -652,7 +716,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   const weekLabel = () => {
     if (weekOffset === 0) return 'This Week';
     if (weekOffset === 1) return 'Next Week';
-    return `${format(weekStart, 'MMM d')}–${format(addDays(weekStart, 4), 'MMM d')}`;
+    return `${format(weekStart, 'MMM d')}-${format(addDays(weekStart, 4), 'MMM d')}`;
   };
 
   const activeDrivers = drivers.filter((d) => d.active && d.role === 'driver');
@@ -660,72 +724,91 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
   return (
     <div className="bg-white rounded-xl border flex flex-col flex-1 lg:min-h-0">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b gap-3">
+      <div className="flex flex-row items-center justify-between px-4 py-2.5 lg:py-3 border-b gap-2">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-gray-800 text-sm">Weekly View</h2>
-          {/* Mobile calendar button */}
+          {/* Week controls drive the desktop columns only - hidden on mobile */}
+          <h2 className="hidden lg:block font-semibold text-gray-800 text-sm">Weekly View</h2>
+          {/* Mobile: the calendar picker is how you choose the day */}
           <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 lg:hidden"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs lg:hidden text-amber-700 border-amber-300"
             onClick={() => setShowCalendar(true)}
           >
-            <CalendarDays className="w-4 h-4 text-amber-600" />
+            <CalendarDays className="w-4 h-4 mr-1.5 text-amber-600" />
+            Pick a day
           </Button>
-          <span className="text-sm text-gray-500 font-medium">{weekLabel()}</span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((w) => w - 1)}>
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((w) => w + 1)}>
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-          {weekOffset !== 0 &&
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setWeekOffset(0)}>
-              Today
+          <div className="hidden lg:flex items-center gap-2">
+            <span className="text-sm text-gray-500 font-medium">{weekLabel()}</span>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((w) => w - 1)}>
+              <ChevronLeft className="w-4 h-4" />
             </Button>
-          }
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setWeekOffset((w) => w + 1)}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            {weekOffset !== 0 &&
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setWeekOffset(0)}>
+                Today
+              </Button>
+            }
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {!editMode ? (
             <>
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                <Input
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 text-xs pl-7 w-44"
-                />
+              {/* Mobile: filters collapsed behind one button */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs lg:hidden relative"
+                onClick={() => setShowMobileFilters((v) => !v)}
+              >
+                <Filter className="w-3.5 h-3.5 mr-1.5" />
+                Filters
+                {(searchQuery.trim() || filterDriver !== 'all' || filterType !== 'all') && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full" />
+                )}
+              </Button>
+              <div className="hidden lg:flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                  <Input
+                    placeholder="Search..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-7 text-xs pl-7 w-44"
+                  />
+                </div>
+                <Filter className="w-3.5 h-3.5 text-gray-400" />
+                <Select value={filterDriver} onValueChange={setFilterDriver}>
+                  <SelectTrigger className="h-7 text-xs w-36">
+                    <SelectValue placeholder="All Drivers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Drivers</SelectItem>
+                    {activeDrivers.map((d) =>
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                <Select value={filterType} onValueChange={setFilterType}>
+                  <SelectTrigger className="h-7 text-xs w-36">
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="straight_truck">Straight Truck</SelectItem>
+                    <SelectItem value="semi">Semi</SelectItem>
+                    <SelectItem value="spreader">Spreader</SelectItem>
+                  </SelectContent>
+                </Select>
+                {isAdmin && (
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={toggleEditMode}>
+                    <CheckSquare className="w-3.5 h-3.5 mr-1" />
+                    Edit
+                  </Button>
+                )}
               </div>
-              <Filter className="w-3.5 h-3.5 text-gray-400" />
-              <Select value={filterDriver} onValueChange={setFilterDriver}>
-                <SelectTrigger className="h-7 text-xs w-36">
-                  <SelectValue placeholder="All Drivers" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Drivers</SelectItem>
-                  {activeDrivers.map((d) =>
-                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="h-7 text-xs w-36">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="straight_truck">Straight Truck</SelectItem>
-                  <SelectItem value="semi">Semi</SelectItem>
-                  <SelectItem value="spreader">Spreader</SelectItem>
-                </SelectContent>
-              </Select>
-              {isAdmin && (
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={toggleEditMode}>
-                  <CheckSquare className="w-3.5 h-3.5 mr-1" />
-                  Edit
-                </Button>
-              )}
             </>
           ) : (
             <>
@@ -785,6 +868,54 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
           )}
         </div>
       </div>
+
+      {/* Mobile filter panel (collapsed by default) */}
+      {showMobileFilters && !editMode && (
+        <div className="lg:hidden px-4 py-3 border-b bg-gray-50 space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search this day..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 text-sm pl-8"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select value={filterDriver} onValueChange={setFilterDriver}>
+              <SelectTrigger className="h-9 text-sm flex-1">
+                <SelectValue placeholder="All Drivers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Drivers</SelectItem>
+                {activeDrivers.map((d) =>
+                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="h-9 text-sm flex-1">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="straight_truck">Straight Truck</SelectItem>
+                <SelectItem value="semi">Semi</SelectItem>
+                <SelectItem value="spreader">Spreader</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(searchQuery.trim() || filterDriver !== 'all' || filterType !== 'all') && (
+            <button
+              type="button"
+              className="text-xs text-amber-700 font-medium"
+              onClick={() => { setSearchQuery(''); setFilterDriver('all'); setFilterType('all'); }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Mobile single-day view */}
       {mobileSelectedDate && (() => {
@@ -846,7 +977,10 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                   drivers={drivers}
                   pickupLocations={pickupLocations}
                   isAdmin={isAdmin}
+                                  deYellow={deYellow}
+                                  invoiced={!!(invoicedIds && invoicedIds.has(job.id))}
                   onEditJob={onEditJob}
+                  onSendInvoice={onSendInvoice}
                   editMode={false}
                   isSelected={false}
                 />
@@ -879,7 +1013,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
         </div>
       )}
 
-      {/* Day Columns — hidden on mobile always, shown on desktop */}
+      {/* Day Columns - hidden on mobile always, shown on desktop */}
       <div className={mobileSelectedDate ? 'hidden lg:flex lg:flex-col lg:flex-1 lg:min-h-0' : 'hidden lg:flex lg:flex-col lg:flex-1 lg:min-h-0'}>
       {/* Day Columns */}
       <DragDropContext
@@ -900,13 +1034,13 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                 {/* Day Header */}
                 <div className={cn(
                   "flex items-center justify-between px-2 py-2 border-b shrink-0",
-                  isCurrentDay ? "bg-amber-50" : "bg-gray-50"
+                  isCurrentDay ? (deYellow ? "bg-gray-200" : "bg-amber-50") : "bg-gray-50"
                 )}>
                   <div className="flex items-baseline gap-2 min-w-0">
-                    <p className="text-amber-700 text-base font-semibold">
+                    <p className={cn("text-base font-semibold", deYellow ? "text-gray-700" : "text-amber-700")}>
                       {DAYS[i]}
                     </p>
-                    <p className={cn("text-sm font-bold", isCurrentDay ? "text-amber-800" : "text-gray-800")}>
+                    <p className={cn("text-sm font-bold", isCurrentDay ? (deYellow ? "text-gray-900" : "text-amber-800") : "text-gray-800")}>
                       {format(day, 'd')}
                     </p>
                     {dayJobs.length > 0 && (() => {
@@ -928,7 +1062,12 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                       </button>
                     <button
                       onClick={() => onAddJob(dateStr)}
-                      className="w-6 h-6 rounded-full bg-amber-500 hover:bg-amber-600 text-white flex items-center justify-center transition-colors"
+                      className={cn(
+                        "w-6 h-6 rounded-full flex items-center justify-center transition-colors",
+                        deYellow
+                          ? "bg-white border border-gray-300 hover:bg-gray-50 text-black"
+                          : "bg-amber-500 hover:bg-amber-600 text-white"
+                      )}
                       title={`Add job on ${format(day, 'MMM d')}`}>
                         <Plus className="w-3.5 h-3.5" />
                       </button>
@@ -936,7 +1075,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                   }
                 </div>
 
-                {/* Jobs — droppable zone */}
+                {/* Jobs - droppable zone */}
                 <Droppable droppableId={dateStr} isDropDisabled={!isAdmin || editMode}>
                   {(provided, snapshot) => (
                     <div
@@ -952,7 +1091,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                       )}
                     >
                       {dayJobs.length === 0 && !snapshot.isDraggingOver ?
-                        <p className="text-xs text-gray-300 text-center pt-6">—</p> :
+                        <p className="text-xs text-gray-300 text-center pt-6">-</p> :
                         dayJobs.map((job, index) =>
                           <Draggable
                             key={job.id}
@@ -975,7 +1114,10 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                                   drivers={drivers}
                                   pickupLocations={pickupLocations}
                                   isAdmin={isAdmin}
+                                  deYellow={deYellow}
+                                  invoiced={!!(invoicedIds && invoicedIds.has(job.id))}
                                   onEditJob={onEditJob}
+                  onSendInvoice={onSendInvoice}
                                   editMode={editMode}
                                   isSelected={selectedJobIds.has(job.id)}
                                   onToggleSelect={toggleSelectJob}

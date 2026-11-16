@@ -1,3 +1,4 @@
+import VersionSwitch from '@/components/VersionSwitch';
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -14,7 +15,7 @@ export default function Layout({ children, currentPageName }) {
   // Pages without layout (full screen)
   const noLayoutPages = ['DriverLogin', 'DriverDashboard', 'Wallboard'];
 
-  // Redirect to login when no renewable session exists (guarded pages only —
+  // Redirect to login when no renewable session exists (guarded pages only -
   // the full-screen pages handle their own auth)
   useEffect(() => {
     if (!noLayoutPages.includes(currentPageName)) ensureAuthenticated();
@@ -95,6 +96,7 @@ export default function Layout({ children, currentPageName }) {
         </nav>
 
         <div className="p-4 border-t space-y-1">
+          <VersionSwitch />
           {isLoggedIn ? (
             <>
               {driverName && (
@@ -149,6 +151,7 @@ export default function Layout({ children, currentPageName }) {
                 <NavContent onItemClick={() => setSheetOpen(false)} />
               </nav>
               <div className="p-4 border-t space-y-1">
+                <VersionSwitch onNavigate={() => setSheetOpen(false)} />
                 {isLoggedIn ? (
                   <>
                     {driverName && (

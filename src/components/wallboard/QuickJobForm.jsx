@@ -94,7 +94,7 @@ export default function QuickJobForm({ date, drivers, customers, pickupLocations
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            New Job – {format(parseISO(date), 'EEEE, MMM d')}
+            New Job - {format(parseISO(date), 'EEEE, MMM d')}
           </DialogTitle>
         </DialogHeader>
 

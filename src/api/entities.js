@@ -1,3 +1,6 @@
+import { notifyEntityChange } from '@/lib/entityChanges'
+import { validateContactFields } from '@/lib/contactValidation'
+import { v2ReadOnly } from '@/lib/v2Release'
 import { supabase } from './supabaseClient'
 
 // ---------------------------------------------------------------------------
@@ -14,7 +17,7 @@ function parseSort(sortField) {
 }
 
 // ---------------------------------------------------------------------------
-// Known columns per table — used to strip unknown fields before insert/update.
+// Known columns per table - used to strip unknown fields before insert/update.
 // Base44 SDK silently ignored unknown fields; Supabase/PostgREST rejects them.
 // ---------------------------------------------------------------------------
 const TABLE_COLUMNS = {
@@ -22,24 +25,28 @@ const TABLE_COLUMNS = {
     'id','job_type','truck_type','scheduled_date','assigned_driver_id','assigned_driver_name',
     'assigned_driver_pickup_role','customer_id','customer_company_name','pickup_location_id',
     'dropoff_location_id','dropoff_location_name','location_name','address','phone','quantity',
-    'pickup_yards','delivery_yards','yards_collected','load_configuration','loads','sort_order',
+    'pickup_yards','delivery_yards','yards_collected','load_configuration','loads','sort_order','item_id',
     'status','dispatcher_notes','driver_notes','invoice_sent','payment_collected',
     'invoice_marked_by','invoice_marked_at','payment_marked_by','payment_marked_at',
     'completed_at','deleted_at','created_date','updated_date',
   ],
   drivers: [
     'id','username','name','phone','role','driver_type','pickup_role',
-    'active','last_login_at','created_date','updated_date',
+    'active','last_login_at','avatar_url','created_date','updated_date',
   ],
   customers: [
-    'id','name','company_name','street_address','city','state','country','zip_code',
-    'phone','map_image_url','delivery_instructions','created_date','updated_date',
+    'id','name','company_name','street_address','city','state','country','zip_code','active',
+    'billing_preference','phone','email','map_image_url','delivery_instructions','created_date','updated_date',
+    'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
   ],
   pickup_locations: [
     'id','name','phone','address','assigned_drivers','location_type','created_date','updated_date',
+    'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
+    'pickup_days','pickups_per_day','pickup_schedule_notes',
   ],
   drop_off_locations: [
     'id','name','address','notes','created_date','updated_date',
+    'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
   ],
   driver_sessions: [
     'id','driver_id','device_id','last_used_at','expires_at','created_date','updated_date',
@@ -48,7 +55,23 @@ const TABLE_COLUMNS = {
     'id','driver_id','message','read','created_date','updated_date',
   ],
   settings: [
-    'id','truck_yard_presets','recurring_interval_presets','created_date','updated_date',
+    'id','truck_yard_presets','recurring_interval_presets','company_profile','created_date','updated_date',
+  ],
+  // QuickBooks item catalog - qb_* columns are stamped by the server sync,
+  // the rest is office-editable (name/price edits push to QBO in Phase 3).
+  items: [
+    'id','name','description','unit_price','item_type','yards','truck_type',
+    'is_load_item','active','sort_order','display_label','created_date','updated_date',
+    'qb_id','qb_sync_token','qb_last_synced_at',
+  ],
+  customer_item_prices: [
+    'id','customer_id','item_id','price','is_default','notes','created_date','updated_date',
+  ],
+  // Invoice history - QuickBooks import now, app-created invoices later.
+  invoices: [
+    'id','customer_id','qb_customer_id','qb_id','qb_sync_token','doc_number',
+    'txn_date','due_date','total','balance','status','lines','source',
+    'billing_address','billing_customer_id','billing_mode','job_id','note','sent_at','edited_at','emailed_at','texted_at','created_date','updated_date','qb_archived',
   ],
   log_entries: [
     'id','timestamp','level','message','category','user_id','details','created_date','updated_date',
@@ -59,9 +82,9 @@ const TABLE_COLUMNS = {
   ],
 }
 
-// UUID foreign key columns — empty strings must become null
+// UUID foreign key columns - empty strings must become null
 const UUID_COLUMNS = new Set([
-  'assigned_driver_id','customer_id','pickup_location_id','dropoff_location_id','driver_id',
+  'assigned_driver_id','customer_id','pickup_location_id','dropoff_location_id','driver_id','item_id','job_id',
 ])
 
 /**
@@ -71,6 +94,7 @@ const UUID_COLUMNS = new Set([
  * 3. Strip undefined values
  */
 function sanitize(tableName, record) {
+  validateContactFields(record)
   const allowed = TABLE_COLUMNS[tableName]
   const clean = {}
   for (const [key, value] of Object.entries(record)) {
@@ -89,10 +113,33 @@ function sanitize(tableName, record) {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-geocoding: whenever an address is created or edited, ask the
+// geocode-address edge function (server-side Google key) to refresh the
+// record's coordinates. Fire-and-forget - a failed geocode never blocks or
+// breaks the save; the record just keeps its REVIEW/stale state.
+// ---------------------------------------------------------------------------
+const GEOCODE_FIELDS = {
+  customers: ['street_address', 'city', 'state', 'zip_code'],
+  pickup_locations: ['address'],
+  drop_off_locations: ['address'],
+}
+
+function maybeGeocode(tableName, recordId, payload) {
+  const fields = GEOCODE_FIELDS[tableName]
+  if (!fields || !recordId) return
+  if (!fields.some(f => f in payload)) return
+  // Skip when the write itself carries coordinates (imports/scripts).
+  if ('latitude' in payload) return
+  supabase.functions
+    .invoke('geocode-address', { body: { table: tableName, id: recordId } })
+    .catch(() => {})
+}
+
+// ---------------------------------------------------------------------------
 // PostgREST silently caps every SELECT response at 1000 rows even when a
 // larger `.limit()` is requested. To actually fetch more, we have to issue
 // successive `.range(from, to)` requests in chunks of 1000 and stitch them
-// together. `fetchPaginated` does that — it stops as soon as a chunk comes
+// together. `fetchPaginated` does that - it stops as soon as a chunk comes
 // back short (end of table) or we hit the caller's requested limit.
 // ---------------------------------------------------------------------------
 const POSTGREST_CHUNK = 1000
@@ -122,7 +169,7 @@ async function fetchPaginated(buildQuery, limit) {
 // ---------------------------------------------------------------------------
 // Factory: createEntity(tableName)
 // Returns an object with list, filter, create, update, delete, bulkCreate,
-// and subscribe — matching the Base44 SDK interface.
+// and subscribe - matching the Base44 SDK interface.
 // ---------------------------------------------------------------------------
 function createEntity(tableName) {
   return {
@@ -177,6 +224,9 @@ function createEntity(tableName) {
         .single()
 
       if (error) throw error
+      maybeGeocode(tableName, created?.id, sanitize(tableName, data))
+      kickQuickBooks(tableName)
+      notifyEntityChange(tableName)
       return created
     },
 
@@ -195,6 +245,9 @@ function createEntity(tableName) {
         .single()
 
       if (error) throw error
+      maybeGeocode(tableName, id, sanitize(tableName, data))
+      kickQuickBooks(tableName)
+      notifyEntityChange(tableName)
       return updated
     },
 
@@ -204,12 +257,16 @@ function createEntity(tableName) {
      * @returns {Promise<void>}
      */
     async delete(id) {
+      if(!v2ReadOnly(import.meta.env) && window.location.pathname.startsWith('/v2') && ['customers','invoices'].includes(tableName)) {
+        return this.update(id,tableName==='customers'?{active:false}:{qb_archived:true})
+      }
       const { error } = await supabase
         .from(tableName)
         .delete()
         .eq('id', id)
 
       if (error) throw error
+      notifyEntityChange(tableName)
     },
 
     /**
@@ -224,6 +281,12 @@ function createEntity(tableName) {
         .select()
 
       if (error) throw error
+      // Stagger the geocode calls so a big CSV import doesn't burst-fire.
+      // (PostgREST returns inserted rows in input order.)
+      ;(data || []).forEach((created, i) => {
+        setTimeout(() => maybeGeocode(tableName, created?.id, sanitize(tableName, records[i] || {})), i * 400)
+      })
+      notifyEntityChange(tableName)
       return data || []
     },
 
@@ -232,8 +295,8 @@ function createEntity(tableName) {
      * Calls `callback()` on any INSERT, UPDATE, or DELETE so the consumer
      * can refetch data (matches Base44 behaviour).
      *
-     * @param {Function} callback — called with no args on every change
-     * @returns {Function} unsubscribe — call to remove the subscription
+     * @param {Function} callback - called with no args on every change
+     * @returns {Function} unsubscribe - call to remove the subscription
      */
     subscribe(callback) {
       const channel = supabase
@@ -256,7 +319,7 @@ function createEntity(tableName) {
 }
 
 // ---------------------------------------------------------------------------
-// File upload — replaces base44.integrations.Core.UploadFile
+// File upload - replaces base44.integrations.Core.UploadFile
 // ---------------------------------------------------------------------------
 async function uploadFile(file) {
   const fileExt = file.name.split('.').pop()
@@ -277,7 +340,7 @@ async function uploadFile(file) {
 }
 
 // ---------------------------------------------------------------------------
-// Edge Function invocation — replaces base44.functions.invoke
+// Edge Function invocation - replaces base44.functions.invoke
 // ---------------------------------------------------------------------------
 async function invokeFn(fnName, payload) {
   const { data, error } = await supabase.functions.invoke(fnName, {
@@ -287,6 +350,14 @@ async function invokeFn(fnName, payload) {
   if (error) throw error
   // Return { data } wrapper to match Base44 SDK convention (callers do res.data)
   return { data }
+}
+
+function kickQuickBooks(table) {
+  if(!v2ReadOnly(import.meta.env) && ['customers','invoices','items'].includes(table)) {
+    // The database queue persists the write; failure to wake the worker cannot
+    // lose it. The independent worker also polls while no browser is open.
+    void invokeFn('qb-sync',{action:'run'}).catch(()=>{});
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +373,9 @@ export const base44 = {
     DriverSession: createEntity('driver_sessions'),
     DriverNotification: createEntity('driver_notifications'),
     Settings: createEntity('settings'),
+    Item: createEntity('items'),
+    CustomerItemPrice: createEntity('customer_item_prices'),
+    Invoice: createEntity('invoices'),
     LogEntry: createEntity('log_entries'),
     JobEvent: createEntity('job_events'),
   },
@@ -314,7 +388,7 @@ export const base44 = {
     invoke: async (fnName, payload) => invokeFn(fnName, payload),
   },
   auth: {
-    // PIN-based auth — read current user from localStorage (set by DriverLogin).
+    // PIN-based auth - read current user from localStorage (set by DriverLogin).
     me: async () => {
       if (typeof window === 'undefined') return null
       const id = window.localStorage.getItem('miller_driver_id')
