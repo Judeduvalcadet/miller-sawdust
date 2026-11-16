@@ -4,7 +4,7 @@ export const VERIFIED_DATA_TOOL={name:'verified_data',description:'Verified look
 export function renderVerifiedData(data:any){
  if(!data||!Array.isArray(data.source)||data.source.length!==Number(data.count)||data.source.length>10000||new Set(data.source.map((r:any)=>r.id)).size!==data.source.length||data.source.some((r:any)=>!r.id))throw new Error('Source coverage verification failed.')
  const parts=String(data.scope || '').split('Filters: ')
- if(parts.length===2){const filters=JSON.parse(parts[1]);data.scope=parts[0]+(filters.length?filters.map((f:any)=>`${f.field.replaceAll('_',' ')} ${{eq:'equals',gte:'on or after',lte:'on or before',contains:'contains',is_null:'is empty'}[f.op] || f.op}${f.op==='is_null'?'':' '+String(f.value)}`).join('; '):'All records, no filters.')}
+ if(parts.length===2){const filters=JSON.parse(parts[1]);data.scope=parts[0]+(filters.length?filters.map((f:any)=>`${f.field.replaceAll('_',' ')} ${({eq:'equals',gte:'on or after',lte:'on or before',contains:'contains',is_null:'is empty'} as Record<string,string>)[f.op] || f.op}${f.op==='is_null'?'':' '+String(f.value)}`).join('; '):'All records, no filters.')}
  if(data.operation==='records'){
   if(data.source.length>100)throw new Error('More than 100 records matched. Narrow the filters to display complete results.')
   // Do not invent totals for source lists, coerce null values to zero, or accept a model-written title.
