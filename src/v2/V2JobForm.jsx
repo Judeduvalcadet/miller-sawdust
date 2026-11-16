@@ -24,10 +24,11 @@ import { JobMapPanel, NewCustomerForm, saveCustomerMapImage } from "@/components
 // V2 job form - QuickBooks-first. The V1 JobForm is untouched; this fork
 // drives each load from the QB item catalog: pick the item and the truck,
 // yardage and job-card label fill themselves. Layout:
-//   Job type        | Scheduled date (one-time / recurring)
+//   Job type        | Truck type
+//   Scheduled date (one-time / recurring)
 //   Customer        | Assign driver
 //   Number of loads |
-//   Load 1..N: pickup location | item, then truck / yards / config label.
+//   Load 1..N: pickup location | item, then yards / config label.
 // No "Invoice required" field: V2 invoicing works from linked invoices, so
 // new jobs are simply saved as not-yet-invoiced for the V1 screens.
 
@@ -155,7 +156,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
         load_number: loadNum,
         pickup_location_name: found?.pickup_location_name || '',
         item_id: found?.item_id || '',
-        truck_type: found?.truck_type || (found ? (job?.truck_type || '') : ''),
+        truck_type: found?.truck_type || job?.truck_type || 'straight_truck',
         yards_collected: found?.yards_collected != null && found?.yards_collected !== '' ? String(found.yards_collected) : '',
         load_configuration: found?.load_configuration || '',
       };
@@ -169,7 +170,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
       const qty = parseInt(formData.quantity) || 1;
       return Array.from({ length: qty }, (_, i) =>
         prev.find((l) => l.load_number === i + 1) ||
-        { load_number: i + 1, pickup_location_name: '', item_id: '', truck_type: '', yards_collected: '', load_configuration: '' });
+        { load_number: i + 1, pickup_location_name: '', item_id: '', truck_type: formData.truck_type, yards_collected: '', load_configuration: '' });
     });
   }, [formData.quantity]);
 
@@ -216,6 +217,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
   const assignedDriver = drivers.find((d) => d.id === formData.assigned_driver_id);
 
   const pickItem = (i, it) => {
+    if (i === 0 && it.truck_type) set('truck_type', it.truck_type);
     setLoad(i, {
       item_id: it.id,
       // Item truck wins; 'any' items leave the choice open.
@@ -428,8 +430,20 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
               </Select>
             </div>
 
-            {/* Scheduled Date + one-time / recurring */}
+            {/* Truck Type - beside Job Type, as in V1 */}
             <div className="space-y-2">
+              <Label>Truck Type</Label>
+              <Select value={isPickup ? formData.truck_type : (loads.find(load => load.truck_type)?.truck_type || formData.truck_type)} onValueChange={v => {
+                set('truck_type', v);
+                if (!isPickup) setLoads(prev => prev.map(load => ({...load, truck_type:v})));
+              }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{TRUCK_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+
+            {/* Scheduled Date + one-time / recurring */}
+            <div className="space-y-2 md:col-span-2 md:w-[calc(50%-0.5rem)]">
               <div className="flex items-center justify-between">
                 <Label>{scheduleType === 'recurring' ? 'Start Date' : 'Scheduled Date'}</Label>
                 {!job?.id && (
@@ -553,33 +567,6 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                 {errors.recurring && <p className="text-xs text-red-500">{errors.recurring}</p>}
               </div>
             )}
-
-            <div className="col-span-1 md:col-span-2 flex flex-wrap gap-3">
-              {isPickup ? <div className="space-y-2 w-44">
-                <Label>Truck Type</Label>
-                <Select value={formData.truck_type} onValueChange={(v) => set('truck_type', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{TRUCK_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </div> : loads.map((load, i) => <div key={load.load_number}>
-                        <div className="space-y-1 w-44 shrink-0">
-                          <Label className="text-xs text-gray-500">{loads.length > 1 ? `Load ${load.load_number} Truck Type` : 'Truck Type'}</Label>
-                          <Select
-                            value={load.truck_type || ''}
-                            onValueChange={(v) => setLoad(i, { truck_type: v })}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder={load.item_id ? 'Choose truck…' : '-'} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TRUCK_TYPES.map((t) => (
-                                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-              </div>)}
-            </div>
 
             {/* Customer (delivery) or Pickup Location (pickup) */}
             {isPickup ? (
