@@ -541,7 +541,7 @@ export default function Reports({ v2 = false }) {
 
         {filteredJobs.length > 0 && (
         <>
-        <div className="grid md:grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,28rem),1fr))] gap-6 mb-6">
           {/* Yards by Pickup Location */}
           <Card>
             <CardHeader className="pb-2">
@@ -567,7 +567,7 @@ export default function Reports({ v2 = false }) {
                     <thead>
                       <tr className="border-b border-gray-100">
                         <th className="text-left text-xs text-gray-500 font-medium pb-1">Location</th>
-                        <th className="text-right text-xs text-gray-500 font-medium pb-1">Yards Collected</th>
+                        <th className="w-px whitespace-nowrap pl-4 text-right text-xs text-gray-500 font-medium pb-1">Yards Collected</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -581,16 +581,16 @@ export default function Reports({ v2 = false }) {
                               className={cn("cursor-pointer", idx % 2 === 0 ? 'bg-gray-50' : 'bg-white', 'hover:bg-amber-50 transition-colors')}
                               onClick={() => setExpandedLocations(p => ({ ...p, [loc.name]: !p[loc.name] }))}
                             >
-                              <td className="py-2 px-1 text-gray-700 flex items-center gap-1">
+                              <td className="py-2 px-1 text-gray-700"><div className="flex items-center gap-1">
                                 {isExpanded ? <ChevronUp className="w-3 h-3 text-gray-400" /> : <ChevronDown className="w-3 h-3 text-gray-400" />}
-                                {loc.name}
-                              </td>
-                              <td className="py-2 px-1 text-right font-semibold text-amber-700">{loc.yards.toLocaleString()} yds</td>
+                                <span className="break-words">{loc.name}</span>
+                              </div></td>
+                              <td className="py-2 px-1 pl-4 whitespace-nowrap text-right font-semibold text-amber-700">{loc.yards.toLocaleString()} yds</td>
                             </tr>
                             {isExpanded && breakdown.map((b) => (
                               <tr key={b.name} className="bg-amber-50/50">
                                 <td className="py-1.5 pl-6 pr-1 text-gray-600 text-xs">↳ {b.name}</td>
-                                <td className="py-1.5 px-1 text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
+                                <td className="py-1.5 px-1 pl-4 whitespace-nowrap text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
                               </tr>
                             ))}
                           </React.Fragment>
@@ -658,8 +658,8 @@ export default function Reports({ v2 = false }) {
                     <thead>
                       <tr className="border-b border-gray-100">
                         <th className="text-left text-xs text-gray-500 font-medium pb-1">Customer</th>
-                        <th className="text-right text-xs text-gray-500 font-medium pb-1">Loads</th>
-                        <th className="text-right text-xs text-gray-500 font-medium pb-1">Yards</th>
+                        <th className="w-px whitespace-nowrap pl-4 text-right text-xs text-gray-500 font-medium pb-1">Loads</th>
+                        <th className="w-px whitespace-nowrap pl-4 text-right text-xs text-gray-500 font-medium pb-1">Yards</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -672,18 +672,18 @@ export default function Reports({ v2 = false }) {
                               className={cn("cursor-pointer", idx % 2 === 0 ? 'bg-gray-50' : 'bg-white', 'hover:bg-blue-50 transition-colors')}
                               onClick={() => setExpandedCustomers(p => ({ ...p, [c.name]: !p[c.name] }))}
                             >
-                              <td className="py-2 px-1 text-gray-700 flex items-center gap-1 truncate max-w-[120px]">
+                              <td className="py-2 px-1 text-gray-700"><div className="flex items-center gap-1">
                                 {isExpanded ? <ChevronUp className="w-3 h-3 text-gray-400 shrink-0" /> : <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" />}
-                                {c.name}
-                              </td>
-                              <td className="py-2 px-1 text-right font-semibold text-blue-700">{c.loads}</td>
-                              <td className="py-2 px-1 text-right font-semibold text-amber-700">{c.yards.toLocaleString()}</td>
+                                <span className="break-words">{c.name}</span>
+                              </div></td>
+                              <td className="py-2 px-1 pl-4 whitespace-nowrap text-right font-semibold text-blue-700">{c.loads}</td>
+                              <td className="py-2 px-1 pl-4 whitespace-nowrap text-right font-semibold text-amber-700">{c.yards.toLocaleString()}</td>
                             </tr>
                             {isExpanded && breakdown.map((b) => (
                               <tr key={b.name} className="bg-blue-50/50">
                                 <td className="py-1.5 pl-6 pr-1 text-gray-600 text-xs">↳ {b.name}</td>
-                                <td className="py-1.5 px-1 text-right text-xs font-semibold text-blue-600">{b.loads} load{b.loads !== 1 ? 's' : ''}</td>
-                                <td className="py-1.5 px-1 text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
+                                <td className="py-1.5 px-1 pl-4 whitespace-nowrap text-right text-xs font-semibold text-blue-600">{b.loads} load{b.loads !== 1 ? 's' : ''}</td>
+                                <td className="py-1.5 px-1 pl-4 whitespace-nowrap text-right text-xs font-semibold text-amber-600">{b.yards.toLocaleString()} yds</td>
                               </tr>
                             ))}
                           </React.Fragment>
