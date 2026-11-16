@@ -18,7 +18,7 @@
 import { service, json, handleOptions, verifyAccessToken } from '../_shared/mod.ts'
 import { runRouteCheck } from '../_shared/route-check.ts'
 
-const MODEL = 'claude-sonnet-5'
+const MODEL = 'claude-haiku-5-5'
 const MAX_TOOL_ROUNDS = 6
 const CONTEXT_MESSAGES = 16      // messages sent to the model
 const STORED_MESSAGES = 80       // messages kept per conversation
