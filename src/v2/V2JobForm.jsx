@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Trash2, History, X, Search, CalendarDays } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -413,46 +414,42 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
         <form onSubmit={handleSubmit} className="space-y-4 flex-1 min-w-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-            {/* Job Type */}
-            <div className="space-y-2">
-              <Label>Job Type</Label>
-              <Select value={formData.job_type} onValueChange={(v) => {
+            <div className="col-span-1 md:col-span-2 flex flex-wrap items-start gap-3">
+            <div className="space-y-2 shrink-0">
+              <Label className="block h-5 leading-5">Job Type: <strong className="font-bold">{isPickup ? 'Pickup' : 'Delivery'}</strong></Label>
+              <ToggleGroup type="single" aria-label="Job Type" value={formData.job_type} onValueChange={v => {
+                if (!v) return;
                 set('job_type', v);
                 set('assigned_driver_id', '');
                 set('pickup_location_id', '');
                 set('customer_id', '');
-              }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="delivery">Delivery</SelectItem>
-                  <SelectItem value="pickup">Pickup</SelectItem>
-                </SelectContent>
-              </Select>
+              }} className="w-fit justify-start gap-1 rounded-lg bg-gray-100 p-[3px]">
+                {[['delivery','Delivery'],['pickup','Pickup']].map(([value,label]) => <ToggleGroupItem key={value} type="button" value={value} className="h-9 w-[72px] shrink-0 rounded-md border border-transparent px-3 text-xs font-medium text-gray-600 hover:bg-gray-200 hover:text-gray-950 data-[state=on]:border-gray-500 data-[state=on]:bg-white data-[state=on]:text-gray-950 data-[state=on]:shadow-sm">{label}</ToggleGroupItem>)}
+              </ToggleGroup>
             </div>
 
-            {/* Truck Type - beside Job Type, as in V1 */}
-            <div className="space-y-2">
-              <Label>Truck Type</Label>
-              <Select value={isPickup ? formData.truck_type : (loads.find(load => load.truck_type)?.truck_type || formData.truck_type)} onValueChange={v => {
+            <div className="space-y-2 shrink-0">
+              <Label className="block h-5 leading-5">Truck Type: <strong className="font-bold">{{straight_truck:'Straight',semi:'Semi',spreader:'Spreader'}[isPickup ? formData.truck_type : (loads.find(load => load.truck_type)?.truck_type || formData.truck_type)]}</strong></Label>
+              <ToggleGroup type="single" aria-label="Truck Type" value={isPickup ? formData.truck_type : (loads.find(load => load.truck_type)?.truck_type || formData.truck_type)} onValueChange={v => {
+                if (!v) return;
                 set('truck_type', v);
                 if (!isPickup) setLoads(prev => prev.map(load => ({...load, truck_type:v})));
-              }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{TRUCK_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
-              </Select>
+              }} className="w-fit justify-start gap-1 rounded-lg bg-gray-100 p-[3px]">
+                {[['straight_truck','Straight'],['semi','Semi'],['spreader','Spreader']].map(([value,label]) => <ToggleGroupItem key={value} type="button" value={value} className="h-9 w-[82px] shrink-0 rounded-md border border-transparent px-[17px] text-xs font-medium text-gray-600 hover:bg-gray-200 hover:text-gray-950 data-[state=on]:border-gray-500 data-[state=on]:bg-white data-[state=on]:text-gray-950 data-[state=on]:shadow-sm">{label}</ToggleGroupItem>)}
+              </ToggleGroup>
             </div>
 
             {/* Scheduled Date + one-time / recurring */}
-            <div className="space-y-2 md:col-span-2 md:w-[calc(50%-0.5rem)]">
-              <div className="flex items-center justify-between">
-                <Label>{scheduleType === 'recurring' ? 'Start Date' : 'Scheduled Date'}</Label>
+            <div className="space-y-2 min-w-[146px] flex-1">
+              <div className="flex min-h-5 flex-wrap items-center justify-between gap-1">
+                <Label className="text-[11px] whitespace-nowrap">{scheduleType === 'recurring' ? 'Start Date' : 'Scheduled Date'}</Label>
                 {!job?.id && (
-                  <div className="flex">
+                  <div className="flex shrink-0">
                     <button
                       type="button"
                       onClick={() => { setScheduleType('one_time'); setErrors((p) => ({ ...p, recurring: '' })); }}
                       className={cn(
-                        "py-0.5 px-2.5 text-[10px] font-medium rounded-l border transition-colors",
+                        "py-0.5 px-1 text-[9px] font-medium rounded-l border transition-colors",
                         scheduleType === 'one_time'
                           ? "bg-gray-950 text-white border-gray-950"
                           : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"
@@ -464,7 +461,7 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                       type="button"
                       onClick={() => { setScheduleType('recurring'); setErrors((p) => ({ ...p, recurring: '' })); }}
                       className={cn(
-                        "py-0.5 px-2.5 text-[10px] font-medium rounded-r border-t border-r border-b transition-colors",
+                        "py-0.5 px-1 text-[9px] font-medium rounded-r border-t border-r border-b transition-colors",
                         scheduleType === 'recurring'
                           ? "bg-gray-950 text-white border-gray-950"
                           : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"
@@ -474,13 +471,14 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                     </button>
                   </div>
                 )}
+
               </div>
               <Popover open={dateOpen} onOpenChange={setDateOpen}>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
                     className={cn(
-                      'flex h-10 w-full items-center justify-between rounded-md border bg-white px-3 py-2 text-sm',
+                      'inline-flex h-[42px] w-full items-center justify-between gap-2 rounded-md border bg-white px-3 py-2 text-sm',
                       errors.scheduled_date ? 'border-red-500' : 'border-input',
                       formData.scheduled_date ? 'text-gray-900' : 'text-gray-400'
                     )}
@@ -506,7 +504,10 @@ export default function V2JobForm({ job, drivers, customers, pickupLocations, dr
                   />
                 </PopoverContent>
               </Popover>
+
               {errors.scheduled_date && <p className="text-xs text-red-500">{errors.scheduled_date}</p>}
+            </div>
+
             </div>
 
             {/* Recurring options */}
