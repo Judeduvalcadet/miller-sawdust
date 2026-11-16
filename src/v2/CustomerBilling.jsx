@@ -14,12 +14,14 @@ import { validateContactFields } from '@/lib/contactValidation';
 export default function CustomerBilling({ customer, jobs }) {
   const cache = useQueryClient();
   const inputId = useId();
-  const [value, setValue] = useState(customer.billing_preference || {mode:'shipping',customer_id:'',address:{}});
+  const [savedValue, setSavedValue] = useState(customer.billing_preference || {mode:'shipping',customer_id:'',address:{}});
+  const [value, setValue] = useState(savedValue);
   const [saved, setSaved] = useState(true);
   const { data: customers = [], isPending, isError } = useQuery({queryKey:['v2-customers'],queryFn:() => base44.entities.Customer.list('name')});
   const job = jobs?.find(j => j.job_type === 'delivery' && j.status !== 'cancelled' && j.address);
   const shipping = job?.address || [customer.street_address,customer.city,customer.state,customer.zip_code].filter(Boolean).join(', ');
   const change = next => { setValue(next); setSaved(false); save.reset(); };
+  const cancel = () => { setValue(savedValue); setSaved(true); save.reset(); };
   const patch = (key, val) => change({...value,address:{...value.address,[key]:val}});
   const save = useMutation({
     mutationFn: async () => {
@@ -28,7 +30,7 @@ export default function CustomerBilling({ customer, jobs }) {
       const preference = value.mode === 'shipping' ? {mode:'shipping'} : value.mode === 'customer' ? {mode:'customer',customer_id:value.customer_id} : {mode:'address',address:payload.billing_address};
       return base44.entities.Customer.update(customer.id,{billing_preference:preference});
     },
-    onSuccess: async () => { await cache.invalidateQueries({queryKey:['v2-customers']}); setSaved(true); },
+    onSuccess: async (updated) => { setSavedValue(updated.billing_preference); setValue(updated.billing_preference); await cache.invalidateQueries({queryKey:['v2-customers']}); setSaved(true); },
   });
   return <div className="p-5 space-y-4">
     <fieldset disabled={save.isPending} className="space-y-4 min-w-0">
@@ -56,6 +58,9 @@ export default function CustomerBilling({ customer, jobs }) {
     </fieldset>
     {save.isError && <p role="alert" className="text-sm text-red-600">{save.error.message}</p>}
     {isError && <p role="alert" className="text-sm text-red-600">Could not load customers. Refresh before saving.</p>}
+    <div className="flex items-center gap-2">
     <Button className={cn('min-w-28', saved ? 'bg-gray-100 text-gray-400 disabled:opacity-100 shadow-none' : 'bg-gray-950 hover:bg-gray-800')} disabled={saved || save.isPending || isPending || isError} onClick={() => save.mutate()}>{save.isPending ? 'Saving...' : saved ? 'Saved' : 'Save Address'}</Button>
+    {!saved && <Button variant="outline" disabled={save.isPending} onClick={cancel}>Cancel</Button>}
+    </div>
   </div>;
 }
