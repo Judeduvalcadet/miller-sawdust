@@ -15,6 +15,7 @@ await page.addInitScript(()=>{ const jwt=`e30.${btoa(JSON.stringify({exp:Math.fl
 await page.route('**/rest/v1/**',async route=>{
  const name=new URL(route.request().url()).pathname.split('/').pop();
  if (name === 'customers' && route.request().method() === 'PATCH') { Object.assign(customer, route.request().postDataJSON()); await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(customer)}); return; }
+ if (name === 'jobs' && route.request().method() === 'PATCH') { Object.assign(job, route.request().postDataJSON()); await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(job)}); return; }
  if(name === 'next_invoice_number') {await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify('TEST-100')});return;}
  if(name === 'invoices' && ['POST','PATCH'].includes(route.request().method())) {savedInvoice={...savedInvoice,...route.request().postDataJSON(),id:job.id};await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(savedInvoice)});return;}
  const data=({jobs:[job],customers:[customer,{id:'payer',name:'Billing person',street_address:'Billing street',active:true}],drivers,items:[item],customer_item_prices:[],invoices:savedInvoice ? [savedInvoice] : [],settings:[],pickup_locations:[],drop_off_locations:[],job_events:[]})[name] || [];
@@ -38,7 +39,18 @@ const box=await menu.boundingBox();assert(box.y>=0 && box.y+box.height<=720,JSON
 const driverList=menu.locator('.overflow-y-auto');
 await driverList.evaluate(el=>el.scrollTop=el.scrollHeight);
 assert(await driverList.evaluate(el=>el.scrollTop>0));
+await menu.getByRole('button',{name:'Driver 34',exact:true}).click();
+await menu.getByRole('button',{name:'Confirm',exact:true}).click();
+await page.getByRole('button',{name:'Reassign',exact:true}).first().waitFor({timeout:5000});
+await page.getByRole('button',{name:'Reassign',exact:true}).first().click();
+await menu.getByRole('button',{name:'Driver 34',exact:true}).waitFor();
+assert.equal(await menu.getByRole('button',{name:'Driver 34',exact:true}).getAttribute('aria-pressed'),'true');
 await page.keyboard.press('Escape');
+// Simulate a notification for a change made by another session, with no local save.
+job.assigned_driver_id = 'driver-33';
+job.assigned_driver_name = 'Driver 33';
+await page.evaluate(async () => { const url = performance.getEntriesByType('resource').map(r => r.name).find(url => url.includes('/src/lib/entityChanges.js')); (await import(url)).notifyEntityChange('jobs'); });
+await page.getByText('Driver 33',{exact:true}).filter({visible:true}).first().waitFor({timeout:5000});
 await page.getByText('Test delivery',{exact:true}).filter({visible:true}).click();
 await page.getByRole('dialog').getByRole('button',{name:'Send Invoice',exact:true}).click();
 await page.getByRole('tab',{name:'SMS',exact:true}).waitFor();

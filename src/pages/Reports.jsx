@@ -1,3 +1,4 @@
+import { useReportData } from '@/components/hooks/useReportData';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/entities';
@@ -209,11 +210,7 @@ function KPICard({ icon: Icon, label, value, suffix, color }) {
 
 // ───────────────────────────────────────────────────────────────────────────
 export default function Reports({ v2 = false }) {
-  const [jobs, setJobs] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [pickupLocations, setPickupLocations] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { jobs, drivers, customers, pickupLocations, isLoading } = useReportData();
 
   // Date range - initialized to MTD on load
   const [dateRange, setDateRange] = useState(() => computePreset('mtd', new Date(), null));
@@ -237,22 +234,7 @@ export default function Reports({ v2 = false }) {
   const PREVIEW_COUNT = 3;
   const EXPANDED_COUNT = 15;
 
-  useEffect(() => {
-    const load = async () => {
-      const [j, d, c, p] = await Promise.all([
-        base44.entities.Job.list('-scheduled_date', 5000),
-        base44.entities.Driver.list(),
-        base44.entities.Customer.list(undefined, 5000),
-        base44.entities.PickupLocation.list(),
-      ]);
-      setJobs(j);
-      setDrivers(d);
-      setCustomers(c);
-      setPickupLocations(p);
-      setIsLoading(false);
-    };
-    load();
-  }, []);
+
 
   // Earliest job date - used for "All Time" preset
   const earliestJobDate = useMemo(() => {

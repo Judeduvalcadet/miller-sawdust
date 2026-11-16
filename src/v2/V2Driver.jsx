@@ -83,7 +83,8 @@ function DriverJobCard({ job, onOpen }) {
 export default function V2Driver() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState('today');
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [selectedJobId, setSelectedJobId] = useState(null);
+  const setSelectedJob = job => setSelectedJobId(job?.id || null);
   const [isUpdating, setIsUpdating] = useState(false);
   const driverId = typeof window !== 'undefined' ? localStorage.getItem('miller_driver_id') : null;
   const driverName = typeof window !== 'undefined' ? (localStorage.getItem('miller_driver_name') || 'Driver') : 'Driver';
@@ -98,6 +99,7 @@ export default function V2Driver() {
     refetchInterval: 30000,
     queryFn: () => base44.entities.Job.filter({ assigned_driver_id: driverId }, '-scheduled_date', 5000),
   });
+  const selectedJob = jobs.find(job => job.id === selectedJobId && !job.deleted_at) || null;
   const { data: pickupLocations = [] } = useQuery({
     queryKey: ['v2-driver-pickups'],
     queryFn: () => base44.entities.PickupLocation.list('name'),
@@ -134,8 +136,8 @@ export default function V2Driver() {
   const handleUpdateJob = async (updates) => {
     setIsUpdating(true);
     try {
-      await base44.entities.Job.update(selectedJob.id, updates);
-      setSelectedJob({ ...selectedJob, ...updates });
+      const updated = await base44.entities.Job.update(selectedJob.id, updates);
+      queryClient.setQueryData(['v2-driver-jobs', driverId], rows => rows?.map(job => job.id === updated.id ? updated : job));
       queryClient.invalidateQueries({ queryKey: ['v2-driver-jobs'] });
     } finally {
       setIsUpdating(false);

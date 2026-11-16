@@ -1,3 +1,4 @@
+import { useReportData } from '@/components/hooks/useReportData';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/entities';
@@ -52,30 +53,10 @@ export default function PickupLocationsFullReport({ v2 = false }) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
 
-  const [jobs, setJobs] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [pickupLocations, setPickupLocations] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { jobs, drivers, customers, pickupLocations, isLoading } = useReportData();
   const [expandedLocations, setExpandedLocations] = useState({});
 
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true);
-      const [j, d, c, p] = await Promise.all([
-        base44.entities.Job.list('-scheduled_date', 5000),
-        base44.entities.Driver.list(),
-        base44.entities.Customer.list(undefined, 5000),
-        base44.entities.PickupLocation.list(),
-      ]);
-      setJobs(j);
-      setDrivers(d);
-      setCustomers(c);
-      setPickupLocations(p);
-      setIsLoading(false);
-    };
-    load();
-  }, []);
+
 
   const inDateRangeJobs = useMemo(() => {
     return jobs.filter(j => {

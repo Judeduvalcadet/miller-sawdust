@@ -1,3 +1,4 @@
+import { useLiveUpdates } from './useLiveUpdates';
 import VersionSwitch from '@/components/VersionSwitch';
 import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, NavLink, useNavigate, useLocation } from 'react-router-dom';
@@ -177,6 +178,7 @@ function RequireOffice({ children }) {
 }
 
 export default function V2App() {
+  useLiveUpdates();
   return (
     <Routes>
       <Route path="login" element={<V2Login />} />

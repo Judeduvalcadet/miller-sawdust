@@ -502,7 +502,8 @@ export function V2Dispatch() {
   // card offers the Send Invoice button.
   const invoicedMap = useMemo(() => new Map([...sentJobIds].map((id) => [id, true])), [sentJobIds]);
   const [sendJob, setSendJob] = useState(null);
-  const [detailJob, setDetailJob] = useState(null);
+  const [detailJobSnapshot, setDetailJob] = useState(null);
+  const detailJob = detailJobSnapshot && ((view === 'week' ? allJobs : weekJobs).find(j => j.id === detailJobSnapshot.id) || null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['board-week-jobs'] });
@@ -654,7 +655,7 @@ export function V2Wallboard() {
   const [day, setDay] = useState(iso(new Date()));
   const sentJobIds = useSentInvoiceJobIds();
   const [view, setView] = useState('day');
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [selectedJobSnapshot, setSelectedJob] = useState(null);
   const [manualUntil, setManualUntil] = useState(null);
 
   useEffect(() => {
@@ -682,6 +683,7 @@ export function V2Wallboard() {
     retry: true,
   });
   const { data: pickupLocations = [] } = useQuery({ queryKey: ['pickup-locations'], queryFn: () => base44.entities.PickupLocation.list('name') });
+  const selectedJob = selectedJobSnapshot && ([...byDate.values()].flat().find(j => j.id === selectedJobSnapshot.id) || null);
   const changeDay = (d) => { setDay(d); setManualUntil(d); };
 
   return (

@@ -1,3 +1,4 @@
+import { notifyEntityChange } from '@/lib/entityChanges'
 import { validateContactFields } from '@/lib/contactValidation'
 import { v2ReadOnly } from '@/lib/v2Release'
 import { supabase } from './supabaseClient'
@@ -225,6 +226,7 @@ function createEntity(tableName) {
       if (error) throw error
       maybeGeocode(tableName, created?.id, sanitize(tableName, data))
       kickQuickBooks(tableName)
+      notifyEntityChange(tableName)
       return created
     },
 
@@ -245,6 +247,7 @@ function createEntity(tableName) {
       if (error) throw error
       maybeGeocode(tableName, id, sanitize(tableName, data))
       kickQuickBooks(tableName)
+      notifyEntityChange(tableName)
       return updated
     },
 
@@ -263,6 +266,7 @@ function createEntity(tableName) {
         .eq('id', id)
 
       if (error) throw error
+      notifyEntityChange(tableName)
     },
 
     /**
@@ -282,6 +286,7 @@ function createEntity(tableName) {
       ;(data || []).forEach((created, i) => {
         setTimeout(() => maybeGeocode(tableName, created?.id, sanitize(tableName, records[i] || {})), i * 400)
       })
+      notifyEntityChange(tableName)
       return data || []
     },
 
