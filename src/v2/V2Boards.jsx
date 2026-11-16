@@ -562,6 +562,7 @@ export function V2Dispatch() {
             weekAnchor={mondayOf(day)}
             onAddJob={(date) => { setEditingJob(null); setDefaultJobDate(date); setShowJobForm(true); }}
             onEditJob={onEdit}
+            onSendInvoice={setSendJob}
             onSortJobs={(date) => setSortTarget({ date })}
           />
         </div>
@@ -597,6 +598,7 @@ export function V2Dispatch() {
         deYellow
         onClose={() => setDetailJob(null)}
         onEdit={onEdit}
+        onSendInvoice={setSendJob}
         onDelete={() => { deleteJob.mutate(detailJob.id); setDetailJob(null); }}
       />}
       {sendJob && (

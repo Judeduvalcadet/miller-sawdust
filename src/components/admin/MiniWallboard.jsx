@@ -105,7 +105,7 @@ function AssignPopup({ job, drivers, onAssign, onClose, anchorEl, deYellow = fal
   );
 }
 
-export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupLocations = [], deYellow = false }) {
+export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, onSendInvoice, pickupLocations = [], deYellow = false }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   // Per-load pickup details (all delivery truck types)
@@ -232,23 +232,18 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupL
             <JobActivityTimeline job={job} />
           </div>
         }
-        <div className={cn(
-          "flex flex-wrap items-center justify-end gap-3 pt-2",
-          deYellow && DETAIL_FOOTER
-        )}>
-          <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? "text-gray-600 border-gray-300 hover:bg-gray-50" : "text-red-600 border-red-300 hover:bg-red-50"}>
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete
+        <div className={cn('flex flex-wrap items-center justify-end pt-2', deYellow ? 'gap-1.5' : 'gap-3', deYellow && DETAIL_FOOTER)}>
+          <Button variant="outline" size={deYellow ? 'icon' : 'default'} aria-label="Delete job" title="Delete job" onClick={() => setShowDeleteConfirm(true)} className={deYellow ? 'h-8 w-8 text-gray-600 border-gray-300 hover:bg-gray-50' : 'text-red-600 border-red-300 hover:bg-red-50'}>
+            <Trash2 className="w-4 h-4" />{!deYellow && 'Delete'}
           </Button>
-          <Button variant="outline" onClick={() => setShowActivity((v) => !v)}>
-            <History className="w-4 h-4 mr-2" />
-            {showActivity ? 'Hide Detail' : 'More Detail'}
+          <Button size={deYellow ? "sm" : "default"} variant="outline" className={deYellow ? "gap-1 px-2" : undefined} onClick={() => setShowActivity(v => !v)}>
+            <History className="w-4 h-4" />{showActivity ? 'Hide Detail' : 'More Detail'}
           </Button>
-          <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button onClick={() => {onClose();onEdit(job);}} className={deYellow ? "bg-gray-950 hover:bg-gray-800" : "bg-amber-600 hover:bg-amber-700"}>
-            <Edit className="w-4 h-4 mr-2" />
-            Edit Job
+          <Button size={deYellow ? "sm" : "default"} variant="outline" className={deYellow ? "px-2" : undefined} onClick={onClose}>Close</Button>
+          <Button size={deYellow ? "sm" : "default"} onClick={() => {onClose();onEdit(job);}} className={cn(deYellow && 'gap-1 px-2', deYellow ? 'bg-gray-950 hover:bg-gray-800' : 'bg-amber-600 hover:bg-amber-700')}>
+            <Edit className="w-4 h-4" /> Edit Job
           </Button>
+          {onSendInvoice && job.job_type === 'delivery' && job.customer_id && job.status !== 'cancelled' && <Button size="sm" className="gap-1 px-2 bg-gray-950 hover:bg-gray-800" onClick={() => {onClose();onSendInvoice(job);}}><FileText className="w-4 h-4" /> Send Invoice</Button>}
         </div>
       </DialogContent>
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
@@ -268,7 +263,7 @@ export function JobDetailPopup({ job, driver, onClose, onEdit, onDelete, pickupL
 }
 
 // Individual job card in the weekly grid
-function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, onAssigned, editMode = false, isSelected = false, onToggleSelect, deYellow = false, invoiced = false }) {
+function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, onAssigned, editMode = false, isSelected = false, onToggleSelect, deYellow = false, invoiced = false, onSendInvoice }) {
   const [showAssign, setShowAssign] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -516,6 +511,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
         pickupLocations={pickupLocations}
         onClose={() => setShowDetail(false)}
         onEdit={(j) => {setShowDetail(false);onEditJob(j);}}
+        onSendInvoice={onSendInvoice}
         onDelete={handleDelete} />
 
       }
@@ -527,7 +523,7 @@ function MiniJobCard({ job, drivers, pickupLocations = [], isAdmin, onEditJob, o
 // follows it while its own internal nav keeps working. Absent = V1 behavior.
 // `deYellow` (optional): V2 boards pass it to swap the amber accents for
 // gray/blue; V1 renders exactly as before without it.
-export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin, weekAnchor = null, deYellow = false, invoicedIds = null }) {
+export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onAddJob, onEditJob, onSortJobs, isAdmin, weekAnchor = null, deYellow = false, invoicedIds = null, onSendInvoice }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [filterDriver, setFilterDriver] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -980,6 +976,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                                   deYellow={deYellow}
                                   invoiced={!!(invoicedIds && invoicedIds.has(job.id))}
                   onEditJob={onEditJob}
+                  onSendInvoice={onSendInvoice}
                   editMode={false}
                   isSelected={false}
                 />
@@ -1116,6 +1113,7 @@ export default function MiniWallboard({ jobs, drivers, pickupLocations = [], onA
                                   deYellow={deYellow}
                                   invoiced={!!(invoicedIds && invoicedIds.has(job.id))}
                                   onEditJob={onEditJob}
+                  onSendInvoice={onSendInvoice}
                                   editMode={editMode}
                                   isSelected={selectedJobIds.has(job.id)}
                                   onToggleSelect={toggleSelectJob}

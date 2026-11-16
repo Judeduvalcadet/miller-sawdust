@@ -1293,14 +1293,14 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
 
   // Hand the finished lines up - the parent queues the actual creation so
   // batch Next can move on instantly.
-  const buildPayload = () => {
+  const buildPayload = ({ includeBilling = true } = {}) => {
     const finalLines = (lines || []).map((l) => ({
       ...l,
       qty: Number(l.qty) || 0,
       unit_price: Number(l.unit_price) || 0,
       amount: Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * 100) / 100,
     })).filter((l) => l.qty > 0);
-    const billTo = invoiceBillingPayload(initial, job, billingCustomers);
+    const billTo = includeBilling ? invoiceBillingPayload(initial, job, billingCustomers) : {};
     return {
       ...billTo,
       lines: finalLines,

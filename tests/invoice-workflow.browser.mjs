@@ -3,6 +3,8 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 import assert from 'node:assert/strict';
 const browser = await chromium.launch({headless:true, executablePath:process.env.PLAYWRIGHT_EXECUTABLE || undefined});
 const page = await browser.newPage({viewport:{width:1280,height:720}});
+let savedInvoice = null;
+const sentRequests = [];
 const errors=[]; page.on('pageerror',e=>errors.push(e.message));
 const date=new Date().toLocaleDateString('en-CA');
 const customer={id:'10000000-0000-4000-8000-000000000001',name:'Test delivery',street_address:'Original street',active:true};
@@ -13,10 +15,18 @@ await page.addInitScript(()=>{ const jwt=`e30.${btoa(JSON.stringify({exp:Math.fl
 await page.route('**/rest/v1/**',async route=>{
  const name=new URL(route.request().url()).pathname.split('/').pop();
  if (name === 'customers' && route.request().method() === 'PATCH') { Object.assign(customer, route.request().postDataJSON()); await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(customer)}); return; }
- const data=({jobs:[job],customers:[customer,{id:'payer',name:'Billing person',street_address:'Billing street',active:true}],drivers,items:[item],customer_item_prices:[],invoices:[],settings:[],pickup_locations:[],drop_off_locations:[],job_events:[]})[name] || [];
+ if(name === 'next_invoice_number') {await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify('TEST-100')});return;}
+ if(name === 'invoices' && ['POST','PATCH'].includes(route.request().method())) {savedInvoice={...savedInvoice,...route.request().postDataJSON(),id:job.id};await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(savedInvoice)});return;}
+ const data=({jobs:[job],customers:[customer,{id:'payer',name:'Billing person',street_address:'Billing street',active:true}],drivers,items:[item],customer_item_prices:[],invoices:savedInvoice ? [savedInvoice] : [],settings:[],pickup_locations:[],drop_off_locations:[],job_events:[]})[name] || [];
  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
 });
-await page.route('**/functions/v1/**',r=>r.fulfill({status:200,contentType:'application/json',body:'{}'}));
+await page.route('**/functions/v1/**',async r=> {
+ if(r.request().url().endsWith('/send-invoice')) {
+  sentRequests.push(r.request().postDataJSON());
+  await r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(sentRequests.length === 1 ? {error:'Temporary test failure'} : {message:{status:'sent'}})});return;
+ }
+ await r.fulfill({status:200,contentType:'application/json',body:'{}'});
+});
 await page.goto('http://127.0.0.1:5174/v2');
 await page.getByRole('button',{name:'Assign',exact:true}).first().waitFor();
 // Force the trigger near the bottom to reproduce viewport clipping.
@@ -29,6 +39,11 @@ const driverList=menu.locator('.overflow-y-auto');
 await driverList.evaluate(el=>el.scrollTop=el.scrollHeight);
 assert(await driverList.evaluate(el=>el.scrollTop>0));
 await page.keyboard.press('Escape');
+await page.getByText('Test delivery',{exact:true}).filter({visible:true}).click();
+await page.getByRole('dialog').getByRole('button',{name:'Send Invoice',exact:true}).click();
+await page.getByRole('tab',{name:'SMS',exact:true}).waitFor();
+assert.equal(await page.getByRole('tab',{name:'SMS',exact:true}).getAttribute('aria-selected'),'true');
+await page.getByRole('button',{name:'Cancel',exact:true}).click();
 await page.getByRole('button',{name:'New Job',exact:true}).click();
 await page.getByText('Truck Type',{exact:true}).waitFor();
 const truck=await page.getByText('Truck Type',{exact:true}).boundingBox();
@@ -37,7 +52,7 @@ await page.keyboard.press('Escape');
 await page.goto('http://127.0.0.1:5174/v2/reports');
 await page.getByRole('heading',{name:'Reports',exact:true}).waitFor();
 await page.goto('http://127.0.0.1:5174/v2/customers');
-await page.getByText('Test delivery',{exact:true}).click();
+await page.getByText('Test delivery',{exact:true}).filter({visible:true}).click();
 await page.getByRole('tab',{name:'Pricing',exact:true}).waitFor();
 assert.equal(await page.getByText('What this customer pays.',{exact:false}).count(),0);
 await page.getByRole('tab',{name:'Address',exact:true}).click();
@@ -75,11 +90,52 @@ await page.getByRole('tab',{name:'Address',exact:true}).click();
 assert.equal(await page.getByLabel('Billing name',{exact:true}).inputValue(),'Billing test');
 await page.goto('http://127.0.0.1:5174/v2');
 await page.getByRole('button',{name:'Day',exact:true}).click();
-await page.getByRole('button',{name:'Send Invoice',exact:true}).first().click();
+await page.getByRole('button',{name:'Test delivery',exact:true}).click();
+await page.getByRole('dialog').getByRole('button',{name:'Send Invoice',exact:true}).click();
 await page.getByRole('button',{name:'Preview',exact:true}).waitFor();
-assert.equal(await page.getByLabel('Same as shipping').count(),0);
+await page.getByLabel('Same as shipping').waitFor();
+assert.equal(await page.getByLabel('Same as shipping').count(),1);
+assert.equal(await page.getByRole('tab',{name:'SMS',exact:true}).getAttribute('aria-selected'),'true');
+await page.getByRole('tab',{name:'Email',exact:true}).click();
+await page.getByRole('button',{name:'Send via email',exact:true}).waitFor();
+await page.getByRole('tab',{name:'SMS',exact:true}).click();
+await page.getByRole('button',{name:'Send via SMS',exact:true}).waitFor();
+await page.getByLabel('Billing name',{exact:true}).fill('Preview selected billing');
 await page.getByRole('button',{name:'Preview',exact:true}).click();
-await page.getByText('Billing test',{exact:true}).waitFor();
+await page.getByText('Preview selected billing',{exact:true}).waitFor();
+assert.equal(customer.billing_preference.address.name,'Billing test');
+await page.getByRole('button',{name:'Close preview',exact:true}).click();
+await page.getByRole('button',{name:'Save Address',exact:true}).click();
+await page.getByRole('button',{name:'Saved',exact:true}).waitFor();
+assert.equal(customer.billing_preference.address.name,'Preview selected billing');
+await page.getByLabel('Billing name',{exact:true}).fill('Discard on close');
+await page.getByRole('button',{name:'Cancel',exact:true}).last().click();
+assert.equal(await page.getByRole('dialog').count(),0);
+assert.equal(customer.billing_preference.address.name,'Preview selected billing');
+// No network messages leave this test: all sends are intercepted above.
+await page.getByRole('button',{name:'Test delivery',exact:true}).click();
+await page.getByRole('dialog').getByRole('button',{name:'Send Invoice',exact:true}).click();
+await page.getByLabel('Same as shipping').check();
+await page.getByRole('tab',{name:'Email',exact:true}).click();
+await page.getByLabel('Invoice email address').fill('test-target@example.com');
+await page.getByLabel('Save email to customer').check();
+await page.getByRole('button',{name:'Send via email',exact:true}).click();
+await page.getByRole('alert').filter({hasText:'Temporary test failure'}).waitFor();
+assert.equal(customer.email,'test-target@example.com');
+assert.equal(customer.billing_preference.mode,'shipping');
+await page.getByRole('button',{name:'Send via email',exact:true}).click();
+await page.getByText('Sent · test-target@example.com.',{exact:false}).waitFor();
+assert.equal(sentRequests.length,2);
+assert.equal(sentRequests[0].request_id,sentRequests[1].request_id);
+assert.equal(sentRequests[1].mode,'email');
+assert(sentRequests[1].pdf_base64.length > 1000);
+await page.getByRole('button',{name:'Close',exact:true}).first().click();
+await page.getByRole('button',{name:'Test delivery',exact:true}).click();
+await page.getByRole('dialog').getByRole('button',{name:'Send Invoice',exact:true}).click();
+await page.getByLabel('SMS phone number').fill('3305551234');
+await page.getByRole('button',{name:'Send via SMS',exact:true}).click();
+await page.getByText('Sent · 3305551234.',{exact:false}).waitFor();
+assert.equal(sentRequests[2].mode,'sms');
 assert.deepEqual(errors,[]);
 
 console.log('PASS: bottom menu scroll/position, truck location, reports route, customer address persistence and automatic invoice billing preview; no browser errors');
