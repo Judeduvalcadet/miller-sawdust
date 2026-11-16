@@ -1,3 +1,4 @@
+import { splitAssistantRows } from '@/lib/assistantResults';
 import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -86,6 +87,9 @@ export default function AssistantChat() {
     };
   }, [open]);
 
+  const resultRows = splitAssistantRows(results);
+  const visibleRows = resultRows.rows.filter(row => row.some(cell => String(cell).toLowerCase().includes(resultSearch.toLowerCase())));
+
   if (!allowed) return null;
 
   const send = async (text) => {
@@ -148,26 +152,32 @@ export default function AssistantChat() {
     <>
       <Dialog open={!!results} onOpenChange={value => { if (!value) setResults(null); }}>
         <DialogContent className="sm:max-w-4xl w-[calc(100vw-2rem)] max-h-[85dvh] flex flex-col gap-0 p-0 overflow-hidden">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-200">
-            <DialogTitle className="pr-8">{results?.title || 'Results'}</DialogTitle>
-            <DialogDescription>{results?.rows.length || 0} rows</DialogDescription>
-          </DialogHeader>
-          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
-            <input aria-label="Search results" placeholder="Search results..." value={resultSearch} onChange={e => setResultSearch(e.target.value)} className="w-full sm:max-w-xs rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-500" />
+          <div className="flex flex-wrap items-start gap-3 px-6 pt-6 pb-4 pr-12">
+            <DialogHeader className="flex-1 min-w-[160px] text-left">
+              <DialogTitle>{results?.title || 'Results'}</DialogTitle>
+              <DialogDescription>{resultRows.rows.length} rows</DialogDescription>
+            </DialogHeader>
+            <input aria-label="Search results" placeholder="Search results..." value={resultSearch} onChange={e => setResultSearch(e.target.value)} className="ml-auto w-44 max-w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-500" />
           </div>
-          <div className="overflow-auto min-h-0">
+          <div className="overflow-auto min-h-0 mx-6 mb-6 rounded-lg border border-gray-200">
             <table className="w-full text-sm text-left border-collapse">
               <thead className="sticky top-0 bg-gray-100 text-gray-600 text-xs">
                 <tr><th scope="col" className="w-10 px-4 py-3 border-b border-r border-gray-200 text-right">#</th>{results?.columns.map((column, i) => <th scope="col" key={i} className="px-4 py-3 border-b border-r last:border-r-0 border-gray-200 font-semibold whitespace-nowrap">{column}</th>)}</tr>
               </thead>
-              <tbody>{results?.rows.map((row, index) => ({row, index})).filter(({row}) => row.some(cell => String(cell).toLowerCase().includes(resultSearch.toLowerCase()))).map(({row, index}) => (
+              <tbody>{visibleRows.map((row, index) => (
                 <tr key={index} className="even:bg-gray-50/70 hover:bg-blue-50/60 transition-colors">
                   <td className="px-4 py-3 border-b border-r border-gray-100 text-gray-400 text-xs text-right tabular-nums">{index + 1}</td>
                   {row.map((cell, i) => <td key={i} className={cn('px-4 py-3 border-b border-r last:border-r-0 border-gray-100 text-gray-800', /^-?[\d,.]+(?:\s*(?:loads?|yds|mi|min))?$/.test(String(cell)) && 'text-right tabular-nums font-medium')} >{cell}</td>)}
                 </tr>
               ))}</tbody>
+              {resultRows.totals.length > 0 && <tfoot className="sticky bottom-0 bg-slate-200 text-gray-950 font-bold border-t-2 border-slate-300">
+                {resultRows.totals.map((row, index) => <tr key={index}>
+                  <td className="px-4 py-3 border-r border-slate-300" />
+                  {row.map((cell, i) => <td key={i} className={cn('px-4 py-3 border-r last:border-r-0 border-slate-300', i > 0 && 'text-right tabular-nums')}>{cell}</td>)}
+                </tr>)}
+              </tfoot>}
             </table>
-            {results && !results.rows.some(row => row.some(cell => String(cell).toLowerCase().includes(resultSearch.toLowerCase()))) && <p className="p-8 text-center text-sm text-gray-500">No results</p>}
+            {results && visibleRows.length === 0 && <p className="p-8 text-center text-sm text-gray-500">No results</p>}
           </div>
         </DialogContent>
       </Dialog>
