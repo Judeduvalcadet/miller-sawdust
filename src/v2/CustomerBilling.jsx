@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { cn } from '@/lib/utils';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import AddressAutocomplete from '@/components/admin/AddressAutocomplete';
 import { base44 } from '@/api/entities';
@@ -10,8 +13,9 @@ import { validateContactFields } from '@/lib/contactValidation';
 
 export default function CustomerBilling({ customer, jobs }) {
   const cache = useQueryClient();
+  const inputId = useId();
   const [value, setValue] = useState(customer.billing_preference || {mode:'shipping',customer_id:'',address:{}});
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState(true);
   const { data: customers = [], isPending, isError } = useQuery({queryKey:['v2-customers'],queryFn:() => base44.entities.Customer.list('name')});
   const job = jobs?.find(j => j.job_type === 'delivery' && j.status !== 'cancelled' && j.address);
   const shipping = job?.address || [customer.street_address,customer.city,customer.state,customer.zip_code].filter(Boolean).join(', ');
@@ -28,16 +32,17 @@ export default function CustomerBilling({ customer, jobs }) {
   });
   return <div className="p-5 space-y-4">
     <fieldset disabled={save.isPending} className="space-y-4 min-w-0">
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={value.mode === 'shipping'} onChange={e => change({...value,mode:e.target.checked ? 'shipping' : 'customer'})} /> Same as shipping</label>
-      {value.mode === 'shipping' ? <div className="rounded-lg bg-gray-50 px-3 py-2.5">
-        <p className="text-sm text-gray-900 whitespace-pre-line">{shipping || 'No shipping address yet.'}</p>
-        <p className="text-xs text-gray-500 mt-1">{job ? `Job address (${job.scheduled_date}). Each invoice uses its own job’s address.` : 'Customer address shown until a job has a delivery address.'}</p>
-      </div> : <>
-        <p className="text-sm font-semibold">Billing address</p>
-        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-          <label className="flex items-center gap-2"><input type="radio" name="billing-source" checked={value.mode === 'customer'} onChange={() => change({...value,mode:'customer'})} /> Use Existing Customer</label>
-          <label className="flex items-center gap-2"><input type="radio" name="billing-source" checked={value.mode === 'address'} onChange={() => change({...value,mode:'address'})} /> New Billing Address</label>
-        </div>
+      <label htmlFor={`${inputId}-shipping`} className="flex items-center gap-3 text-sm font-medium text-gray-900 cursor-pointer">
+        <Checkbox id={`${inputId}-shipping`} className="h-5 w-5 rounded-md border-gray-300 shadow-none focus-visible:ring-gray-400 data-[state=checked]:border-gray-950 data-[state=checked]:bg-gray-950 data-[state=checked]:text-white" checked={value.mode === 'shipping'} onCheckedChange={checked => change({...value,mode:checked === true ? 'shipping' : 'customer'})} />
+        Same as shipping
+      </label>
+      {value.mode === 'shipping' ? <p className="text-sm text-gray-900 whitespace-pre-line">{shipping || '-'}</p> : <>
+        <RadioGroup aria-label="Billing address source" value={value.mode} onValueChange={mode => change({...value,mode})} disabled={save.isPending} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {[['customer','Use Existing Customer'],['address','New Billing Address']].map(([mode,label]) => <label key={mode} htmlFor={`${inputId}-${mode}`} className={cn('flex items-center gap-2.5 rounded-lg border px-3 py-3 text-sm font-medium cursor-pointer transition-colors', value.mode === mode ? 'border-gray-950 bg-gray-50 text-gray-950' : 'border-gray-200 text-gray-600 hover:bg-gray-50')}>
+            <RadioGroupItem id={`${inputId}-${mode}`} value={mode} className="h-4 w-4 border-gray-400 text-gray-950 shadow-none focus-visible:ring-gray-400 data-[state=checked]:border-gray-950 [&_svg]:fill-gray-950 [&_svg]:h-2 [&_svg]:w-2" />
+            {label}
+          </label>)}
+        </RadioGroup>
         {value.mode === 'customer' ? <>
           <SearchableSelect value={value.customer_id} onValueChange={id => change({...value,customer_id:id})} options={customers.map(c => ({value:c.id,label:[c.company_name,c.name,c.active === false ? '(past customer)' : ''].filter(Boolean).join(' - ')}))} placeholder="Type or search customer name..." />
           {value.customer_id && <p className="text-sm text-gray-600">{(() => {const c=customers.find(c => c.id === value.customer_id);return c && [c.street_address,c.city,c.state,c.zip_code].filter(Boolean).join(', ');})()}</p>}
@@ -51,6 +56,6 @@ export default function CustomerBilling({ customer, jobs }) {
     </fieldset>
     {save.isError && <p role="alert" className="text-sm text-red-600">{save.error.message}</p>}
     {isError && <p role="alert" className="text-sm text-red-600">Could not load customers. Refresh before saving.</p>}
-    <div className="flex items-center gap-3"><Button className="bg-gray-950 hover:bg-gray-800" disabled={save.isPending || isPending || isError} onClick={() => save.mutate()}>{save.isPending ? 'Saving...' : 'Save address'}</Button>{saved && <span role="status" className="text-sm text-gray-600">Address saved</span>}</div>
+    <Button className={cn('min-w-28', saved ? 'bg-gray-100 text-gray-400 disabled:opacity-100 shadow-none' : 'bg-gray-950 hover:bg-gray-800')} disabled={saved || save.isPending || isPending || isError} onClick={() => save.mutate()}>{save.isPending ? 'Saving...' : saved ? 'Saved' : 'Save Address'}</Button>
   </div>;
 }
