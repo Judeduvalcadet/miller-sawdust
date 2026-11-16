@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MessageCircle, Send, X, Loader2, History, SquarePen, ChevronLeft } from 'lucide-react';
 import { base44 } from '@/api/entities';
@@ -48,6 +49,8 @@ function MessageContent({ content, dark }) {
 // route checks, nothing else. Conversations are stored server-side.
 export default function AssistantChat() {
   const [open, setOpen] = useState(false);
+  const [results, setResults] = useState(null);
+  const [resultSearch, setResultSearch] = useState('');
   const [view, setView] = useState('chat'); // 'chat' | 'history'
   const [messages, setMessages] = useState([]);
   const [conversationId, setConversationId] = useState(null);
@@ -100,6 +103,7 @@ export default function AssistantChat() {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data?.reply || 'Something went wrong on my end - try again.',
+        results: data?.results,
       }]);
     } catch {
       setMessages(prev => [...prev, {
@@ -142,6 +146,31 @@ export default function AssistantChat() {
 
   return (
     <>
+      <Dialog open={!!results} onOpenChange={value => { if (!value) setResults(null); }}>
+        <DialogContent className="sm:max-w-4xl w-[calc(100vw-2rem)] max-h-[85dvh] flex flex-col gap-0 p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-200">
+            <DialogTitle className="pr-8">{results?.title || 'Results'}</DialogTitle>
+            <DialogDescription>{results?.rows.length || 0} rows</DialogDescription>
+          </DialogHeader>
+          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+            <input aria-label="Search results" placeholder="Search results..." value={resultSearch} onChange={e => setResultSearch(e.target.value)} className="w-full sm:max-w-xs rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-500" />
+          </div>
+          <div className="overflow-auto min-h-0">
+            <table className="w-full text-sm text-left border-collapse">
+              <thead className="sticky top-0 bg-gray-100 text-gray-600 text-xs">
+                <tr><th scope="col" className="w-10 px-4 py-3 border-b border-r border-gray-200 text-right">#</th>{results?.columns.map((column, i) => <th scope="col" key={i} className="px-4 py-3 border-b border-r last:border-r-0 border-gray-200 font-semibold whitespace-nowrap">{column}</th>)}</tr>
+              </thead>
+              <tbody>{results?.rows.map((row, index) => ({row, index})).filter(({row}) => row.some(cell => String(cell).toLowerCase().includes(resultSearch.toLowerCase()))).map(({row, index}) => (
+                <tr key={index} className="even:bg-gray-50/70 hover:bg-blue-50/60 transition-colors">
+                  <td className="px-4 py-3 border-b border-r border-gray-100 text-gray-400 text-xs text-right tabular-nums">{index + 1}</td>
+                  {row.map((cell, i) => <td key={i} className={cn('px-4 py-3 border-b border-r last:border-r-0 border-gray-100 text-gray-800', /^-?[\d,.]+(?:\s*(?:loads?|yds|mi|min))?$/.test(String(cell)) && 'text-right tabular-nums font-medium')} >{cell}</td>)}
+                </tr>
+              ))}</tbody>
+            </table>
+            {results && !results.rows.some(row => row.some(cell => String(cell).toLowerCase().includes(resultSearch.toLowerCase()))) && <p className="p-8 text-center text-sm text-gray-500">No results</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Floating toggle */}
       {!open && (
         <button
@@ -240,6 +269,9 @@ export default function AssistantChat() {
                         : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
                     )}>
                       <MessageContent content={m.content} dark={m.role === 'user'} />
+                      {m.role === 'assistant' && m.results?.columns?.length > 0 && Array.isArray(m.results.rows) && (
+                        <button type="button" className="mt-2 text-xs font-semibold underline underline-offset-4 text-gray-700 hover:text-black" onClick={() => { setResults(m.results); setResultSearch(''); }}>View results</button>
+                      )}
                     </div>
                   </div>
                 ))}
