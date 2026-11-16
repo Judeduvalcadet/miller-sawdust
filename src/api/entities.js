@@ -35,7 +35,7 @@ const TABLE_COLUMNS = {
   ],
   customers: [
     'id','name','company_name','street_address','city','state','country','zip_code','active',
-    'phone','email','map_image_url','delivery_instructions','created_date','updated_date',
+    'billing_preference','phone','email','map_image_url','delivery_instructions','created_date','updated_date',
     'latitude','longitude','geocode_formatted_address','geocode_precision','geocode_place_id','geocoded_at',
   ],
   pickup_locations: [

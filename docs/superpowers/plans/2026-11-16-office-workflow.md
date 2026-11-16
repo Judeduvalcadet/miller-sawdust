@@ -18,3 +18,7 @@ Implement locally in Miller Sawdust. No production deployment or QuickBooks catc
 - Production build, targeted ESLint and diff whitespace checks passed.
 - Independent review addressed preservation of legacy multiline addresses and nonblocking unchanged contact fields.
 - QuickBooks connection, live payment reconciliation and production deployment remain deferred.
+
+## Customer address placement correction
+At the user's request, move the address selector into the customer information page alongside Pricing, with no pricing subtitle. Save a customer billing_preference (shipping, searchable current/past customer, or new address with Google suggestions). Show the latest scheduled delivery job address when available; each new invoice resolves shipping from its own job. Remove all invoice billing editing controls. Preserve existing invoice snapshots. Block new invoice creation when customer preference cannot be loaded. Customer preference migration applied locally and to shared hosted database for the dev release.
+Validation: 11 billing tests; browser customer save/remount, existing-customer search, custom address and automatic invoice preview; local database rollback persistence check; build and targeted lint.

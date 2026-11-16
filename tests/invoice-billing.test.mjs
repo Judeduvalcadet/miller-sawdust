@@ -33,3 +33,19 @@ test('legacy QuickBooks multiline billing survives an unrelated edit', () => {
   assert.deepEqual(saved.billing_address.street_extra,original.street_extra);
   assert.notEqual(saved.billing_address.street_extra,original.street_extra);
 });
+
+import { invoiceBillingPayload } from '../src/lib/invoiceBilling.js';
+test('new invoices use the delivery customer saved billing preference', () => {
+  const rows = [{...customers[0],billing_preference:{mode:'customer',customer_id:'payer'}},customers[1]];
+  assert.equal(invoiceBillingPayload(null,job,rows).billing_address.name,'Payer');
+});
+test('customer preference never replaces saved invoice billing', () => {
+  const invoice={billing_mode:'address',billing_address:{name:'Original payer',street_address:'Original'}};
+  assert.deepEqual(invoiceBillingPayload(invoice,job,customers).billing_address,invoice.billing_address);
+});
+test('legacy invoice without billing snapshot does not adopt new preferences on edit', () => {
+  assert.deepEqual(invoiceBillingPayload({id:'legacy'},job,customers),{});
+});
+test('missing customer cannot silently replace saved billing with shipping', () => {
+  assert.throws(() => invoiceBillingPayload(null,job,[]), /Could not load/);
+});

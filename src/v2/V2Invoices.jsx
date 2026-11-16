@@ -1,6 +1,4 @@
-import { validateContactFields } from '@/lib/contactValidation';
-import InvoiceBilling from './InvoiceBilling';
-import { billingPayload } from '@/lib/invoiceBilling';
+import { invoiceBillingPayload } from '@/lib/invoiceBilling';
 import { validContact } from '@/lib/contactValidation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -1221,9 +1219,8 @@ function InvoiceDetail({ inv }) {
 /* ---------------------------- Composer ---------------------------------- */
 
 export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo, onCancel, onCreated, hideFooter = false, exposeApi = null, saving = false }) {
-  const [billing, setBilling] = useState({unchanged:!!(initial?.billing_address || initial?.qb_bill_to), mode:initial?.billing_mode || (initial?.qb_bill_to ? 'address' : 'shipping'), customer_id:initial?.billing_customer_id || '', address:initial?.billing_address || initial?.qb_bill_to || {}});
   const [billingError, setBillingError] = useState('');
-  const { data: billingCustomers = [], isPending: billingLoading } = useQuery({queryKey:['v2-customers'], queryFn:() => base44.entities.Customer.list('name')});
+  const { data: billingCustomers = [], isPending: billingLoading, isError: billingLoadError, refetch: reloadBilling } = useQuery({queryKey:['v2-customers'], queryFn:() => base44.entities.Customer.list('name')});
 
   const { data: prices } = useQuery({
     queryKey: ['customer-prices', job.customer_id],
@@ -1303,8 +1300,7 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
       unit_price: Number(l.unit_price) || 0,
       amount: Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * 100) / 100,
     })).filter((l) => l.qty > 0);
-    const billTo = billingPayload(billing, job, billingCustomers);
-    if (billing.mode === 'address' && !billing.unchanged) validateContactFields(billTo.billing_address);
+    const billTo = invoiceBillingPayload(initial, job, billingCustomers);
     return {
       ...billTo,
       lines: finalLines,
@@ -1317,8 +1313,13 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
   // Hosts that embed the composer (the job-card send popup) read the current
   // lines through this instead of the footer buttons.
   useEffect(() => {
-    if (exposeApi) exposeApi({ getPayload: buildPayload, ready: lines !== null && !billingLoading, total });
+    if (exposeApi) exposeApi({ getPayload: buildPayload, ready: lines !== null && !billingLoading && !billingLoadError, total });
   });
+
+  if (billingLoadError) return <div className="px-6 py-4" role="alert">
+    <p className="text-sm text-red-600">Could not load the customer’s billing preference.</p>
+    <Button variant="outline" className="mt-2" onClick={() => reloadBilling()}>Retry</Button>
+  </div>;
 
   if (lines === null || billingLoading) {
     return <div className="border-t border-gray-100 px-6 py-6 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-gray-400" /></div>;
@@ -1326,7 +1327,6 @@ export function InvoiceComposer({ job, items, initial = null, isBatch, batchInfo
 
   return (
     <div className="border-t border-gray-100 px-6 py-4">
-      <InvoiceBilling value={billing} onChange={(value) => setBilling({...value, unchanged:false})} customers={billingCustomers} shipping={job.address} />
       {billingError && <p role="alert" className="mb-3 text-sm text-red-600">{billingError}</p>}
       <div className="max-w-[1075px] bg-white border border-gray-200">
       <table className="w-full text-left">

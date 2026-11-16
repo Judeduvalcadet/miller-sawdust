@@ -1,3 +1,4 @@
+import CustomerBilling from './CustomerBilling';
 import { DETAIL_GRID } from '@/lib/detailLayout';
 import { contactError } from '@/lib/contactValidation';
 import { useMemo, useState } from 'react';
@@ -206,7 +207,7 @@ function CustomerDetail({ customer }) {
         </div>
       </div>
       <div className="flex-1">
-        {tab === 'info' && <InfoTab customer={customer} />}
+        {tab === 'info' && <InfoTab customer={customer} jobs={jobs} />}
         {tab === 'jobs' && <JobsTab jobs={jobs} />}
         {tab === 'invoices' && <InvoicesTab invoices={invoices} customer={customer} />}
       </div>
@@ -216,7 +217,7 @@ function CustomerDetail({ customer }) {
 
 /* --------------------------- Info tab ----------------------------------- */
 
-function InfoTab({ customer }) {
+function InfoTab({ customer, jobs }) {
   const cache=useQueryClient();
   const [archiveError,setArchiveError]=useState('');
   const [editing, setEditing] = useState(false);
@@ -257,7 +258,7 @@ function InfoTab({ customer }) {
             </div>
           </div>
 
-          <PriceBook customer={customer} />
+          <CustomerOptions customer={customer} jobs={jobs} />
         </div>
 
         {/* Live pinned map */}
@@ -575,6 +576,18 @@ function Empty({ text }) {
 
 /* --------------------------- Price book ---------------------------------- */
 
+function CustomerOptions({ customer, jobs }) {
+  const [tab, setTab] = useState('pricing');
+  return <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+    <div role="tablist" aria-label="Customer pricing and address" className="flex border-b border-gray-100 px-3">
+      {['pricing','address'].map(key => <button key={key} role="tab" id={`customer-${key}-tab`} aria-controls={`customer-${key}-panel`} aria-selected={tab === key} onClick={() => setTab(key)} className={cn('px-4 py-3 text-sm font-semibold border-b-2', tab === key ? 'border-gray-900 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-900')}>{key === 'pricing' ? 'Pricing' : 'Address'}</button>)}
+    </div>
+    <div role="tabpanel" id={`customer-${tab}-panel`} aria-labelledby={`customer-${tab}-tab`}>
+      {tab === 'pricing' ? <PriceBook customer={customer} /> : <CustomerBilling key={customer.id} customer={customer} jobs={jobs} />}
+    </div>
+  </section>;
+}
+
 function PriceBook({ customer }) {
   const queryClient = useQueryClient();
   const { data: items } = useQuery({
@@ -636,14 +649,7 @@ function PriceBook({ customer }) {
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200">
-      <div className="px-5 pt-4 pb-3 border-b border-gray-100">
-        <h3 className="font-semibold text-gray-900 text-sm">Pricing</h3>
-        <p className="text-xs text-gray-500 mt-0.5">
-          What this customer pays. The starred item is what they usually get. Anything not
-          listed here is invoiced at the standard item price.
-        </p>
-      </div>
+    <div>
 
       {isLoading ? (
         <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>

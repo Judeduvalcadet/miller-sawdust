@@ -12,6 +12,7 @@ const drivers=Array.from({length:35},(_,i)=>({id:`driver-${i}`,name:`Driver ${St
 await page.addInitScript(()=>{ const jwt=`e30.${btoa(JSON.stringify({exp:Math.floor(Date.now()/1000)+86400,amr:'password',app_role:'admin',sub:'test'}))}.test`;localStorage.setItem('miller_jwt',jwt);localStorage.setItem('miller_driver_role','admin');localStorage.setItem('miller_driver_name','Test office');localStorage.setItem('miller_driver_id','test'); });
 await page.route('**/rest/v1/**',async route=>{
  const name=new URL(route.request().url()).pathname.split('/').pop();
+ if (name === 'customers' && route.request().method() === 'PATCH') { Object.assign(customer, route.request().postDataJSON()); await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(customer)}); return; }
  const data=({jobs:[job],customers:[customer,{id:'payer',name:'Billing person',street_address:'Billing street',active:true}],drivers,items:[item],customer_item_prices:[],invoices:[],settings:[],pickup_locations:[],drop_off_locations:[],job_events:[]})[name] || [];
  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
 });
@@ -35,17 +36,37 @@ const load=await page.getByText('Load 1',{exact:true}).boundingBox();assert(truc
 await page.keyboard.press('Escape');
 await page.goto('http://127.0.0.1:5174/v2/reports');
 await page.getByRole('heading',{name:'Reports',exact:true}).waitFor();
+await page.goto('http://127.0.0.1:5174/v2/customers');
+await page.getByText('Test delivery',{exact:true}).click();
+await page.getByRole('tab',{name:'Pricing',exact:true}).waitFor();
+assert.equal(await page.getByText('What this customer pays.',{exact:false}).count(),0);
+await page.getByRole('tab',{name:'Address',exact:true}).click();
+await page.getByLabel('Same as shipping').waitFor();
+await page.getByText('Job address',{exact:true}).waitFor();
+await page.getByLabel('Same as shipping').uncheck();
+await page.getByRole('combobox').last().click();
+await page.getByPlaceholder('Search...', {exact:true}).fill('Billing person');
+await page.getByRole('option',{name:'Billing person'}).click();
+await page.getByRole('button',{name:'Save address',exact:true}).click();
+await page.getByRole('status').filter({hasText:'Address saved'}).waitFor();
+assert.equal(customer.billing_preference.customer_id,'payer');
+await page.getByLabel('New Billing Address').check();
+await page.getByLabel('Billing name',{exact:true}).fill('Billing test');
+await page.getByPlaceholder('Billing street address').fill('123 Test St');
+await page.getByRole('button',{name:'Save address',exact:true}).click();
+await page.getByRole('status').filter({hasText:'Address saved'}).waitFor();
+assert.equal(customer.billing_preference.address.name,'Billing test');
+await page.getByRole('tab',{name:'Pricing',exact:true}).click();
+await page.getByRole('tab',{name:'Address',exact:true}).click();
+assert.equal(await page.getByLabel('Billing name',{exact:true}).inputValue(),'Billing test');
 await page.goto('http://127.0.0.1:5174/v2');
 await page.getByRole('button',{name:'Day',exact:true}).click();
 await page.getByRole('button',{name:'Send Invoice',exact:true}).first().click();
-await page.getByLabel('Same as shipping').waitFor();
-await page.getByLabel('Same as shipping').uncheck();
-await page.getByLabel('Add new billing address').check();
-await page.getByLabel('Billing name',{exact:true}).fill('Billing test');
-await page.getByPlaceholder('Billing street address').fill('123 Test St');
+await page.getByRole('button',{name:'Preview',exact:true}).waitFor();
+assert.equal(await page.getByLabel('Same as shipping').count(),0);
 await page.getByRole('button',{name:'Preview',exact:true}).click();
 await page.getByText('Billing test',{exact:true}).waitFor();
 assert.deepEqual(errors,[]);
 
-console.log('PASS: bottom menu scroll/position, truck location, reports route, billing preview; no browser errors');
+console.log('PASS: bottom menu scroll/position, truck location, reports route, customer address persistence and automatic invoice billing preview; no browser errors');
 await browser.close();

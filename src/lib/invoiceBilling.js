@@ -19,3 +19,16 @@ export function billingPayload(value, job, customers) {
   }
   return {billing_mode:value.mode,billing_customer_id:value.mode === 'customer' ? value.customer_id : null,billing_address:address};
 }
+
+// Resolve customer preferences only when creating an invoice. Existing invoice
+// snapshots (including legacy QuickBooks addresses) are never replaced here.
+export function invoiceBillingPayload(invoice, job, customers) {
+  if (invoice) return invoice.billing_address ? {
+    billing_mode: invoice.billing_mode,
+    billing_customer_id: invoice.billing_customer_id,
+    billing_address: invoice.billing_address,
+  } : {};
+  const customer = customers.find(c => c.id === job.customer_id);
+  if (job.customer_id && !customer) throw new Error('Could not load this customer’s billing preference. Refresh and try again.');
+  return billingPayload(customer?.billing_preference || {mode:'shipping'}, job, customers);
+}
