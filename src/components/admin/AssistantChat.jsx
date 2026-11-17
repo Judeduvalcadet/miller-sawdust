@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { MessageCircle, Send, X, Loader2, History, SquarePen, ChevronLeft } from 'lucide-react';
-import { assistantRequest, assistantDev } from '@/api/assistantClient';
+import { assistantRequest } from '@/api/assistantClient';
 import AssistantFeedback from './AssistantFeedback';
 import AssistantReview from './AssistantReview';
 import { cn } from '@/lib/utils';
@@ -172,7 +172,7 @@ export default function AssistantChat() {
 
   return (
     <>
-      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}><DialogContent className="max-w-3xl max-h-[85dvh] flex flex-col"><DialogHeader><DialogTitle>Assistant review</DialogTitle><DialogDescription>Verify corrections before they become dev rules.</DialogDescription></DialogHeader>{reviewOpen && <AssistantReview/>}</DialogContent></Dialog>
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}><DialogContent className="max-w-3xl max-h-[85dvh] flex flex-col"><DialogHeader><DialogTitle>Assistant review</DialogTitle><DialogDescription>Verify corrections before they become lasting rules.</DialogDescription></DialogHeader>{reviewOpen && <AssistantReview/>}</DialogContent></Dialog>
       <Dialog open={!!results} onOpenChange={value => { if (!value) setResults(null); }}>
         <DialogContent className="sm:max-w-4xl w-[calc(100vw-2rem)] max-h-[85dvh] flex flex-col gap-0 p-0 overflow-hidden">
           <div className="flex flex-wrap items-start gap-3 px-6 pt-6 pb-4 pr-12">
@@ -225,7 +225,7 @@ export default function AssistantChat() {
               <p className="font-semibold text-sm leading-tight">Dispatch Assistant</p>
               <p className="text-[11px] text-gray-400">Ask anything</p>
             </div>
-            {assistantDev && role === 'admin' && <button onClick={()=>setReviewOpen(true)} className="text-xs p-1 hover:bg-white/15 rounded">Review</button>}
+            {role === 'admin' && <button onClick={()=>setReviewOpen(true)} className="text-xs p-1 hover:bg-white/15 rounded">Review</button>}
             <button disabled={isLoading} onClick={newChat} className="p-1.5 rounded hover:bg-white/15" aria-label="New chat" title="New chat">
               <SquarePen className="w-[18px] h-[18px]" />
             </button>
@@ -304,7 +304,7 @@ export default function AssistantChat() {
                     )}>
                       <MessageContent content={m.content} dark={m.role === 'user'} />
                       {m.role === 'assistant' && m.elapsed_ms != null && <p className="mt-1 text-[11px] text-gray-400">{Math.max(1,Math.round(m.elapsed_ms/1000))} seconds</p>}
-                      {assistantDev && m.run_id && <AssistantFeedback message={m}/>}
+                      {m.run_id && <AssistantFeedback message={m}/>}
 
                       {m.role === 'assistant' && m.results?.columns?.length > 0 && Array.isArray(m.results.rows) && (
                         <button type="button" className="mt-2 text-xs font-semibold underline underline-offset-4 text-gray-700 hover:text-black" onClick={() => { setResults(m.results); setResultSearch(''); }}>View results</button>

@@ -1,9 +1,7 @@
-import { base44 } from './entities';
 import { getAccessToken } from './authClient';
 export const assistantDev = import.meta.env.VITE_ASSISTANT_DEV === 'true' || import.meta.env.MODE === 'sandbox';
 export async function assistantRequest(body, onProgress) {
-  if (!assistantDev) return base44.functions.invoke('assistant', body);
-  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/assistant-dev`, {
+  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${assistantDev ? 'assistant-dev' : 'assistant'}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${await getAccessToken()}` },
     body: JSON.stringify({ ...body, stream: !!onProgress }),
   });

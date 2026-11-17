@@ -330,7 +330,7 @@ For job boards and other record lists, use query_records then show_records so or
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string; results?: AssistantResults }
 
-async function runChat(context: ChatMsg[], apiKey: string, progress: (label: string) => void = () => {}, rules = '', trace = {direct:false, toolErrors:0, partial:false, verification:''}, dev = false): Promise<{ reply: string; toolsUsed: string[]; results?: AssistantResults } | { error: string }> {
+async function runChat(context: ChatMsg[], apiKey: string, progress: (label: string) => void = () => {}, rules = '', trace = {direct:false, toolErrors:0, partial:false, verification:''}, dev = false, prefix: 'assistant_dev' | 'assistant_live' = 'assistant_dev'): Promise<{ reply: string; toolsUsed: string[]; results?: AssistantResults } | { error: string }> {
   const messages: Array<Record<string, unknown>> = context.map((m) => ({ role: m.role, content: m.content + (m.results ? "\nSaved result table (data): " + JSON.stringify(m.results) : "") }))
   const toolsUsed: string[] = []
   const datasets = new Map<string, {records: Record<string, unknown>[]; fields: string[]; total: number; offset: number}>()
@@ -365,7 +365,7 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
     const dataCall = dev && (data.content ?? []).find((b: {type:string;name?:string}) => b.type === 'tool_use' && b.name === 'verified_data')
     if(dataCall){
       toolsUsed.push('verified_data');progress('Verifying original data')
-      const {data:source,error}=await service.rpc('assistant_dev_data',{p_spec:dataCall.input ?? {}})
+      const {data:source,error}=await service.rpc(`${prefix}_data`,{p_spec:dataCall.input ?? {}})
       if(error){trace.toolErrors++;return {reply:'I could not verify the requested data. Please narrow the filters or request the original records.',toolsUsed}}
       try{const verified=renderVerifiedData(source);trace.direct=true;trace.partial=false;trace.verification=verified.verification;return {reply:verified.reply,results:verified.results,toolsUsed}}
       catch{trace.toolErrors++;return {reply:'Verification did not pass, so I withheld the answer. Narrow the filters or request the original records.',toolsUsed}}
@@ -374,7 +374,7 @@ async function runChat(context: ChatMsg[], apiKey: string, progress: (label: str
     if (reportCall) {
       progress('Calculating from source records')
       toolsUsed.push('verified_report')
-      const {data:report,error} = await service.rpc('assistant_dev_report',{p_spec:reportCall.input ?? {}})
+      const {data:report,error} = await service.rpc(`${prefix}_report`,{p_spec:reportCall.input ?? {}})
       if(error) {trace.toolErrors++;return {reply:'I could not verify this report: '+error.message,toolsUsed}}
       progress('Reconciling every group and total')
       try {
@@ -459,10 +459,12 @@ Deno.serve(async (req) => {
     if (!claims || !['admin', 'dispatcher'].includes(String(claims.app_role))) {
       return json(403, { error: 'forbidden' })
     }
-    const isDev = new URL(req.url).pathname.split('/').includes('assistant-dev')
-    const conversationTable = isDev ? 'assistant_dev_conversations' : 'assistant_conversations'
+    const devEndpoint = new URL(req.url).pathname.split('/').includes('assistant-dev')
+    const prefix = devEndpoint ? 'assistant_dev' : 'assistant_live'
+    const verifiedEnabled = true
+    const conversationTable = devEndpoint ? 'assistant_dev_conversations' : 'assistant_conversations'
     const userId = String(claims.sub || '')
-    if (isDev) {
+    if (verifiedEnabled) {
       const {data:member}=await service.from('drivers').select('active,role').eq('id',userId).maybeSingle()
       if(!member?.active || !['admin','dispatcher'].includes(member.role) || member.role !== claims.app_role) return json(403,{error:'forbidden'})
     }
@@ -471,7 +473,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}))
     const action = typeof body.action === 'string' ? body.action : 'chat'
 
-    if (isDev) { const response = await learningAction(action,body,userId,claims.app_role === 'admin'); if(response) return response }
+    if (verifiedEnabled) { const response = await learningAction(action,body,userId,claims.app_role === 'admin',prefix); if(response) return response }
 
     // ---- conversation history (each user sees only their own) ----
     if (action === 'list') {
@@ -490,9 +492,9 @@ Deno.serve(async (req) => {
         .select('id, title, messages')
         .eq('id', id).eq('user_id', userId).maybeSingle()
       if (!data) return json(404, { error: 'not_found' })
-      if(isDev){
+      if(verifiedEnabled){
         const ids=(data.messages || []).map((m:{run_id?:string})=>m.run_id).filter(Boolean)
-        const {data:votes}=await service.from('assistant_dev_feedback').select('run_id,rating,correction').eq('user_id',userId).in('run_id',ids)
+        const {data:votes}=await service.from(`${prefix}_feedback`).select('run_id,rating,correction').eq('user_id',userId).in('run_id',ids)
         data.messages=(data.messages || []).map((m:{run_id?:string})=>({...m,feedback:votes?.find(v=>v.run_id===m.run_id)}))
       }
       return json(200, data)
@@ -509,8 +511,8 @@ Deno.serve(async (req) => {
 
     // Per-user rate limit
     const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString()
-    const countQuery = isDev
-      ? service.from('assistant_dev_runs').select('id',{count:'exact',head:true}).eq('user_id',userId).gte('created_at',fiveMinAgo)
+    const countQuery = verifiedEnabled
+      ? service.from(`${prefix}_runs`).select('id',{count:'exact',head:true}).eq('user_id',userId).gte('created_at',fiveMinAgo)
       : service.from('log_entries').select('id',{count:'exact',head:true}).eq('category','assistant').eq('user_id',userId).gte('created_date',fiveMinAgo)
     const {count} = await countQuery
     if ((count ?? 0) >= RATE_LIMIT) {
@@ -529,24 +531,24 @@ Deno.serve(async (req) => {
     }
 
     const signals = conversationSignals(userMessage, stored)
-    const rules = isDev ? await verifiedRules() : ''
+    const rules = verifiedEnabled ? await verifiedRules(prefix) : ''
     const execute = async (progress: (label: string) => void = () => {}) => {
     stored = [...stored, { role: 'user', content: userMessage }]
     const started = Date.now()
     const trace = {direct:false,toolErrors:0,partial:false,verification:''}
-    const result = await runChat(stored.slice(-CONTEXT_MESSAGES), apiKey, progress, rules, trace, isDev)
+    const result = await runChat(stored.slice(-CONTEXT_MESSAGES), apiKey, progress, rules, trace, verifiedEnabled, prefix)
     if ('error' in result) {
-      if(isDev) await service.from('assistant_dev_runs').insert({user_id:userId,prompt:userMessage,reply:'Request failed',checks:[{name:'Response',status:'warning',detail:result.error}],signals,tools:[],elapsed_ms:Date.now()-started})
+      if(verifiedEnabled) await service.from(`${prefix}_runs`).insert({user_id:userId,prompt:userMessage,reply:'Request failed',checks:[{name:'Response',status:'warning',detail:result.error}],signals,tools:[],elapsed_ms:Date.now()-started})
       return json(502, { error: result.error })
     }
     progress('Checking results')
-    const checks = isDev ? checkAnswer(result.reply,result.results,result.toolsUsed,trace.direct,trace.toolErrors,trace.partial) : undefined
+    const checks = verifiedEnabled ? checkAnswer(result.reply,result.results,result.toolsUsed,trace.direct,trace.toolErrors,trace.partial) : undefined
     if (trace.verification && checks) {
       for (const check of checks) if (['Source match','Completeness'].includes(check.name)) {check.status='pass';check.detail=trace.verification}
     }
-    const runId = isDev ? crypto.randomUUID() : undefined
+    const runId = verifiedEnabled ? crypto.randomUUID() : undefined
     const elapsed = Date.now()-started
-    const extra = isDev ? {run_id:runId,checks,elapsed_ms:elapsed} : {}
+    const extra = verifiedEnabled ? {run_id:runId,checks,elapsed_ms:elapsed} : {}
 
     stored = [...stored, { role: 'assistant' as const, content: result.reply, ...extra, ...(result.results ? { results: result.results } : {}) }].slice(-STORED_MESSAGES)
 
@@ -565,12 +567,12 @@ Deno.serve(async (req) => {
       convId = created?.id ?? ''
     }
 
-    if (isDev) {
-      const {error} = await service.from('assistant_dev_runs').insert({id:runId,user_id:userId,conversation_id:convId || null,prompt:userMessage,reply:result.reply,results:result.results,checks,signals,tools:result.toolsUsed,elapsed_ms:elapsed})
+    if (verifiedEnabled) {
+      const {error} = await service.from(`${prefix}_runs`).insert({id:runId,user_id:userId,conversation_id:convId || null,prompt:userMessage,reply:result.reply,results:result.results,checks,signals,tools:result.toolsUsed,elapsed_ms:elapsed})
       if(error) return json(500,{error:'Response could not be recorded for verification. Please retry.'})
     }
     // Audit log (failure never blocks the reply)
-    if (!isDev) service.from('log_entries').insert({
+    if (!devEndpoint) service.from('log_entries').insert({
       timestamp: new Date().toISOString(),
       level: 'info',
       category: 'assistant',
@@ -581,7 +583,7 @@ Deno.serve(async (req) => {
 
     return json(200, { reply: result.reply, results: result.results, conversation_id: convId, ...extra })
     }
-    if(isDev && body.stream === true) {
+    if(verifiedEnabled && body.stream === true) {
       const encoder = new TextEncoder()
       const stream = new ReadableStream({async start(controller) {
         let connected=true

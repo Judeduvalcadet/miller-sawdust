@@ -420,3 +420,6 @@ verify_jwt = false
 
 [functions.assistant-dev]
 verify_jwt = false
+
+[functions.assistant]
+verify_jwt = false
